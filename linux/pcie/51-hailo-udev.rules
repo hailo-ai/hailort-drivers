@@ -1,0 +1,3 @@
+#Change mode rules for Hailo's PCIe driver
+SUBSYSTEM=="hailo_chardev", MODE="0666"
+
