@@ -31,23 +31,23 @@ long hailo_vdma_buffer_map_ioctl(struct hailo_vdma_file_context *context, struct
     struct hailo_vdma_low_memory_buffer *low_memory_buffer = NULL;
 
     if (copy_from_user(&buf_info, (void __user*)arg, sizeof(buf_info))) {
-        hailo_dev_err(controller->dev, "HAILO_VDMA_BUFFER_MAP, copy from user fail\n");
+        hailo_dev_err(controller->dev, "copy from user fail\n");
         return -EFAULT;
     }
 
-    hailo_dev_info(controller->dev, "HAILO_VDMA_BUFFER_MAP, address %px tgid %d size: %zu\n",
+    hailo_dev_info(controller->dev, "address %px tgid %d size: %zu\n",
         buf_info.user_address, current->tgid, buf_info.size);
 
     direction = get_dma_direction(buf_info.data_direction);
     if (DMA_NONE == direction) {
-        hailo_dev_err(controller->dev, "HAILO_IOCX_MAP_USER_BUFFER invalid data direction %d\n",
+        hailo_dev_err(controller->dev, "invalid data direction %d\n",
             buf_info.data_direction);
         return -EINVAL;
     }
 
-    mapped_buffer = kmalloc(sizeof(*mapped_buffer), GFP_KERNEL);
+    mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
     if (NULL == mapped_buffer) {
-        hailo_dev_err(controller->dev, "HAILO_VDMA_BUFFER_MAP, memory alloc failed\n");
+        hailo_dev_err(controller->dev, "memory alloc failed\n");
         return -ENOMEM;
     }
 
@@ -57,7 +57,7 @@ long hailo_vdma_buffer_map_ioctl(struct hailo_vdma_file_context *context, struct
         mapped_buffer, low_memory_buffer);
     if (err < 0) {
         kfree(mapped_buffer);
-        hailo_dev_err(controller->dev, "HAILO_VDMA_BUFFER_MAP, failed map buffer with handle %lu\n",
+        hailo_dev_err(controller->dev, "failed map buffer with handle %lu\n",
             (long unsigned)buf_info.allocated_buffer_handle);
         return err;
     }
@@ -67,13 +67,13 @@ long hailo_vdma_buffer_map_ioctl(struct hailo_vdma_file_context *context, struct
     list_add(&mapped_buffer->mapped_user_buffer_list, &context->mapped_user_buffer_list);
     buf_info.mapped_handle = mapped_buffer->handle;
     if (copy_to_user((void __user*)arg, &buf_info, sizeof(buf_info))) {
-        hailo_dev_err(controller->dev, "HAILO_VDMA_BUFFER_MAP, copy_to_user fail\n");
+        hailo_dev_err(controller->dev, "copy_to_user fail\n");
         list_del(&mapped_buffer->mapped_user_buffer_list);
         hailo_vdma_buffer_unmap(controller->dev, mapped_buffer);
         kfree(mapped_buffer);
-        return -EINVAL;
+        return -EFAULT;
     }
-    hailo_dev_info(controller->dev, "HAILO_VDMA_BUFFER_MAP, buffer %px (handle %zu) is mapped\n",
+    hailo_dev_info(controller->dev, "buffer %px (handle %zu) is mapped\n",
         buf_info.user_address, buf_info.mapped_handle);
     return 0;
 }
@@ -82,11 +82,11 @@ long hailo_vdma_buffer_unmap_ioctl(struct hailo_vdma_file_context *context, stru
 {
     struct hailo_vdma_buffer *mapped_buffer = NULL;
 
-    hailo_dev_info(controller->dev, "HAILO_VDMA_BUFFER_UNMAP, unmap user buffer handle %lu\n", handle);
+    hailo_dev_info(controller->dev, "unmap user buffer handle %lu\n", handle);
 
     mapped_buffer = hailo_vdma_get_mapped_user_buffer(context, handle);
     if (mapped_buffer == NULL) {
-        hailo_dev_warn(controller->dev, "HAILO_VDMA_BUFFER_UNMAP, buffer handle %lu not found\n", handle);
+        hailo_dev_warn(controller->dev, "buffer handle %lu not found\n", handle);
         return -EINVAL;
     }
 
@@ -108,18 +108,18 @@ long hailo_vdma_buffer_sync(struct hailo_vdma_file_context *context, struct hail
 
 
     if (copy_from_user(&sync_info, (void __user*)arg, sizeof(sync_info))) {
-        hailo_dev_err(controller->dev, "HAILO_VDMA_BUFFER_SYNC, copy_from_user fail\n");
-        return -ENOMEM;
+        hailo_dev_err(controller->dev, "copy_from_user fail\n");
+        return -EFAULT;
     }
 
     if (!(mapped_buffer = hailo_vdma_get_mapped_user_buffer(context, sync_info.handle))) {
-        hailo_dev_err(controller->dev, "HAILO_VDMA_BUFFER_SYNC, buffer handle %zu doesn't exist\n", sync_info.handle);
+        hailo_dev_err(controller->dev, "buffer handle %zu doesn't exist\n", sync_info.handle);
         return -EINVAL;
     }
 
     if ((unsigned long)sync_info.buffer_address < (unsigned long)mapped_buffer->user_address ||
         (unsigned long)sync_info.buffer_address + sync_info.buffer_size > (unsigned long)mapped_buffer->user_address + mapped_buffer->size) {
-            hailo_dev_err(controller->dev, "HAILO_VDMA_BUFFER_SYNC, invalid buffer given..\n");
+            hailo_dev_err(controller->dev, "Invalid buffer given for vdma buffer sync.\n");
             return -EINVAL;
     }
 
@@ -156,15 +156,15 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
     long err = -EINVAL;
 
     if(copy_from_user(&create_descriptors_info, (void __user*)arg, sizeof(create_descriptors_info))){
-        hailo_dev_err(controller->dev, "HAILO_DESC_LIST_CREATE, copy_from_user fail\n");
-        return -EINVAL;
+        hailo_dev_err(controller->dev, "copy_from_user fail\n");
+        return -EFAULT;
     }
 
-    hailo_dev_info(controller->dev, "HAILO_DESC_LIST_CREATE, desc_count: %zu\n", create_descriptors_info.desc_count);
+    hailo_dev_info(controller->dev, "Create desc list desc_count: %zu\n", create_descriptors_info.desc_count);
 
-    descriptors_buffer = kmalloc(sizeof(*descriptors_buffer), GFP_KERNEL);
+    descriptors_buffer = kzalloc(sizeof(*descriptors_buffer), GFP_KERNEL);
     if (NULL == descriptors_buffer) {
-        hailo_dev_err(controller->dev, "HAILO_DESC_LIST_CREATE, failed to allocate buffer\n");
+        hailo_dev_err(controller->dev, "Failed to allocate buffer for descriptors list struct\n");
         return -ENOMEM;
     }
 
@@ -173,7 +173,7 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
     err = hailo_desc_list_create(controller->dev, create_descriptors_info.desc_count, next_handle,
         descriptors_buffer);
     if (err < 0) {
-        hailo_dev_err(controller->dev, "HAILO_DESC_LIST_CREATE, failed to allocate descriptors buffer\n");
+        hailo_dev_err(controller->dev, "failed to allocate descriptors buffer\n");
         kfree(descriptors_buffer);
         return err;
     }
@@ -181,19 +181,19 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
     list_add(&descriptors_buffer->descriptors_buffer_list, &context->descriptors_buffer_list);
 
     // Note: The physical address is required for CONTEXT_SWITCH firmware controls
-    BUILD_BUG_ON(sizeof(create_descriptors_info.dma_address) < sizeof(descriptors_buffer->dma_addr));
-    create_descriptors_info.dma_address = descriptors_buffer->dma_addr;
+    BUILD_BUG_ON(sizeof(create_descriptors_info.dma_address) < sizeof(descriptors_buffer->dma_address));
+    create_descriptors_info.dma_address = descriptors_buffer->dma_address;
     create_descriptors_info.desc_handle = descriptors_buffer->handle;
 
     if(copy_to_user((void __user*)arg, &create_descriptors_info, sizeof(create_descriptors_info))){
-        hailo_dev_err(controller->dev, "HAILO_DESC_LIST_CREATE, copy_to_user fail\n");
+        hailo_dev_err(controller->dev, "copy_to_user fail\n");
         list_del(&descriptors_buffer->descriptors_buffer_list);
         hailo_desc_list_release(controller->dev, descriptors_buffer);
         kfree(descriptors_buffer);
-        return -EINVAL;
+        return -EFAULT;
     }
 
-    hailo_dev_info(controller->dev, "HAILO_DESC_LIST_CREATE, handle 0x%llu\n",
+    hailo_dev_info(controller->dev, "Created decc list, handle 0x%llu\n",
         (uint64_t)create_descriptors_info.desc_handle);
     return 0;
 }
@@ -206,7 +206,7 @@ long hailo_desc_list_release_ioctl(struct hailo_vdma_file_context *context, stru
 
     descriptors_buffer = hailo_vdma_get_descriptors_buffer(context, desc_handle);
     if (descriptors_buffer == NULL) {
-        hailo_dev_warn(controller->dev, "HAILO_DESC_LIST_RELEASE not found desc handle %llu\n", (uint64_t)desc_handle);
+        hailo_dev_warn(controller->dev, "not found desc handle %llu\n", (uint64_t)desc_handle);
         return -EINVAL;
     }
 
@@ -239,12 +239,12 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
     int i = 0;
 
     if(copy_from_user(&configure_info, (void __user*)arg, sizeof(configure_info))) {
-        hailo_dev_err(controller->dev, "HAILO_DESC_LIST_BIND_VDMA_BUFFER, copy from user fail\n");
+        hailo_dev_err(controller->dev, "copy from user fail\n");
         return -EFAULT;
     }
 
     if (!is_powerof2(configure_info.desc_page_size)) {
-        hailo_dev_err(controller->dev, "HAILO_DESC_LIST_BIND_VDMA_BUFFER, invalid desc_page_size - %u\n",
+        hailo_dev_err(controller->dev, "invalid desc_page_size - %u\n",
             configure_info.desc_page_size);
         return -EFAULT;
     }
@@ -252,13 +252,13 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
     // On hailo8, we allow channel_id may be INVALID_VDMA_CHANNEL.
     channel_id = hailo_vdma_get_channel_id(configure_info.channel_index);
 
-    hailo_dev_info(controller->dev, "HAILO_DESC_LIST_BIND_VDMA_BUFFER, config buffer_handle=%zu desc_handle=%llu\n",
+    hailo_dev_info(controller->dev, "config buffer_handle=%zu desc_handle=%llu\n",
         configure_info.buffer_handle, (uint64_t)configure_info.desc_handle);
 
     mapped_buffer = hailo_vdma_get_mapped_user_buffer(context, configure_info.buffer_handle);
     descriptors_buffer = hailo_vdma_get_descriptors_buffer(context, configure_info.desc_handle);
     if (mapped_buffer == NULL || descriptors_buffer == NULL) {
-        hailo_dev_err(controller->dev, "HAILO_DESC_LIST_BIND_VDMA_BUFFER, invalid user/descriptors buffer\n");
+        hailo_dev_err(controller->dev, "invalid user/descriptors buffer\n");
         return -EFAULT;
     }
 
@@ -268,7 +268,7 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
         return -EINVAL;
     }
 
-    dma_desc = (struct hailo_vdma_descriptor*)descriptors_buffer->kern_addr;
+    dma_desc = (struct hailo_vdma_descriptor*)descriptors_buffer->kernel_address;
 
     dma_index = 0;
     for_each_sg(mapped_buffer->sg_table.sgl, sg_entry, mapped_buffer->sg_table.nents, i) {
@@ -298,7 +298,7 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
 long hailo_vdma_low_memory_buffer_alloc_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg)
 {
-    struct hailo_allocate_buffer_params buf_info = {0};
+    struct hailo_allocate_low_memory_buffer_params buf_info = {0};
     struct hailo_vdma_low_memory_buffer *low_memory_buffer = NULL;
     long err = -EINVAL;
 
@@ -307,7 +307,7 @@ long hailo_vdma_low_memory_buffer_alloc_ioctl(struct hailo_vdma_file_context *co
         return -EFAULT;
     }
 
-    low_memory_buffer = kmalloc(sizeof(*low_memory_buffer), GFP_KERNEL);
+    low_memory_buffer = kzalloc(sizeof(*low_memory_buffer), GFP_KERNEL);
     if (NULL == low_memory_buffer) {
         hailo_dev_err(controller->dev, "memory alloc failed\n");
         return -ENOMEM;
@@ -321,17 +321,17 @@ long hailo_vdma_low_memory_buffer_alloc_ioctl(struct hailo_vdma_file_context *co
     }
 
     // Get handle for allocated buffer
-    low_memory_buffer->buffer_handle = hailo_get_next_vdma_handle(context);
+    low_memory_buffer->handle = hailo_get_next_vdma_handle(context);
 
     list_add(&low_memory_buffer->vdma_low_memory_buffer_list, &context->vdma_low_memory_buffer_list);
 
-    buf_info.buffer_handle = low_memory_buffer->buffer_handle;
+    buf_info.buffer_handle = low_memory_buffer->handle;
     if (copy_to_user((void __user*)arg, &buf_info, sizeof(buf_info))) {
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
         list_del(&low_memory_buffer->vdma_low_memory_buffer_list);
         hailo_vdma_low_memory_buffer_free(low_memory_buffer);
         kfree(low_memory_buffer);
-        return -EINVAL;
+        return -EFAULT;
     }
 
     return 0;
@@ -371,8 +371,68 @@ long hailo_mark_as_in_use(struct hailo_vdma_controller *controller, unsigned lon
 
     if (copy_to_user((void __user*)arg, &params, sizeof(params))) {
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
+long hailo_vdma_continuous_buffer_alloc_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg)
+{
+    struct hailo_allocate_continuous_buffer_params buf_info = {0};
+    struct hailo_vdma_continuous_buffer *continuous_buffer = NULL;
+    long err = -EINVAL;
+    size_t aligned_buffer_size = 0;
+
+    if (copy_from_user(&buf_info, (void __user*)arg, sizeof(buf_info))) {
+        hailo_dev_err(controller->dev, "copy from user fail\n");
+        return -EFAULT;
+    }
+
+    continuous_buffer = kzalloc(sizeof(*continuous_buffer), GFP_KERNEL);
+    if (NULL == continuous_buffer) {
+        hailo_dev_err(controller->dev, "memory alloc failed\n");
         return -ENOMEM;
     }
 
+    // We use PAGE_ALIGN to support mmap
+    aligned_buffer_size = PAGE_ALIGN(buf_info.buffer_size);
+    err = hailo_vdma_continuous_buffer_alloc(controller->dev, aligned_buffer_size, continuous_buffer);
+    if (err < 0) {
+        kfree(continuous_buffer);
+        hailo_dev_err(controller->dev, "failed allocating continuous buffer\n");
+        return err;
+    }
+
+    continuous_buffer->handle = hailo_get_next_vdma_handle(context);
+    list_add(&continuous_buffer->continuous_buffer_list, &context->continuous_buffer_list);
+
+    buf_info.buffer_handle = continuous_buffer->handle;
+    buf_info.dma_address = continuous_buffer->dma_address;
+    if (copy_to_user((void __user*)arg, &buf_info, sizeof(buf_info))) {
+        hailo_dev_err(controller->dev, "copy_to_user fail\n");
+        list_del(&continuous_buffer->continuous_buffer_list);
+        hailo_vdma_continuous_buffer_free(controller->dev, continuous_buffer);
+        kfree(continuous_buffer);
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
+long hailo_vdma_continuous_buffer_free_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg)
+{
+    struct hailo_vdma_continuous_buffer *continuous_buffer = NULL;
+    uintptr_t buf_handle = (uintptr_t)arg;
+
+    continuous_buffer = hailo_vdma_get_continuous_buffer(context, buf_handle);
+    if (NULL == continuous_buffer) {
+        hailo_dev_warn(controller->dev, "vdma buffer handle %lx not found\n", buf_handle);
+        return -EINVAL;
+    }
+
+    list_del(&continuous_buffer->continuous_buffer_list);
+    hailo_vdma_continuous_buffer_free(controller->dev, continuous_buffer);
+    kfree(continuous_buffer);
     return 0;
 }

@@ -78,10 +78,10 @@ static int start_channel(struct hailo_vdma_file_context *context,
         return -EINVAL;
     }
 
-    address = controller->ops->encode_channel_dma_address(desc_list->dma_addr,
+    address = controller->ops->encode_channel_dma_address(desc_list->dma_address,
         channel_id);
     if (INVALID_VDMA_ADDRESS == address) {
-        hailo_dev_err(controller->dev, "Failed encode dma address %pad\n", &desc_list->dma_addr);
+        hailo_dev_err(controller->dev, "Failed encode dma address %pad\n", &desc_list->dma_address);
         return -EINVAL;
     }
 
@@ -184,6 +184,7 @@ long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct h
 void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller, size_t channel_index)
 {
+    int err = 0;
     unsigned long irq_saved_flags;
     struct hailo_vdma_channel *channel = &controller->channels[channel_index];
     // In case of FLR, the vdma registers will be NULL
@@ -210,7 +211,10 @@ void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context
 
     if (is_device_up) {
         hailo_dev_info(controller->dev, "Aborting channel %u", (u32)channel_index);
-        hailo_vdma_channel_validate_stopped(&controller->registers, channel_index, &to_device_control_reg, &from_device_control_reg);
+        err = hailo_vdma_stop_channel(&controller->registers, channel_index, &to_device_control_reg, &from_device_control_reg);
+        if (err != 0) {
+            hailo_dev_err(controller->dev, "hailo_vdma_stop_channel failed for channel %u with errno %d", (u32)channel_index, err);
+        }
     }
 }
 

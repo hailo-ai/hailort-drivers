@@ -92,9 +92,9 @@ int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintp
     buffer_size = descriptors_count * sizeof(struct hailo_vdma_descriptor);
     buffer_size = ALIGN(buffer_size, align);
 
-    descriptors->kern_addr = dma_alloc_coherent(dev, buffer_size,
-        &descriptors->dma_addr, GFP_KERNEL | __GFP_ZERO);
-    if (descriptors->kern_addr == NULL) {
+    descriptors->kernel_address = dma_alloc_coherent(dev, buffer_size,
+        &descriptors->dma_address, GFP_KERNEL | __GFP_ZERO);
+    if (descriptors->kernel_address == NULL) {
         dev_err(dev, "Failed to allocate descriptors list, desc_count 0x%x, buffer_size 0x%zx\n",
             descriptors_count, buffer_size);
         return -ENOMEM;
@@ -109,7 +109,7 @@ int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintp
 
 void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list *descriptors)
 {
-    dma_free_coherent(dev, descriptors->buffer_size, descriptors->kern_addr, descriptors->dma_addr);
+    dma_free_coherent(dev, descriptors->buffer_size, descriptors->kernel_address, descriptors->dma_address);
 }
 
 struct hailo_descriptors_list* hailo_vdma_get_descriptors_buffer(struct hailo_vdma_file_context *context,
@@ -199,7 +199,7 @@ struct hailo_vdma_low_memory_buffer* hailo_vdma_get_low_memory_buffer(struct hai
 {
     struct hailo_vdma_low_memory_buffer *cur = NULL;
     list_for_each_entry(cur, &context->vdma_low_memory_buffer_list, vdma_low_memory_buffer_list) {
-        if (cur->buffer_handle == buf_handle) {
+        if (cur->handle == buf_handle) {
             return cur;
         }
     }
@@ -213,6 +213,55 @@ void hailo_vdma_clear_low_memory_buffer_list(struct hailo_vdma_file_context *con
     list_for_each_entry_safe(cur, next, &context->vdma_low_memory_buffer_list, vdma_low_memory_buffer_list) {
         list_del(&cur->vdma_low_memory_buffer_list);
         hailo_vdma_low_memory_buffer_free(cur);
+        kfree(cur);
+    }
+}
+
+int hailo_vdma_continuous_buffer_alloc(struct device *dev, size_t size,
+    struct hailo_vdma_continuous_buffer *continuous_buffer)
+{
+    dma_addr_t dma_address = 0;
+    void *kernel_address = NULL;
+
+    kernel_address = dma_alloc_coherent(dev, size, &dma_address, GFP_KERNEL);
+    if (NULL == kernel_address) {
+        dev_err(dev, "Failed to allocate continuous buffer, size 0x%zx\n", size);
+        return -ENOMEM;
+    }
+
+    continuous_buffer->kernel_address = kernel_address;
+    continuous_buffer->dma_address = dma_address;
+    continuous_buffer->size = size;
+    return 0;
+}
+
+void hailo_vdma_continuous_buffer_free(struct device *dev,
+    struct hailo_vdma_continuous_buffer *continuous_buffer)
+{
+    dma_free_coherent(dev, continuous_buffer->size, continuous_buffer->kernel_address,
+        continuous_buffer->dma_address);
+}
+
+struct hailo_vdma_continuous_buffer* hailo_vdma_get_continuous_buffer(struct hailo_vdma_file_context *context,
+    uintptr_t buf_handle)
+{
+    struct hailo_vdma_continuous_buffer *cur = NULL;
+    list_for_each_entry(cur, &context->continuous_buffer_list, continuous_buffer_list) {
+        if (cur->handle == buf_handle) {
+            return cur;
+        }
+    }
+
+    return NULL;
+}
+
+void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *context,
+    struct hailo_vdma_controller *controller)
+{
+    struct hailo_vdma_continuous_buffer *cur = NULL, *next = NULL;
+    list_for_each_entry_safe(cur, next, &context->continuous_buffer_list, continuous_buffer_list) {
+        list_del(&cur->continuous_buffer_list);
+        hailo_vdma_continuous_buffer_free(controller->dev, cur);
         kfree(cur);
     }
 }
@@ -254,7 +303,7 @@ static int hailo_set_sg_list(struct sg_table *sg_table, void __user *user_addres
         }
     }
 
-    sg_alloc_res = __sg_alloc_table_from_pages_compact(sg_table, pages, nPages,
+    sg_alloc_res = sg_alloc_table_from_pages_segment_compat(sg_table, pages, nPages,
         0, size, SGL_MAX_SEGMENT_SIZE, NULL, 0, GFP_KERNEL);
     if (IS_ERR(sg_alloc_res)) {
         pr_err("sg table alloc failed (err %ld)..\n", PTR_ERR(sg_alloc_res));

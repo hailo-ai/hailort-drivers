@@ -7,14 +7,14 @@
 #include "common_fw_logger.h"
 #include "hailo_resource.h"
 
-#ifdef __unix__
+#ifdef __linux__
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 5, 0, 0 )
 #define compatible_access_ok(a,b,c) access_ok(b, c)
 #else
 #define compatible_access_ok(a,b,c) access_ok(a, b, c)
 #endif
 
-#endif // ifdef __unix__
+#endif // ifdef __linux__
 
 static long read_resource_to_user(struct hailo_resource *fw_logger_resource, size_t src_offset, uintptr_t user_buffer,
     size_t user_buffer_size)
@@ -22,11 +22,13 @@ static long read_resource_to_user(struct hailo_resource *fw_logger_resource, siz
     uintptr_t dest = user_buffer; 
     size_t remaining = user_buffer_size;
 
-#ifdef __unix__
+// This function (read_resource_to_user) and hailo_read_firmware_log() are only used in __linux__, but are implemented in 
+// common because we want to implement them for windows as well
+#ifdef __linux__
     if (!compatible_access_ok(VERIFY_WRITE, (void *)user_buffer, user_buffer_size)) {
         return -EFAULT;
     }
-#endif // ifdef __unix__
+#endif // ifdef __linux__
 
     while(remaining > 0)
     {

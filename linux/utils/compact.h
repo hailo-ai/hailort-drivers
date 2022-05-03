@@ -51,10 +51,10 @@ static inline void mmap_read_unlock(struct mm_struct *mm)
 }
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-#define __sg_alloc_table_from_pages_compact __sg_alloc_table_from_pages
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+#define sg_alloc_table_from_pages_segment_compat __sg_alloc_table_from_pages
 #else
-static inline struct scatterlist *__sg_alloc_table_from_pages_compact(struct sg_table *sgt,
+static inline struct scatterlist *sg_alloc_table_from_pages_segment_compat(struct sg_table *sgt,
     struct page **pages, unsigned int n_pages, unsigned int offset,
     unsigned long size, unsigned int max_segment,
     struct scatterlist *prv, unsigned int left_pages,
@@ -72,7 +72,9 @@ static inline struct scatterlist *__sg_alloc_table_from_pages_compact(struct sg_
         return ERR_PTR(-EINVAL);
     }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+    res = sg_alloc_table_from_pages_segment(sgt, pages, n_pages, offset, size, max_segment, gfp_mask);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
     res = __sg_alloc_table_from_pages(sgt, pages, n_pages, offset, size, max_segment, gfp_mask);
 #else
     res = sg_alloc_table_from_pages(sgt, pages, n_pages, offset, size, gfp_mask);

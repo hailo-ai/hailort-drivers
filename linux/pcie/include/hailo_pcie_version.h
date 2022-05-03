@@ -9,7 +9,7 @@
 #include <linux/stringify.h>
 
 #define HAILO_DRV_VER_MAJOR 4
-#define HAILO_DRV_VER_MINOR 6
+#define HAILO_DRV_VER_MINOR 7
 #define HAILO_DRV_VER_REVISION 0
 
 #define HAILO_DRV_VER __stringify(HAILO_DRV_VER_MAJOR) "." __stringify(HAILO_DRV_VER_MINOR) "."  __stringify(HAILO_DRV_VER_REVISION)

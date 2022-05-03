@@ -12,7 +12,7 @@
 #include "common_fw_validation.h"
 #include "common_fw_logger.h"
 
-#ifdef __unix__
+#ifdef __linux__
 #include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/device.h>
@@ -31,8 +31,6 @@
 
 #define PCIE_HAILO8_BOARD_CFG_MAX_SIZE          (0x500)
 #define PCIE_HAILO8_FW_CFG_MAX_SIZE             (0x500)
-// Set to the max between PCIE_HAILO8_FW_CFG_MAX_SIZE and PCIE_HAILO8_BOARD_CFG_MAX_SIZE
-#define PCIE_HAILO8_FIRMWARE_CONFIG_MAX_SIZE    (0x500)
 
 #define BCS_ISTATUS_HOST_FW_IRQ_CONTROL_MASK (0x04000000)
 #define BCS_ISTATUS_HOST_FW_IRQ_NOTIFICATION (0x02000000)

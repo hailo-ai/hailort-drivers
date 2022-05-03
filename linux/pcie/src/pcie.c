@@ -79,7 +79,11 @@ irqreturn_t hailo_irqhandler(int irq, void* dev_id);
   ******************************* */
 bool power_mode_enabled(void)
 {
+#if !defined(HAILO_EMULATOR)
     return g_is_power_mode_enabled;
+#else /* !defined(HAILO_EMULATOR) */
+    return false;
+#endif /* !defined(HAILO_EMULATOR) */
 }
 
 static bool hailo_check_bar_readability(struct hailo_bar *bar0)

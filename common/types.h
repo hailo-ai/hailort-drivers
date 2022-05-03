@@ -112,7 +112,7 @@ BOOLEAN FORCEINLINE copy_to_user(void *dst, void *src, size_t len)
     return true;
 }
 
-#elif defined(__unix__)
+#elif defined(__linux__)
 
 #include <linux/version.h>
 #include <linux/types.h>
@@ -138,7 +138,7 @@ BOOLEAN FORCEINLINE copy_to_user(void *dst, void *src, size_t len)
 #include <unistd.h>
 
 // TODO: HRT-6138
-#define IS_ALIGNED(p, n) (((uintptr_t)(p) & (n - 1)) == 0)
+#define IS_ALIGNED(x, a)        (((x) & ((typeof(x))(a) - 1)) == 0)
 #define BUG_ON(condition)   if (condition) { printf("CRITICAL ERROR CAUGHT\n"); exit(0); } else {}
 #define BITS_PER_LONG           32
 #define UL(x)                   ((unsigned long)x)

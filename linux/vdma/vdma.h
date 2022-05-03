@@ -44,17 +44,25 @@ struct hailo_vdma_buffer {
 struct hailo_descriptors_list {
     struct list_head            descriptors_buffer_list;
     uintptr_t                   handle;
-    void                        *kern_addr;
-    dma_addr_t                  dma_addr;
+    void                        *kernel_address;
+    dma_addr_t                  dma_address;
     uint32_t                    desc_count;
     uint32_t                    buffer_size;
 };
 
 struct hailo_vdma_low_memory_buffer {
     struct list_head                    vdma_low_memory_buffer_list;
+    uintptr_t                           handle;
     size_t                              pages_count;
     void                                **pages_address;
-    uintptr_t                           buffer_handle;
+};
+
+struct hailo_vdma_continuous_buffer {
+    struct list_head    continuous_buffer_list;
+    uintptr_t           handle;
+    void                *kernel_address;
+    dma_addr_t          dma_address;
+    size_t              size;
 };
 
 struct hailo_vdma_channel {
@@ -112,6 +120,7 @@ struct hailo_vdma_file_context {
     atomic_t last_vdma_handle;
     struct list_head descriptors_buffer_list;
     struct list_head vdma_low_memory_buffer_list;
+    struct list_head continuous_buffer_list;
 };
 
 

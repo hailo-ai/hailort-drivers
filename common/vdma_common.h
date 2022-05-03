@@ -30,7 +30,7 @@ struct hailo_channel_interrupt_timestamp_list {
 int hailo_vdma_start_channel(struct hailo_resource *vdma_registers, size_t channel_index,
     enum hailo_dma_data_direction direction, uint64_t desc_dma_address, uint8_t desc_depth);
 // to_device_control_reg, from_device_control_reg - out params
-void hailo_vdma_channel_validate_stopped(struct hailo_resource *vdma_registers, size_t channel_index,
+int hailo_vdma_stop_channel(struct hailo_resource *vdma_registers, size_t channel_index,
     u8 *to_device_control_reg, u8 *from_device_control_reg);
 
 void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *descriptor, uint64_t dma_address, size_t page_size,

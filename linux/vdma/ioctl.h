@@ -21,4 +21,7 @@ long hailo_vdma_low_memory_buffer_free_ioctl(struct hailo_vdma_file_context *con
 
 long hailo_mark_as_in_use(struct hailo_vdma_controller *controller, unsigned long arg, struct file *filp);
 
+long hailo_vdma_continuous_buffer_alloc_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
+long hailo_vdma_continuous_buffer_free_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
+
 #endif /* _HAILO_VDMA_IOCTL_H_ */
