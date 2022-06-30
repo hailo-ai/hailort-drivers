@@ -7,60 +7,14 @@
 #include "common_fw_logger.h"
 #include "hailo_resource.h"
 
-#ifdef __unix__
+#ifdef __linux__
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 5, 0, 0 )
 #define compatible_access_ok(a,b,c) access_ok(b, c)
 #else
 #define compatible_access_ok(a,b,c) access_ok(a, b, c)
 #endif
 
-#endif // ifdef __unix__
-
-static long read_resource_to_user(struct hailo_resource *fw_logger_resource, size_t src_offset, uintptr_t user_buffer,
-    size_t user_buffer_size)
-{
-    uintptr_t dest = user_buffer; 
-    size_t remaining = user_buffer_size;
-
-#ifdef __unix__
-    if (!compatible_access_ok(VERIFY_WRITE, (void *)user_buffer, user_buffer_size)) {
-        return -EFAULT;
-    }
-#endif // ifdef __unix__
-
-    while(remaining > 0)
-    {
-        if (remaining >= 4 && ((fw_logger_resource->address + src_offset) % 4) == 0) {
-            uint32_t dword = hailo_resource_read32(fw_logger_resource, src_offset);
-
-            if (copy_to_user((void*)dest, &dword, sizeof(dword))) {
-                return -ENOMEM;
-            }
-            src_offset += 4;
-            dest += 4;
-            remaining -= 4;
-        } else if (remaining >= 2 && ((fw_logger_resource->address + src_offset) % 2) == 0) {
-            uint16_t word = hailo_resource_read16(fw_logger_resource, src_offset);
-            if (copy_to_user((void*)dest, &word, sizeof(word))) {
-                return -ENOMEM;
-            }
-            src_offset += 2;
-            dest += 2;
-            remaining -= 2;
-        } else {
-            uint8_t byte = hailo_resource_read8(fw_logger_resource, src_offset);
-            if (copy_to_user((void*)dest, &byte, sizeof(byte))) {
-                return -ENOMEM;
-            }
-
-            src_offset += 1;
-            dest += 1;
-            remaining -= 1;
-        }
-    }
-
-    return 0;
-}
+#endif // ifdef __linux__
 
 static inline size_t calculate_log_ready_to_read(FW_DEBUG_BUFFER_HEADER_t *header)
 {
@@ -79,7 +33,6 @@ static inline size_t calculate_log_ready_to_read(FW_DEBUG_BUFFER_HEADER_t *heade
 
 long hailo_read_firmware_log(struct hailo_resource *fw_logger_resource, struct hailo_read_log_params *params)
 {
-    long err = 0;
     FW_DEBUG_BUFFER_HEADER_t debug_buffer_header = {0};
     size_t read_offset = 0;
     size_t ready_to_read = 0;
@@ -103,9 +56,7 @@ long hailo_read_firmware_log(struct hailo_resource *fw_logger_resource, struct h
     /* Check if the offset should cycle back to beginning. */
     if (DEBUG_BUFFER_DATA_SIZE <= debug_buffer_header.host_offset + ready_to_read) {
         size_to_read = DEBUG_BUFFER_DATA_SIZE - debug_buffer_header.host_offset;
-        if (0 > (err = read_resource_to_user(fw_logger_resource, read_offset, user_buffer, size_to_read))) {
-            return err;
-        }
+        hailo_resource_read_buffer(fw_logger_resource, read_offset, size_to_read, (void*)user_buffer);
 
         user_buffer += size_to_read;
         size_to_read = ready_to_read - size_to_read;
@@ -117,11 +68,7 @@ long hailo_read_firmware_log(struct hailo_resource *fw_logger_resource, struct h
     }
 
     /* size_to_read may become 0 if the read reached DEBUG_BUFFER_DATA_SIZE exactly */
-    if (size_to_read > 0) {
-        if (0 > (err = read_resource_to_user(fw_logger_resource, read_offset, user_buffer, size_to_read))) {
-            return err;
-        }
-    }
+    hailo_resource_read_buffer(fw_logger_resource, read_offset, size_to_read, (void*)user_buffer);
 
     /* Change current_offset to represent the new host offset. */
     read_offset += size_to_read;

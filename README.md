@@ -1,5 +1,5 @@
 <p align="left">
-  <img src=".logo.svg" />
+  <img src=".pcie_driver.png" />
 </p>
 
 

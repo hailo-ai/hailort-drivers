@@ -75,6 +75,7 @@ struct hailo_pcie_board {
     struct list_head notification_wait_list;
     struct hailo_d2h_notification notification_cache;
     struct hailo_d2h_notification notification_to_user;
+    struct hailo_bar_transfer_params bar_transfer_params;
     u32 desc_max_page_size;
     enum hailo_board_type board_type;
     enum hailo_allocation_mode allocation_mode;

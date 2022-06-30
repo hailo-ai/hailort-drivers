@@ -12,7 +12,7 @@
 #include "common_fw_validation.h"
 #include "common_fw_logger.h"
 
-#ifdef __unix__
+#ifdef __linux__
 #include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/device.h>
@@ -31,8 +31,6 @@
 
 #define PCIE_HAILO8_BOARD_CFG_MAX_SIZE          (0x500)
 #define PCIE_HAILO8_FW_CFG_MAX_SIZE             (0x500)
-// Set to the max between PCIE_HAILO8_FW_CFG_MAX_SIZE and PCIE_HAILO8_BOARD_CFG_MAX_SIZE
-#define PCIE_HAILO8_FIRMWARE_CONFIG_MAX_SIZE    (0x500)
 
 #define BCS_ISTATUS_HOST_FW_IRQ_CONTROL_MASK (0x04000000)
 #define BCS_ISTATUS_HOST_FW_IRQ_NOTIFICATION (0x02000000)
@@ -42,6 +40,7 @@
 #define FW_CODE_SECTION_ALIGNMENT (4)
 
 #define HAILO_PCIE_HOST_DMA_DATA_ID (0)
+#define HAILO_PCIE_DMA_ENGINES_COUNT (1)
 
 #define DRIVER_NAME		"hailo"
 
@@ -107,7 +106,7 @@ extern "C" {
 // Reads the interrupt source from BARs, return false if there is no interrupt.
 // note - this function clears the interrupt signals.
 bool hailo_pcie_read_interrupt(struct hailo_pcie_resources *resources, struct hailo_pcie_interrupt_source *source);
-void hailo_pcie_update_channel_interrupts(struct hailo_pcie_resources *resources, unsigned long channels_bitmap);
+void hailo_pcie_update_channel_interrupts_mask(struct hailo_pcie_resources *resources, unsigned long channels_bitmap);
 void hailo_pcie_enable_interrupts(struct hailo_pcie_resources *resources);
 void hailo_pcie_disable_interrupts(struct hailo_pcie_resources *resources);
 

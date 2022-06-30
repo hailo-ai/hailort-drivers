@@ -34,5 +34,13 @@ struct hailo_vdma_low_memory_buffer* hailo_vdma_get_low_memory_buffer(struct hai
     uintptr_t buf_handle);
 void hailo_vdma_clear_low_memory_buffer_list(struct hailo_vdma_file_context *context);
 
+int hailo_vdma_continuous_buffer_alloc(struct device *dev, size_t size,
+    struct hailo_vdma_continuous_buffer *continuous_buffer);
+void hailo_vdma_continuous_buffer_free(struct device *dev,
+    struct hailo_vdma_continuous_buffer *continuous_buffer);
+struct hailo_vdma_continuous_buffer* hailo_vdma_get_continuous_buffer(struct hailo_vdma_file_context *context,
+    uintptr_t buf_handle);
+void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *context,
+    struct hailo_vdma_controller *controller);
 
 #endif /* _HAILO_VDMA_MEMORY_H_ */

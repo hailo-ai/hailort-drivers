@@ -44,7 +44,9 @@
 #endif
 
 #define IS_PO2_ALIGNED(size, alignment) (!(size & (alignment-1)))
- 
+
+// On pcie driver there is only one dma engine
+#define DEFAULT_VDMA_ENGINE_INDEX       (0)
 
 static long hailo_add_notification_wait(struct hailo_pcie_board *board, struct file *filp);
 
@@ -234,39 +236,22 @@ static int hailo_bar_write(struct hailo_pcie_board *pBoard, struct hailo_bar_tra
     char *dest = pBoard->bar[rw_transfer->bar_index].kernel_address + rw_transfer->offset;
     size_t remaining = rw_transfer->count;
 
-    if (!compatible_access_ok(VERIFY_READ, (void __user *)rw_transfer->buffer, rw_transfer->count)) {
-        hailo_err(pBoard, "fops_write invalid address\n");
-        return -EFAULT;
-    }
-
     while(remaining > 0)
     {
         if (remaining >= 4 && ((uintptr_t)src % 4) == 0) {
-            uint32_t dword;
-            if (copy_from_user(&dword, src, sizeof(dword))) {
-                hailo_err(pBoard, "fops_write copy_from_user fail\n");
-                return -ENOMEM;
-            }
+            uint32_t dword = *((uint32_t*)src);
             iowrite32(dword, dest);
             src += 4;
             dest += 4;
             remaining -= 4;
         } else if (remaining >= 2 && ((uintptr_t)src % 2) == 0) {
-            uint16_t word;
-            if (copy_from_user(&word, src, sizeof(word))) {
-                hailo_err(pBoard, "fops_write copy_from_user fail\n");
-                return -ENOMEM;
-            }
+            uint16_t word = *((uint16_t*)src);
             iowrite16(word, dest);
             src += 2;
             dest += 2;
             remaining -= 2;
         } else {
-            uint8_t byte;
-            if (copy_from_user(&byte, src, sizeof(byte))) {
-                hailo_err(pBoard, "fops_write copy_from_user fail\n");
-                return -ENOMEM;
-            }
+            uint8_t byte = *((uint8_t*)src);
             iowrite8(byte, dest);
             src += 1;
             dest += 1;
@@ -284,39 +269,23 @@ static long hailo_bar_read(struct hailo_pcie_board *pBoard, struct hailo_bar_tra
     char *dest = rw_transfer->buffer;
     size_t remaining = rw_transfer->count;
 
-    if (!compatible_access_ok(
-            VERIFY_WRITE, (void __user *)rw_transfer->buffer, rw_transfer->count)) {
-        hailo_err(pBoard, "fops_read invalid address\n");
-        return -EFAULT;
-    }
-
     while(remaining > 0)
     {
         if (remaining >= 4 && ((uintptr_t)src % 4) == 0) {
             uint32_t dword = ioread32(src);
-
-            if (copy_to_user(dest, &dword, sizeof(dword))) {
-                hailo_err(pBoard, "fops_read copy_to_user fail\n");
-                return -ENOMEM;
-            }
+            memcpy(dest, &dword, sizeof(dword));
             src += 4;
             dest += 4;
             remaining -= 4;
         } else if (remaining >= 2 && ((uintptr_t)src % 2) == 0) {
             uint16_t word = ioread16(src);
-            if (copy_to_user(dest, &word, sizeof(word))) {
-                hailo_err(pBoard, "fops_read copy_to_user fail\n");
-                return -ENOMEM;
-            }
+            memcpy(dest, &word, sizeof(word));
             src += 2;
             dest += 2;
             remaining -= 2;
         } else {
             uint8_t byte = ioread8(src);
-            if (copy_to_user(dest, &byte, sizeof(byte))) {
-                hailo_err(pBoard, "fops_read copy_to_user fail\n");
-                return -ENOMEM;
-            }
+            memcpy(dest, &byte, sizeof(byte));
 
             src += 1;
             dest += 1;
@@ -331,43 +300,54 @@ static long hailo_bar_read(struct hailo_pcie_board *pBoard, struct hailo_bar_tra
 long hailo_bar_transfer(struct hailo_pcie_board *pBoard, unsigned long arg)
 {
     long err = 0;
-    struct hailo_bar_transfer_params transfer;
+    struct hailo_bar_transfer_params* transfer = &pBoard->bar_transfer_params;
 
     hailo_dbg(pBoard, "HAILO_BAR_TRANSFER\n");
 
-    if (copy_from_user(&transfer, (void __user*)arg, sizeof(transfer))) {
+    if (copy_from_user(transfer, (void __user*)arg, sizeof(*transfer))) {
         hailo_err(pBoard, "HAILO_BAR_TRANSFER, copy_from_user fail\n");
         return -ENOMEM;
     }
     // check for valid input
-    if ((MAX_BAR <= transfer.bar_index) || (NULL == transfer.buffer)) {
+    if ((MAX_BAR <= transfer->bar_index) || (NULL == transfer->buffer)) {
         hailo_err(pBoard, "HAILO_BAR_TRANSFER, invalid index %u, size %zu, buffer %px\n",
-            transfer.bar_index, transfer.count, transfer.buffer);
+            transfer->bar_index, transfer->count, transfer->buffer);
         return -EINVAL;
     }
 
     // check for active bar
-    if ((!pBoard->bar[transfer.bar_index].memory_flag) || (!pBoard->bar[transfer.bar_index].active_flag)) {
+    if ((!pBoard->bar[transfer->bar_index].memory_flag) || (!pBoard->bar[transfer->bar_index].active_flag)) {
         hailo_err(pBoard, "HAILO_BAR_TRANSFER, invalid access\n");
         return -EINVAL;
     }
 
     // check for bar size
-    if ((transfer.offset + transfer.count) > pBoard->bar[transfer.bar_index].length) {
+    if ((transfer->offset + transfer->count) > pBoard->bar[transfer->bar_index].length) {
         hailo_err(pBoard, "HAILO_BAR_TRANSFER, trying to access beyond bar length (bar %u,"
-            "bar length %llu, offset %llu, count:%zu\n", transfer.bar_index, pBoard->bar[transfer.bar_index].length,
-            (u64)transfer.offset, transfer.count);
+            "bar length %llu, offset %llu, count:%zu\n", transfer->bar_index, pBoard->bar[transfer->bar_index].length,
+            (u64)transfer->offset, transfer->count);
         return -EINVAL;
     }
 
-    if (TRANSFER_READ == transfer.transfer_direction) {
-        err = hailo_bar_read(pBoard, &transfer);
-    } else if (TRANSFER_WRITE == transfer.transfer_direction) {
-        err = hailo_bar_write(pBoard, &transfer);
+    if (TRANSFER_READ == transfer->transfer_direction) {
+        err = hailo_bar_read(pBoard, transfer);
+    } else if (TRANSFER_WRITE == transfer->transfer_direction) {
+        err = hailo_bar_write(pBoard, transfer);
     } else {
-        hailo_err(pBoard, "HAILO_BAR_TRANSFER, unknown transfer type %d\n", transfer.transfer_direction);
+        hailo_err(pBoard, "HAILO_BAR_TRANSFER, unknown transfer type %d\n", transfer->transfer_direction);
         err = -EINVAL;
     }
+
+    if (err < 0) {
+        hailo_err(pBoard, "HAILO_BAR_TRANSFER, Failed with error: %ld\n", err);
+        return err;
+    }
+
+    if (copy_to_user((void __user*)arg, transfer, sizeof(*transfer))) {
+        hailo_err(pBoard, "copy_to_user fail\n");
+        return -ENOMEM;
+    }
+
     return err;
 }
 
@@ -381,7 +361,7 @@ static long hailo_read_log_ioctl(struct hailo_pcie_board *pBoard, unsigned long 
         return -ENOMEM;
     }
 
-    if ((err = hailo_pcie_read_firmware_log(&pBoard->pcie_resources, &params) < 0)) {
+    if (0 > (err = hailo_pcie_read_firmware_log(&pBoard->pcie_resources, &params))) {
         hailo_err(pBoard, "HAILO_READ_LOG, reading from log failed with error: %ld \n", err);
         return err;
     }
@@ -457,7 +437,8 @@ irqreturn_t hailo_irqhandler(int irq, void *dev_id)
         }
 
         if ((0 != irq_source.channel_data_source) || (0 != irq_source.channel_data_dest)) {
-            hailo_vdma_irq_handler(&board->vdma, irq_source.channel_data_source, irq_source.channel_data_dest);
+            hailo_vdma_irq_handler(&board->vdma, DEFAULT_VDMA_ENGINE_INDEX,
+                irq_source.channel_data_source, irq_source.channel_data_dest);
         }
     }
 
@@ -630,7 +611,8 @@ long hailo_query_device_properties(struct hailo_pcie_board *board, unsigned long
         .desc_max_page_size = board->desc_max_page_size,
         .board_type = board->board_type,
         .allocation_mode = board->allocation_mode,
-        .dma_type = HAILO_DMA_TYPE_PCIE
+        .dma_type = HAILO_DMA_TYPE_PCIE,
+        .dma_engines_count = board->vdma.vdma_engines_count,
     };
 
     hailo_info(board, "HAILO_QUERY_DEVICE_PROPERTIES: desc_max_page_size=%u\n", props.desc_max_page_size);
