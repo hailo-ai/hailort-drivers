@@ -6,7 +6,6 @@
 #include "ioctl.h"
 #include "memory.h"
 #include "utils/logs.h"
-#include "utils.h"
 
 #include <linux/slab.h>
 #include <linux/uaccess.h>
@@ -156,15 +155,9 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
     uintptr_t next_handle = 0;
     long err = -EINVAL;
 
-    if (copy_from_user(&create_descriptors_info, (void __user*)arg, sizeof(create_descriptors_info))) {
+    if(copy_from_user(&create_descriptors_info, (void __user*)arg, sizeof(create_descriptors_info))){
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
         return -EFAULT;
-    }
-
-    if (!is_powerof2(create_descriptors_info.desc_count)) {
-        hailo_dev_err(controller->dev, "Invalid desc count given : %zu , must be power of 2\n",
-            create_descriptors_info.desc_count);
-        return -EINVAL;
     }
 
     hailo_dev_info(controller->dev, "Create desc list desc_count: %zu\n", create_descriptors_info.desc_count);
@@ -208,13 +201,8 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
 long hailo_desc_list_release_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg)
 {
-    uintptr_t desc_handle = 0;
+    uintptr_t desc_handle = (uintptr_t)arg;
     struct hailo_descriptors_list *descriptors_buffer = NULL;
-
-    if (copy_from_user(&desc_handle, (void __user*)arg, sizeof(uintptr_t))) {
-        hailo_dev_err(controller->dev, "copy_from_user fail\n");
-        return -EFAULT;
-    }
 
     descriptors_buffer = hailo_vdma_get_descriptors_buffer(context, desc_handle);
     if (descriptors_buffer == NULL) {
@@ -226,6 +214,11 @@ long hailo_desc_list_release_ioctl(struct hailo_vdma_file_context *context, stru
     hailo_desc_list_release(controller->dev, descriptors_buffer);
     kfree(descriptors_buffer);
     return 0;
+}
+
+inline bool is_powerof2(size_t v) {
+    // bit trick
+    return (v & (v - 1)) == 0;
 }
 
 long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,

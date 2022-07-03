@@ -87,7 +87,7 @@ int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintp
     struct hailo_descriptors_list *descriptors)
 {
     size_t buffer_size = 0;
-    const u64 align = VDMA_DESCRIPTOR_LIST_ALIGN; //First addr must be aligned on 64 KB  (from the VDMA registers documentation)
+    const u64 align = 1 << 16 ; //First addr must be aligned on 64 KB  (cf the VDMA registers documentation)
 
     buffer_size = descriptors_count * sizeof(struct hailo_vdma_descriptor);
     buffer_size = ALIGN(buffer_size, align);

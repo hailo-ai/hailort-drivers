@@ -14,7 +14,7 @@
 long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg);
 void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context,
-    struct hailo_vdma_controller *controller, size_t engine_index, size_t channel_index);
+    struct hailo_vdma_controller *controller, size_t channel_index);
 long hailo_vdma_channel_disable(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg);
 long hailo_vdma_channel_wait_interrupts_ioctl(struct hailo_vdma_controller *controller, unsigned long arg,
@@ -22,7 +22,6 @@ long hailo_vdma_channel_wait_interrupts_ioctl(struct hailo_vdma_controller *cont
 long hailo_vdma_channel_abort(struct hailo_vdma_controller *controller, unsigned long arg);
 long hailo_vdma_channel_clear_abort(struct hailo_vdma_controller *controller, unsigned long arg);
 long hailo_vdma_channel_registers_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
-void hailo_vdma_channel_irq_handler(struct hailo_vdma_controller *controller,
-    size_t engine_index, u32 channel_index);
+void hailo_vdma_channel_irq_handler(struct hailo_vdma_controller *controller, u32 channel_index);
 
 #endif /* _HAILO_VDMA_CHANNEL_H_ */

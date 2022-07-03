@@ -44,9 +44,7 @@
 #endif
 
 #define IS_PO2_ALIGNED(size, alignment) (!(size & (alignment-1)))
-
-// On pcie driver there is only one dma engine
-#define DEFAULT_VDMA_ENGINE_INDEX       (0)
+ 
 
 static long hailo_add_notification_wait(struct hailo_pcie_board *board, struct file *filp);
 
@@ -437,8 +435,7 @@ irqreturn_t hailo_irqhandler(int irq, void *dev_id)
         }
 
         if ((0 != irq_source.channel_data_source) || (0 != irq_source.channel_data_dest)) {
-            hailo_vdma_irq_handler(&board->vdma, DEFAULT_VDMA_ENGINE_INDEX,
-                irq_source.channel_data_source, irq_source.channel_data_dest);
+            hailo_vdma_irq_handler(&board->vdma, irq_source.channel_data_source, irq_source.channel_data_dest);
         }
     }
 
@@ -611,8 +608,7 @@ long hailo_query_device_properties(struct hailo_pcie_board *board, unsigned long
         .desc_max_page_size = board->desc_max_page_size,
         .board_type = board->board_type,
         .allocation_mode = board->allocation_mode,
-        .dma_type = HAILO_DMA_TYPE_PCIE,
-        .dma_engines_count = board->vdma.vdma_engines_count,
+        .dma_type = HAILO_DMA_TYPE_PCIE
     };
 
     hailo_info(board, "HAILO_QUERY_DEVICE_PROPERTIES: desc_max_page_size=%u\n", props.desc_max_page_size);

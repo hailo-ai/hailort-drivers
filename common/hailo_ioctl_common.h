@@ -8,10 +8,9 @@
 
 // This value is not easily changeable.
 // For example: the channel interrupts ioctls assume we have up to 32 channels
-#define MAX_VDMA_CHANNELS_PER_ENGINE    (32)
-#define MAX_VDMA_ENGINES                (3)
-#define SIZE_OF_VDMA_DESCRIPTOR         (16)
-#define VDMA_DEST_CHANNELS_START        (16)
+#define MAX_VDMA_CHANNELS           (32)
+#define SIZE_OF_VDMA_DESCRIPTOR     (16)
+#define VDMA_DEST_CHANNELS_START    (16)
 
 #define CHANNEL_IRQ_TIMESTAMPS_SIZE (128 * 2) // Should be same as MAX_IRQ_TIMESTAMPS_SIZE (hailort_driver.hpp)
 #define CHANNEL_IRQ_TIMESTAMPS_SIZE_MASK (CHANNEL_IRQ_TIMESTAMPS_SIZE - 1)
@@ -268,7 +267,6 @@ struct hailo_device_properties {
     enum hailo_board_type        board_type;
     enum hailo_allocation_mode   allocation_mode;
     enum hailo_dma_type          dma_type;
-    size_t                       dma_engines_count;
 };
 
 struct hailo_driver_info {
@@ -350,7 +348,7 @@ enum hailo_vdma_ioctl_code {
     HAILO_VDMA_IOCTL_MAX_NR,
 };
 
-#define HAILO_VDMA_CHANNEL_ENABLE           _IOWR_(HAILO_VDMA_IOCTL_MAGIC, HAILO_VDMA_CHANNEL_ENABLE_CODE,        struct hailo_vdma_channel_enable_params)
+#define HAILO_VDMA_CHANNEL_ENABLE           _IOR_(HAILO_VDMA_IOCTL_MAGIC,  HAILO_VDMA_CHANNEL_ENABLE_CODE,        struct hailo_vdma_channel_enable_params)
 #define HAILO_VDMA_CHANNEL_DISABLE          _IOR_(HAILO_VDMA_IOCTL_MAGIC,  HAILO_VDMA_CHANNEL_DISABLE_CODE,       struct hailo_vdma_channel_disable_params)
 #define HAILO_VDMA_CHANNEL_WAIT_INT         _IOR_(HAILO_VDMA_IOCTL_MAGIC,  HAILO_VDMA_CHANNEL_WAIT_INT_CODE,      struct hailo_vdma_channel_wait_params)
 #define HAILO_VDMA_CHANNEL_ABORT            _IOR_(HAILO_VDMA_IOCTL_MAGIC,  HAILO_VDMA_CHANNEL_ABORT_CODE,         struct hailo_vdma_channel_abort_params)
@@ -362,7 +360,7 @@ enum hailo_vdma_ioctl_code {
 #define HAILO_VDMA_BUFFER_SYNC              _IOR_(HAILO_VDMA_IOCTL_MAGIC,  HAILO_VDMA_BUFFER_SYNC_CODE,           struct hailo_vdma_buffer_sync_params)
 
 #define HAILO_DESC_LIST_CREATE              _IOWR_(HAILO_VDMA_IOCTL_MAGIC, HAILO_DESC_LIST_CREATE_CODE,           struct hailo_desc_list_create_params)
-#define HAILO_DESC_LIST_RELEASE             _IOR_(HAILO_VDMA_IOCTL_MAGIC,  HAILO_DESC_LIST_RELEASE_CODE,          uintptr_t)
+#define HAILO_DESC_LIST_RELEASE             _IO_(HAILO_VDMA_IOCTL_MAGIC,   HAILO_DESC_LIST_RELEASE_CODE)
 #define HAILO_DESC_LIST_BIND_VDMA_BUFFER    _IOR_(HAILO_VDMA_IOCTL_MAGIC,  HAILO_DESC_LIST_BIND_VDMA_BUFFER_CODE, struct hailo_desc_list_bind_vdma_buffer_params)
 
 #define HAILO_VDMA_LOW_MEMORY_BUFFER_ALLOC  _IOWR_(HAILO_VDMA_IOCTL_MAGIC, HAILO_VDMA_LOW_MEMORY_BUFFER_ALLOC_CODE, struct hailo_allocate_low_memory_buffer_params)
