@@ -42,9 +42,9 @@ ifeq ($(EMULATOR), 1)
     USER_FLAGS="EMULATOR=1"
 endif
 
-VERSION_MAJOR=$(shell grep "\#define HAILO_DRV_VER_MAJOR" include/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_MAJOR //g")
-VERSION_MINOR=$(shell grep "\#define HAILO_DRV_VER_MINOR" include/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_MINOR //g")
-VERSION_RELEASE=$(shell grep "\#define HAILO_DRV_VER_REVISION" include/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_REVISION //g")
+VERSION_MAJOR=$(shell grep "\#define HAILO_DRV_VER_MAJOR" ../../common/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_MAJOR //g")
+VERSION_MINOR=$(shell grep "\#define HAILO_DRV_VER_MINOR" ../../common/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_MINOR //g")
+VERSION_RELEASE=$(shell grep "\#define HAILO_DRV_VER_REVISION" ../../common/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_REVISION //g")
 
 DRIVER_VERSION=$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_RELEASE)
 is_driver_version_valid=$(shell echo $(DRIVER_VERSION) | grep '^[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+$$' > /dev/null; echo $$?)

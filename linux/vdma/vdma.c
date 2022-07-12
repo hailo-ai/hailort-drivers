@@ -92,7 +92,7 @@ void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller,
 
     for (i = 0; i < ARRAY_SIZE(controller->channels); ++i) {
         if ((test_bit(i, (ulong *)&channel_data_source)) || (test_bit(i, (ulong *)&channel_data_dest))) {
-            complete(&(controller->channels[i].completion));
+            complete_all(&(controller->channels[i].completion));
         }
     }
 }

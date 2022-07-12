@@ -719,6 +719,7 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
     INIT_LIST_HEAD(&pBoard->notification_wait_list);
 
     memset(&pBoard->notification_cache, 0, sizeof(pBoard->notification_cache));
+    memset(&pBoard->bar_transfer_params, 0, sizeof(pBoard->bar_transfer_params));
 
     for (bar = 0; bar < MAX_BAR; bar++)
     {

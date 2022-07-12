@@ -204,7 +204,7 @@ void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context
     }
 
     // Trigger completion to wake-up any thread that might be waiting for interrupts for the channel we are disabling
-    complete(&channel->completion);
+    complete_all(&channel->completion);
     channel->timestamp_measure_enabled = false;
 
     clear_bit(channel_index, &context->enabled_channels);
@@ -405,7 +405,7 @@ long hailo_vdma_channel_abort(struct hailo_vdma_controller *controller, unsigned
     }
 
     channel->should_abort = true;
-    complete(&channel->completion);
+    complete_all(&channel->completion);
 
     return 0;
 }
