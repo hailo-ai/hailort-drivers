@@ -27,8 +27,6 @@
 #define VDMA_CHANNEL_NUM_PROC_ADDRESS(vdma_registers, channel_index, direction) \
     ((u8*)((vdma_registers)->address) + VDMA_CHANNEL_NUM_PROC_OFFSET(channel_index, direction))
 
-#define INVALID_VDMA_ADDRESS (0)
-
 
 struct hailo_vdma_buffer {
     struct list_head            mapped_user_buffer_list;
@@ -83,7 +81,8 @@ struct hailo_vdma_channel {
 
 struct hailo_vdma_controller;
 struct hailo_vdma_controller_ops {
-    void (*update_channel_interrupts)(struct hailo_vdma_controller *controller, unsigned long channels_bitmap);
+    void (*update_channel_interrupts)(struct hailo_vdma_controller *controller, size_t engine_index,
+        unsigned long channels_bitmap);
     uint64_t (*encode_channel_dma_address)(dma_addr_t dma_address, uint8_t channel_id);
     uint64_t (*encode_desc_dma_address)(dma_addr_t dma_address, uint8_t channel_id);
     uint8_t (*get_dma_data_id)(void);
@@ -95,22 +94,26 @@ struct hailo_vdma_channel_interrupts {
     uint32_t channel_data_dest;
 };
 
+struct hailo_vdma_engine {
+    struct hailo_resource channel_registers;
+    struct hailo_vdma_channel channels[MAX_VDMA_CHANNELS_PER_ENGINE];
+    struct hailo_vdma_channel_interrupts interrupts;
+};
+
 struct hailo_vdma_controller {
     struct hailo_vdma_controller_ops *ops;
-
     struct device *dev;
-    struct hailo_resource registers;
 
-    struct hailo_vdma_channel channels[MAX_VDMA_CHANNELS];
+    size_t vdma_engines_count;
+    struct hailo_vdma_engine *vdma_engines;
+
     atomic64_t last_channel_handle;
-
     struct file *used_by_filp;
-
-    struct hailo_vdma_channel_interrupts channels_interrupts;
 };
 
 struct hailo_vdma_file_context {
-    unsigned long enabled_channels;
+    // Amount of engines is in hailo_vdma_controller::vdma_engines_count
+    unsigned long enabled_channels_per_engine[MAX_VDMA_ENGINES];
 
     atomic_t last_vdma_user_buffer_handle;
     struct list_head mapped_user_buffer_list;
@@ -124,14 +127,15 @@ struct hailo_vdma_file_context {
 };
 
 
-void hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
-    struct device *dev, struct hailo_resource *vdma_registers, struct hailo_vdma_controller_ops *ops);
+int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
+    struct device *dev, struct hailo_vdma_controller_ops *ops,
+    struct hailo_resource *channel_registers_per_engine, size_t engines_count);
 
 void hailo_vdma_file_context_init(struct hailo_vdma_file_context *context);
 void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller, struct file *filp);
 
-void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller,
+void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller, size_t engine_index,
     u32 channel_data_source, u32 channel_data_dest);
 
 // TODO: reduce params count

@@ -235,3 +235,77 @@ bool hailo_vdma_pop_timestamp(struct hailo_channel_interrupt_timestamp_list *tim
     timestamp_list->tail = (timestamp_list->tail+1) & CHANNEL_IRQ_TIMESTAMPS_SIZE_MASK;
     return true;
 }
+
+bool hailo_vdma_is_valid_channel(uint8_t channel_index, enum hailo_dma_data_direction direction)
+{
+    switch (direction) {
+    case HAILO_DMA_TO_DEVICE:
+        if (channel_index >= VDMA_DEST_CHANNELS_START) {
+            return false;
+        }
+        return true;
+    case HAILO_DMA_FROM_DEVICE:
+        if ((channel_index < VDMA_DEST_CHANNELS_START) ||
+            (channel_index >= MAX_VDMA_CHANNELS_PER_ENGINE)) {
+            return false;
+        }
+        return true;
+    default:
+        return false;
+    }
+}
+
+uint8_t hailo_vdma_get_channel_depth(size_t decs_count)
+{
+    uint8_t depth = 0;
+    while (decs_count >>= 1) {
+        ++depth;
+    }
+    return depth;
+}
+
+int hailo_vdma_channel_registers_transfer(struct hailo_channel_registers_params *params,
+    struct hailo_resource *vdma_registers)
+{
+    // check for valid input
+    if (params->offset >= (MAX_VDMA_CHANNELS_PER_ENGINE * VDMA_CHANNEL_REGISTERS_SIZE)) {
+        return -EINVAL;
+    }
+
+    switch (params->transfer_direction) {
+    case TRANSFER_READ:
+        switch (params->size) {
+        case DWORD_SIZE:
+            params->data = hailo_resource_read32(vdma_registers, params->offset);
+            break;
+        case WORD_SIZE:
+            params->data = (uint32_t)hailo_resource_read16(vdma_registers, params->offset);
+            break;
+        case BYTE_SIZE:
+            params->data = (uint32_t)hailo_resource_read8(vdma_registers, params->offset);
+            break;
+        default:
+            return -EINVAL;
+        }
+        break;
+    case TRANSFER_WRITE:
+        switch (params->size) {
+        case DWORD_SIZE:
+            hailo_resource_write32(vdma_registers, params->offset, params->data);
+            break;
+        case WORD_SIZE:
+            hailo_resource_write16(vdma_registers, params->offset, (uint16_t)params->data);
+            break;
+        case BYTE_SIZE:
+            hailo_resource_write8(vdma_registers, params->offset, (uint8_t)params->data);
+            break;
+        default:
+            return -EINVAL;
+        }
+        break;
+    default:
+        return -EINVAL;
+    }
+
+    return 0;
+}
