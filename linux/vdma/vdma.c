@@ -94,7 +94,7 @@ static void disable_channels_per_engine(struct hailo_vdma_file_context *context,
 {
     u32 channel_index = 0;
     for (channel_index = 0; channel_index < MAX_VDMA_CHANNELS_PER_ENGINE; channel_index++) {
-        if (test_bit(channel_index, &context->enabled_channels_per_engine[engine_index])) {
+        if (hailo_test_bit(channel_index, &context->enabled_channels_per_engine[engine_index])) {
             hailo_vdma_channel_disable_internal(context, controller,
                 engine_index, channel_index);
         }
@@ -131,7 +131,7 @@ void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller,
     engine = &controller->vdma_engines[engine_index];
 
     for (i = 0; i < ARRAY_SIZE(engine->channels); ++i) {
-        if ((test_bit(i, (ulong *)&channel_data_source)) || (test_bit(i, (ulong *)&channel_data_dest))) {
+        if ((hailo_test_bit(i, &channel_data_source)) || (hailo_test_bit(i, &channel_data_dest))) {
             hailo_vdma_channel_irq_handler(controller, engine_index, i);
         }
     }
@@ -142,7 +142,7 @@ void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller,
     spin_unlock_irqrestore(&engine->interrupts.lock, irq_saved_flags);
 
     for (i = 0; i < ARRAY_SIZE(engine->channels); ++i) {
-        if ((test_bit(i, (ulong *)&channel_data_source)) || (test_bit(i, (ulong *)&channel_data_dest))) {
+        if ((hailo_test_bit(i, &channel_data_source)) || (hailo_test_bit(i, &channel_data_dest))) {
             complete_all(&(engine->channels[i].completion));
         }
     }
@@ -172,8 +172,10 @@ long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma
         return hailo_desc_list_bind_vdma_buffer(context, controller, arg);
     case HAILO_VDMA_CHANNEL_ABORT:
         return hailo_vdma_channel_abort(controller, arg);
-    case HAILO_VDMA_CHANNEL_REGISTERS:
-        return hailo_vdma_channel_registers_ioctl(controller, arg);
+    case HAILO_VDMA_CHANNEL_READ_REGISTER:
+        return hailo_vdma_channel_read_register_ioctl(controller, arg);
+    case HAILO_VDMA_CHANNEL_WRITE_REGISTER:
+        return hailo_vdma_channel_write_register_ioctl(controller, arg);
     case HAILO_VDMA_CHANNEL_CLEAR_ABORT:
         return hailo_vdma_channel_clear_abort(controller, arg);
     case HAILO_VDMA_LOW_MEMORY_BUFFER_ALLOC:

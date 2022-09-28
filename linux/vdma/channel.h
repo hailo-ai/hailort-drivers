@@ -21,7 +21,8 @@ long hailo_vdma_channel_wait_interrupts_ioctl(struct hailo_vdma_controller *cont
     struct semaphore *mutex, bool *should_up_board_mutex);
 long hailo_vdma_channel_abort(struct hailo_vdma_controller *controller, unsigned long arg);
 long hailo_vdma_channel_clear_abort(struct hailo_vdma_controller *controller, unsigned long arg);
-long hailo_vdma_channel_registers_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
+long hailo_vdma_channel_read_register_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
+long hailo_vdma_channel_write_register_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
 void hailo_vdma_channel_irq_handler(struct hailo_vdma_controller *controller,
     size_t engine_index, u32 channel_index);
 

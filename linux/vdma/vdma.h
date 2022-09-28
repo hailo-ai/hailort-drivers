@@ -82,7 +82,7 @@ struct hailo_vdma_channel {
 struct hailo_vdma_controller;
 struct hailo_vdma_controller_ops {
     void (*update_channel_interrupts)(struct hailo_vdma_controller *controller, size_t engine_index,
-        unsigned long channels_bitmap);
+        uint32_t channels_bitmap);
     uint64_t (*encode_channel_dma_address)(dma_addr_t dma_address, uint8_t channel_id);
     uint64_t (*encode_desc_dma_address)(dma_addr_t dma_address, uint8_t channel_id);
     uint8_t (*get_dma_data_id)(void);
@@ -113,7 +113,7 @@ struct hailo_vdma_controller {
 
 struct hailo_vdma_file_context {
     // Amount of engines is in hailo_vdma_controller::vdma_engines_count
-    unsigned long enabled_channels_per_engine[MAX_VDMA_ENGINES];
+    uint32_t enabled_channels_per_engine[MAX_VDMA_ENGINES];
 
     atomic_t last_vdma_user_buffer_handle;
     struct list_head mapped_user_buffer_list;
