@@ -52,12 +52,12 @@ static long hailo_vdma_channel_get(struct hailo_vdma_controller *controller,
 static void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *controller,
     size_t engine_index)
 {
-    unsigned long channel_bitmap = 0;
+    uint32_t channel_bitmap = 0;
     int i = 0;
     struct hailo_vdma_engine *engine = &controller->vdma_engines[engine_index];
     for (i = 0; i < ARRAY_SIZE(engine->channels); ++i) {
         if (INVALID_CHANNEL_HANDLE_VALUE != engine->channels[i].handle) {
-            set_bit(i, &channel_bitmap);
+            hailo_set_bit(i, &channel_bitmap);
         }
     }
 
@@ -153,7 +153,7 @@ long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct h
 
     channel->direction = get_dma_direction(input.direction);
     channel->should_abort = false;
-    set_bit(input.channel_index, &context->enabled_channels_per_engine[input.engine_index]);
+    hailo_set_bit(input.channel_index, &context->enabled_channels_per_engine[input.engine_index]);
     hailo_vdma_update_interrupts_mask(controller, input.engine_index);
 
     input.channel_handle = channel->handle;
@@ -185,8 +185,8 @@ void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context
     channel->handle = INVALID_CHANNEL_HANDLE_VALUE;
     channel->direction = DMA_NONE;
     spin_lock_irqsave(&engine->interrupts.lock, irq_saved_flags);
-    __clear_bit(channel_index, (ulong *)&engine->interrupts.channel_data_source);
-    __clear_bit(channel_index, (ulong *)&engine->interrupts.channel_data_dest);
+    hailo_clear_bit(channel_index, &engine->interrupts.channel_data_source);
+    hailo_clear_bit(channel_index, &engine->interrupts.channel_data_dest);
     spin_unlock_irqrestore(&engine->interrupts.lock, irq_saved_flags);
 
     if (is_device_up) {
@@ -197,7 +197,7 @@ void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context
     complete_all(&channel->completion);
     channel->timestamp_measure_enabled = false;
 
-    clear_bit(channel_index, &context->enabled_channels_per_engine[engine_index]);
+    hailo_clear_bit(channel_index, &context->enabled_channels_per_engine[engine_index]);
 
     if (is_device_up) {
         hailo_dev_info(controller->dev, "Aborting channel %u", (u32)channel_index);
@@ -216,7 +216,7 @@ long hailo_vdma_channel_disable(struct hailo_vdma_file_context *context, struct 
     struct hailo_vdma_channel_disable_params input;
     struct hailo_vdma_channel *channel = NULL;
     long err = -EINVAL;
-    unsigned long enabled_channels = 0;
+    uint32_t enabled_channels = 0;
 
     if (copy_from_user(&input, (void*)arg, sizeof(input))) {
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
@@ -232,7 +232,7 @@ long hailo_vdma_channel_disable(struct hailo_vdma_file_context *context, struct 
     }
 
     enabled_channels = context->enabled_channels_per_engine[input.engine_index];
-    if (!test_bit(input.channel_index, &enabled_channels)){
+    if (!hailo_test_bit(input.channel_index, &enabled_channels)){
         hailo_dev_err(controller->dev, "channel %u:%u not enabled by current process\n",
             input.engine_index, input.channel_index);
         return -EINVAL;
@@ -264,7 +264,8 @@ static long hailo_vdma_channel_wait_interrupts(struct hailo_vdma_controller *con
             goto l_exit;
         }
 
-        // Channel was disabled or reused by another process
+        // We first check that the channel is enabled, and then we check if it is aborted so if the channel is both
+        // disabled and aborted, we return status that it is disabled.
         if (channel->handle != original_handle) {
             hailo_dev_info(controller->dev, "channel %u:%u was closed\n",
                 engine_index, channel_index);
@@ -283,9 +284,11 @@ static long hailo_vdma_channel_wait_interrupts(struct hailo_vdma_controller *con
 
         // Read and zero out the interrupt data
         spin_lock_irqsave(&engine->interrupts.lock, irq_saved_flags);
-        got_interrupt =
-            __test_and_clear_bit(channel_index, (ulong *)&engine->interrupts.channel_data_source) ||
-            __test_and_clear_bit(channel_index, (ulong *)&engine->interrupts.channel_data_dest);
+        got_interrupt = hailo_test_bit(channel_index, &engine->interrupts.channel_data_source) || 
+            hailo_test_bit(channel_index, &engine->interrupts.channel_data_dest);
+        
+        hailo_clear_bit(channel_index, &engine->interrupts.channel_data_source);
+        hailo_clear_bit(channel_index, &engine->interrupts.channel_data_dest);
         spin_unlock_irqrestore(&engine->interrupts.lock, irq_saved_flags);
 
         // data was available
@@ -378,6 +381,8 @@ long hailo_vdma_channel_wait_interrupts_ioctl(struct hailo_vdma_controller *cont
             hailo_dev_err(controller->dev, "copy timestamps to user failed fail\n");
             return err;
         }
+    } else {
+        intr_args.timestamps_count = 0;
     }
 
     if (copy_to_user((void __user*)arg, &intr_args, sizeof(intr_args))) {
@@ -433,34 +438,66 @@ long hailo_vdma_channel_clear_abort(struct hailo_vdma_controller *controller, un
     return 0;
 }
 
-long hailo_vdma_channel_registers_ioctl(struct hailo_vdma_controller *controller, unsigned long arg)
+long hailo_vdma_channel_read_register_ioctl(struct hailo_vdma_controller *controller, unsigned long arg)
 {
-    struct hailo_channel_registers_params params;
+    struct hailo_vdma_channel_read_register_params params;
     int err = 0;
-    // TODO: HRT-7311: accept engine index instead of using 0
-    const size_t engine_index = 0;
+    size_t engine_index = 0;
     struct hailo_resource *channel_registers = NULL;
 
-    hailo_dev_dbg(controller->dev, "HAILO_CHANNEL_REGISTERS\n");
+    hailo_dev_dbg(controller->dev, "Read vdma channel registers\n");
 
     if (copy_from_user(&params, (void __user*)arg, sizeof(params))) {
-        hailo_dev_err(controller->dev, "HAILO_CHANNEL_REGISTERS, copy_from_user fail\n");
+        hailo_dev_err(controller->dev, "copy_from_user fail\n");
         return -ENOMEM;
     }
 
-    channel_registers = &controller->vdma_engines[engine_index].channel_registers;
-    err = hailo_vdma_channel_registers_transfer(&params, channel_registers);
-    if (0 != err) {
-        hailo_dev_err(controller->dev, "hailo vdma channel registers transfer failed with error %d\n", err);
+    if (params.engine_index >= controller->vdma_engines_count) {
+        hailo_dev_err(controller->dev, "Invalid engine %u", params.engine_index);
         return -EINVAL;
     }
 
-    // Need to return data in case of read
-    if (TRANSFER_READ == params.transfer_direction) {
-        if (copy_to_user((void __user *)arg, &params, sizeof(params))) {
-            hailo_dev_err(controller->dev, "HAILO_CHANNEL_REGISTERS, copy_to_user fail\n");
-            return -ENOMEM;
-        }
+    engine_index = params.engine_index;
+    channel_registers = &controller->vdma_engines[engine_index].channel_registers;
+    err = hailo_vdma_channel_read_register(&params, channel_registers);
+    if (0 != err) {
+        hailo_dev_err(controller->dev, "hailo vdma channel read registers failed with error %d\n", err);
+        return -EINVAL;
+    }
+
+    if (copy_to_user((void __user *)arg, &params, sizeof(params))) {
+        hailo_dev_err(controller->dev, "copy_to_user fail\n");
+        return -ENOMEM;
+    }
+
+    return 0;
+}
+
+long hailo_vdma_channel_write_register_ioctl(struct hailo_vdma_controller *controller, unsigned long arg)
+{
+    struct hailo_vdma_channel_write_register_params params;
+    int err = 0;
+    size_t engine_index = 0;
+    struct hailo_resource *channel_registers = NULL;
+
+    hailo_dev_dbg(controller->dev, "Write vdma channel registers\n");
+
+    if (copy_from_user(&params, (void __user*)arg, sizeof(params))) {
+        hailo_dev_err(controller->dev, "copy_from_user fail\n");
+        return -ENOMEM;
+    }
+
+    if (params.engine_index >= controller->vdma_engines_count) {
+        hailo_dev_err(controller->dev, "Invalid engine %u", params.engine_index);
+        return -EINVAL;
+    }
+
+    engine_index = params.engine_index;
+    channel_registers = &controller->vdma_engines[engine_index].channel_registers;
+    err = hailo_vdma_channel_write_register(&params, channel_registers);
+    if (0 != err) {
+        hailo_dev_err(controller->dev, "hailo vdma channel write registers failed with error %d\n", err);
+        return -EINVAL;
     }
 
     return 0;

@@ -8,14 +8,13 @@
 
 #include "types.h"
 #include "hailo_resource.h"
+#include "utils.h"
 
 #define VDMA_DESCRIPTOR_LIST_ALIGN  (1 << 16)
 #define INVALID_VDMA_ADDRESS        (0)
 #define DWORD_SIZE                  (4)
 #define WORD_SIZE                   (2)
 #define BYTE_SIZE                   (1)
-// according to vdma spec the registers size for each channel is 0x20 bytes
-#define VDMA_CHANNEL_REGISTERS_SIZE (0x20)
 
 #ifdef __cplusplus
 extern "C"
@@ -51,11 +50,16 @@ void hailo_vdma_push_timestamp(struct hailo_channel_interrupt_timestamp_list *ti
 bool hailo_vdma_pop_timestamp(struct hailo_channel_interrupt_timestamp_list *timestamp_list,
     struct hailo_channel_interrupt_timestamp *out_timestamp);
 
+void hailo_vdma_pop_timestamps_to_response(struct hailo_channel_interrupt_timestamp_list *timestamp_list,
+    struct hailo_vdma_channel_wait_params *interrupt_args);
+
 bool hailo_vdma_is_valid_channel(uint8_t channel_index, enum hailo_dma_data_direction direction);
 
 uint8_t hailo_vdma_get_channel_depth(size_t decs_count);
 
-int hailo_vdma_channel_registers_transfer(struct hailo_channel_registers_params *params,
+int hailo_vdma_channel_read_register(struct hailo_vdma_channel_read_register_params *params,
+    struct hailo_resource *vdma_registers);
+int hailo_vdma_channel_write_register(struct hailo_vdma_channel_write_register_params *params,
     struct hailo_resource *vdma_registers);
 
 #ifdef __cplusplus

@@ -488,7 +488,7 @@ void hailo_disable_interrupts(struct hailo_pcie_board *board)
 #define BCS_ISTATUS_HOST_VDMA_DEST_IRQ_MASK  (0x0000FF00)
 
 static void update_channel_interrupts(struct hailo_vdma_controller *controller,
-    size_t engine_index, unsigned long channels_bitmap)
+    size_t engine_index, uint32_t channels_bitmap)
 {
     struct hailo_pcie_board *board = (struct hailo_pcie_board*) dev_get_drvdata(controller->dev);
     if (engine_index >= board->vdma.vdma_engines_count) {
