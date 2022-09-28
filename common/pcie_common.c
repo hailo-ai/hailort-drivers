@@ -405,16 +405,7 @@ const char* hailo_pcie_get_fw_filename(const enum hailo_board_type board_type) {
     return compat[board_type].fw_filename;
 }
 
-// On android builds, the __set_bit function does nothing so we use our version
-void hailo_set_bit(int nr, volatile unsigned long *addr)
-{
-	unsigned long mask = BIT_MASK(nr);
-	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
-
-	*p  |= mask;
-}
-
-void hailo_pcie_update_channel_interrupts(struct hailo_pcie_resources* resources, unsigned long channels_bitmap)
+void hailo_pcie_update_channel_interrupts_mask(struct hailo_pcie_resources* resources, uint32_t channels_bitmap)
 {
     size_t i = 0;
     uint32_t mask = hailo_resource_read32(&resources->config, BSC_IMASK_HOST);
@@ -423,11 +414,11 @@ void hailo_pcie_update_channel_interrupts(struct hailo_pcie_resources* resources
     mask &= ~BCS_ISTATUS_HOST_VDMA_SRC_IRQ_MASK;
     mask &= ~BCS_ISTATUS_HOST_VDMA_DEST_IRQ_MASK;
     // Set interrupt by the bitmap
-    for (i = 0; i < MAX_VDMA_CHANNELS; ++i) {
-        if (test_bit(i, &channels_bitmap)) {
+    for (i = 0; i < MAX_VDMA_CHANNELS_PER_ENGINE; ++i) {
+        if (hailo_test_bit(i, &channels_bitmap)) {
             // based on 18.5.2 "vDMA Interrupt Registers" in PLDA documentation
             uint32_t offset = (i < VDMA_DEST_CHANNELS_START) ? 0 : 8;
-            hailo_set_bit((((int)i*8) / MAX_VDMA_CHANNELS) + offset, (unsigned long*)&mask);
+            hailo_set_bit((((int)i*8) / MAX_VDMA_CHANNELS_PER_ENGINE) + offset, &mask);
         }
     }
     hailo_resource_write32(&resources->config, BSC_IMASK_HOST, mask);
@@ -463,9 +454,6 @@ long hailo_pcie_read_firmware_log(struct hailo_pcie_resources *resources, struct
         return -EINVAL;
     }
 
-    if (NULL == params->buffer) {
-        return -EINVAL;
-    }
     if (0 == params->buffer_size) {
         params->read_bytes = 0;
         return 0;

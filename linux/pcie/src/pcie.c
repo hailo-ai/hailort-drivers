@@ -487,10 +487,16 @@ void hailo_disable_interrupts(struct hailo_pcie_board *board)
 #define BCS_ISTATUS_HOST_VDMA_SRC_IRQ_MASK   (0x000000FF)
 #define BCS_ISTATUS_HOST_VDMA_DEST_IRQ_MASK  (0x0000FF00)
 
-static void update_channel_interrupts(struct hailo_vdma_controller *controller, unsigned long channels_bitmap)
+static void update_channel_interrupts(struct hailo_vdma_controller *controller,
+    size_t engine_index, uint32_t channels_bitmap)
 {
     struct hailo_pcie_board *board = (struct hailo_pcie_board*) dev_get_drvdata(controller->dev);
-    hailo_pcie_update_channel_interrupts(&board->pcie_resources, channels_bitmap);
+    if (engine_index >= board->vdma.vdma_engines_count) {
+        hailo_err(board, "Invalid engine index %zu", engine_index);
+        return;
+    }
+
+    hailo_pcie_update_channel_interrupts_mask(&board->pcie_resources, channels_bitmap);
 }
 
 // On PCIe, just return the address
@@ -512,15 +518,17 @@ static struct hailo_vdma_controller_ops pcie_vdma_controller_ops = {
     .get_dma_data_id = get_dma_data_id,
 };
 
-static void hailo_pcie_vdma_controller_init(struct hailo_vdma_controller *controller,
+static int hailo_pcie_vdma_controller_init(struct hailo_vdma_controller *controller,
     struct hailo_pcie_board *board)
 {
+    const size_t engines_count = 1;
     struct hailo_resource vdma_registers = {
         .address = (uintptr_t)board->bar[BAR2].kernel_address,
         .size = (size_t)board->bar[BAR2].length,
     };
 
-    hailo_vdma_controller_init(controller, &board->pDev->dev, &vdma_registers, &pcie_vdma_controller_ops);
+    return hailo_vdma_controller_init(controller, &board->pDev->dev,
+        &pcie_vdma_controller_ops, &vdma_registers, engines_count);
 }
 
 // Function that allocates a page and sees if the 
@@ -733,7 +741,11 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
                 pBoard->bar[bar].active_flag);
     }
 
-    hailo_pcie_vdma_controller_init(&pBoard->vdma, pBoard);
+    err = hailo_pcie_vdma_controller_init(&pBoard->vdma, pBoard);
+    if (err < 0) {
+        hailo_err(pBoard, "Failed init vdma controller %d\n", err);
+        goto probe_release_bars;
+    }
 
     err = hailo_activate_board(pBoard);
     if (err < 0) {
@@ -826,7 +838,6 @@ void hailo_pcie_remove(struct pci_dev* pDev)
         pBoard->pcie_resources.fw_access.address = (uintptr_t)NULL;
 
         pBoard->vdma.dev = NULL;
-        pBoard->vdma.registers.address = (uintptr_t)NULL;
 
         pci_release_regions(pDev);
 

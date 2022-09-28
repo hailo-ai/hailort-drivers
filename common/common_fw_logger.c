@@ -39,6 +39,10 @@ long hailo_read_firmware_log(struct hailo_resource *fw_logger_resource, struct h
     size_t size_to_read = 0;
     uintptr_t user_buffer = (uintptr_t)params->buffer;
 
+    if (params->buffer_size > ARRAY_SIZE(params->buffer)) {
+        return -EINVAL;
+    }
+
     hailo_resource_read_buffer(fw_logger_resource, 0, sizeof(debug_buffer_header),
         &debug_buffer_header);
 
