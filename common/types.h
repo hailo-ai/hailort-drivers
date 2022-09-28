@@ -61,13 +61,13 @@ typedef uint8_t  u8;
 #define UL(x)                   ((unsigned long)x)
 #define BIT_MASK(nr)		    (UL(1) << ((nr) % BITS_PER_LONG))
 #define BIT_WORD(nr)		    ((nr) / BITS_PER_LONG)
-#define __clear_bit(bit, pval)  { *(pval) &= ~(1 << bit); }
-#define test_bit(pos,var_addr)  ((*var_addr) & (1<<(pos)))
 
 #define CIRC_CNT(head,tail,size) (((head) - (tail)) & ((size)-1))
 #define CIRC_SPACE(head,tail,size) CIRC_CNT((tail),((head)+1),(size))
 
 #define IS_ALIGNED(p, n) (((ULONG_PTR)(p) & (n - 1)) == 0)
+
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
 // Make device an empty strcut becasue we dont use it in windows - just need it to be defined as a struct to match 
 //  Function signatures
@@ -136,22 +136,35 @@ BOOLEAN FORCEINLINE copy_to_user(void *dst, void *src, size_t len)
 #include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <sys/syspage.h>
+#include <sys/neutrino.h>
+#include <inttypes.h>
 
 // TODO: HRT-6138
 #define IS_ALIGNED(x, a)        (((x) & ((typeof(x))(a) - 1)) == 0)
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 #define BUG_ON(condition)   if (condition) { printf("CRITICAL ERROR CAUGHT\n"); exit(0); } else {}
 #define BITS_PER_LONG           32
 #define UL(x)                   ((unsigned long)x)
 #define BIT_MASK(nr)		    (UL(1) << ((nr) % BITS_PER_LONG))
 #define BIT_WORD(nr)		    ((nr) / BITS_PER_LONG)
-#define __clear_bit(bit, pval)  { *(pval) &= ~(1 << bit); }
-#define test_bit(pos,var_addr)  ((*var_addr) & (1<<(pos)))
+
+#define CIRC_CNT(head,tail,size) (((head) - (tail)) & ((size)-1))
+#define CIRC_SPACE(head,tail,size) CIRC_CNT((tail),((head)+1),(size))
+
+#define ALIGN(x,a)              __ALIGN_MASK(x,(typeof(x))(a)-1)
+#define __ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
+
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
 // At the moment dont do anything special for QNX
 typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t  u8;
+
+// Define dma_addr_t as physical memory address for QNX
+typedef uint64_t dma_addr_t;
 
 #if !defined(INT_MAX)
 #define INT_MAX 0x7FFFFFFF
@@ -166,6 +179,11 @@ inline static bool copy_to_user(void *dst, void *src, size_t len)
 inline static void msleep(int milliseconds)
 {
     usleep(milliseconds * 1000);
+}
+
+inline static uint64_t ktime_get_ns()
+{
+    return (ClockCycles() / SYSPAGE_ENTRY(qtime)->cycles_per_sec) * 1000000;
 }
 
 struct hailo_bar {

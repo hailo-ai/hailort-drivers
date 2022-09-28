@@ -17,6 +17,9 @@
 #define CHANNEL_ADDRESS_L_OFFSET    (0x0A)
 #define CHANNEL_ADDRESS_H_OFFSET    (0x0C)
 
+// Total register for each channel edge (edge - one of the sides, h2d/d2h)
+#define CHANNEL_REGISTERS_SIZE      (0x10)
+
 #define VDMA_CHANNEL_CONTROL_MASK (0xFC)
 #define VDMA_CHANNEL_CONTROL_START_RESUME (0b01)
 #define VDMA_CHANNEL_CONTROL_START_PAUSE (0b11)
@@ -234,4 +237,119 @@ bool hailo_vdma_pop_timestamp(struct hailo_channel_interrupt_timestamp_list *tim
     *out_timestamp = timestamp_list->timestamps[timestamp_list->tail];
     timestamp_list->tail = (timestamp_list->tail+1) & CHANNEL_IRQ_TIMESTAMPS_SIZE_MASK;
     return true;
+}
+
+void hailo_vdma_pop_timestamps_to_response(struct hailo_channel_interrupt_timestamp_list *timestamp_list,
+    struct hailo_vdma_channel_wait_params *interrupt_args)
+{
+    uint32_t max_timestamps = interrupt_args->timestamps_count;
+    uint32_t i = 0;
+
+    while (hailo_vdma_pop_timestamp(timestamp_list, &(interrupt_args->timestamps[i])) && (i < max_timestamps)) {
+        i++;
+    }
+
+    interrupt_args->timestamps_count = i;
+}
+
+bool hailo_vdma_is_valid_channel(uint8_t channel_index, enum hailo_dma_data_direction direction)
+{
+    switch (direction) {
+    case HAILO_DMA_TO_DEVICE:
+        if (channel_index >= VDMA_DEST_CHANNELS_START) {
+            return false;
+        }
+        return true;
+    case HAILO_DMA_FROM_DEVICE:
+        if ((channel_index < VDMA_DEST_CHANNELS_START) ||
+            (channel_index >= MAX_VDMA_CHANNELS_PER_ENGINE)) {
+            return false;
+        }
+        return true;
+    default:
+        return false;
+    }
+}
+
+uint8_t hailo_vdma_get_channel_depth(size_t decs_count)
+{
+    uint8_t depth = 0;
+    while (decs_count >>= 1) {
+        ++depth;
+    }
+    return depth;
+}
+
+int hailo_vdma_channel_read_register(struct hailo_vdma_channel_read_register_params *params,
+    struct hailo_resource *vdma_registers)
+{
+    size_t offset = 0;
+
+    // check for valid input, engine_index is validated in the specific driver (in order to get the right
+    // vdma_registers resource).
+    if (params->channel_index >= MAX_VDMA_CHANNELS_PER_ENGINE) {
+        return -EINVAL;
+    }
+
+    if (!((HAILO_DMA_FROM_DEVICE == params->direction) || (HAILO_DMA_TO_DEVICE == params->direction))) {
+        return -EINVAL;
+    }
+
+    if (params->offset >= CHANNEL_REGISTERS_SIZE) {
+        return -EINVAL;
+    }
+
+    offset = CHANNEL_BASE_OFFSET(params->channel_index, params->direction) + params->offset;
+    switch (params->reg_size) {
+    case DWORD_SIZE:
+        params->data = hailo_resource_read32(vdma_registers, offset);
+        break;
+    case WORD_SIZE:
+        params->data = (uint32_t)hailo_resource_read16(vdma_registers, offset);
+        break;
+    case BYTE_SIZE:
+        params->data = (uint32_t)hailo_resource_read8(vdma_registers, offset);
+        break;
+    default:
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+int hailo_vdma_channel_write_register(struct hailo_vdma_channel_write_register_params *params,
+    struct hailo_resource *vdma_registers)
+{
+    size_t offset = 0;
+
+    // check for valid input, engine_index is validated in the specific driver (in order to get the right
+    // vdma_registers resource).
+    if (params->channel_index >= MAX_VDMA_CHANNELS_PER_ENGINE) {
+        return -EINVAL;
+    }
+
+    if (!((HAILO_DMA_FROM_DEVICE == params->direction) || (HAILO_DMA_TO_DEVICE == params->direction))) {
+        return -EINVAL;
+    }
+
+    if (params->offset >= CHANNEL_REGISTERS_SIZE) {
+        return -EINVAL;
+    }
+
+    offset = CHANNEL_BASE_OFFSET(params->channel_index, params->direction) + params->offset;
+    switch (params->reg_size) {
+    case DWORD_SIZE:
+        hailo_resource_write32(vdma_registers, offset, params->data);
+        break;
+    case WORD_SIZE:
+        hailo_resource_write16(vdma_registers, offset, (uint16_t)params->data);
+        break;
+    case BYTE_SIZE:
+        hailo_resource_write8(vdma_registers, offset, (uint8_t)params->data);
+        break;
+    default:
+        return -EINVAL;
+    }
+
+    return 0;
 }

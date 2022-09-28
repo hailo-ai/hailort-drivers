@@ -11,6 +11,7 @@
 #include "hailo_ioctl_common.h"
 #include "common_fw_validation.h"
 #include "common_fw_logger.h"
+#include "utils.h"
 
 #ifdef __linux__
 #include <linux/delay.h>
@@ -40,6 +41,7 @@
 #define FW_CODE_SECTION_ALIGNMENT (4)
 
 #define HAILO_PCIE_HOST_DMA_DATA_ID (0)
+#define HAILO_PCIE_DMA_ENGINES_COUNT (1)
 
 #define DRIVER_NAME		"hailo"
 
@@ -105,7 +107,7 @@ extern "C" {
 // Reads the interrupt source from BARs, return false if there is no interrupt.
 // note - this function clears the interrupt signals.
 bool hailo_pcie_read_interrupt(struct hailo_pcie_resources *resources, struct hailo_pcie_interrupt_source *source);
-void hailo_pcie_update_channel_interrupts(struct hailo_pcie_resources *resources, unsigned long channels_bitmap);
+void hailo_pcie_update_channel_interrupts_mask(struct hailo_pcie_resources *resources, uint32_t channels_bitmap);
 void hailo_pcie_enable_interrupts(struct hailo_pcie_resources *resources);
 void hailo_pcie_disable_interrupts(struct hailo_pcie_resources *resources);
 
@@ -125,7 +127,6 @@ const struct hailo_config_constants* hailo_pcie_get_board_config_constants(const
 const struct hailo_config_constants* hailo_pcie_get_user_config_constants(const enum hailo_board_type board_type);
 const char* hailo_pcie_get_fw_filename(const enum hailo_board_type board_type);
 
-void hailo_set_bit(int nr, volatile unsigned long* addr);
 
 long hailo_pcie_read_firmware_log(struct hailo_pcie_resources *resources, struct hailo_read_log_params *params);
 
