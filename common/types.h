@@ -19,6 +19,11 @@ typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t  u8;
 
+#if !defined(U32_MAX)
+#define U32_MAX ((u32)~0U)
+#endif
+
+
 #define _CSTDINT_
 #define _VCRUNTIME_H
 
@@ -39,12 +44,20 @@ typedef uint8_t  u8;
 #define EFAULT      14
 #endif
 
+#if !defined(ENODEV)
+#define ENODEV 19
+#endif
+
 #if !defined(EINVAL)
 #define EINVAL      22
 #endif
 
 #if !defined(ETIMEDOUT)
 #define ETIMEDOUT   60
+#endif
+
+#if !defined(ENOSYS)
+#define ENOSYS 88
 #endif
 
 #define KERN_ERR            "x2"
@@ -168,6 +181,10 @@ typedef uint64_t dma_addr_t;
 
 #if !defined(INT_MAX)
 #define INT_MAX 0x7FFFFFFF
+#endif
+
+#if !defined(U32_MAX)
+#define U32_MAX ((u32)~0U)
 #endif
 
 inline static bool copy_to_user(void *dst, void *src, size_t len)

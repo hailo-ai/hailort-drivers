@@ -124,7 +124,7 @@ int hailo_pcie_fops_open(struct inode *inode, struct file *filp)
         }
     }
 
-    if (!hailo_is_device_connected(pBoard)) {
+    if (!hailo_pcie_is_device_connected(&pBoard->pcie_resources)) {
         hailo_err(pBoard, "Device disconnected while opening device\n");
         err = -ENXIO;
         goto l_revert_power_state;
@@ -231,123 +231,21 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
-static int hailo_bar_write(struct hailo_pcie_board *board, struct hailo_bar_transfer_params *rw_transfer)
-{
-    char *src = rw_transfer->buffer;
-    char *dest = board->bar[rw_transfer->bar_index].kernel_address + rw_transfer->offset;
-    size_t remaining = rw_transfer->count;
-
-    while(remaining > 0)
-    {
-        if (remaining >= 4 && ((uintptr_t)src % 4) == 0) {
-            uint32_t dword = *((uint32_t*)src);
-            iowrite32(dword, dest);
-            src += 4;
-            dest += 4;
-            remaining -= 4;
-        } else if (remaining >= 2 && ((uintptr_t)src % 2) == 0) {
-            uint16_t word = *((uint16_t*)src);
-            iowrite16(word, dest);
-            src += 2;
-            dest += 2;
-            remaining -= 2;
-        } else {
-            uint8_t byte = *((uint8_t*)src);
-            iowrite8(byte, dest);
-            src += 1;
-            dest += 1;
-            remaining -= 1;
-        }
-    }
-
-    hailo_dbg(board, "(%d): bar write success\n", current->tgid);
-    return 0;
-}
-
-static long hailo_bar_read(struct hailo_pcie_board *board, struct hailo_bar_transfer_params *rw_transfer)
-{
-    char *src = board->bar[rw_transfer->bar_index].kernel_address + rw_transfer->offset;
-    char *dest = rw_transfer->buffer;
-    size_t remaining = rw_transfer->count;
-
-    while(remaining > 0)
-    {
-        if (remaining >= 4 && ((uintptr_t)src % 4) == 0) {
-            uint32_t dword = ioread32(src);
-            memcpy(dest, &dword, sizeof(dword));
-            src += 4;
-            dest += 4;
-            remaining -= 4;
-        } else if (remaining >= 2 && ((uintptr_t)src % 2) == 0) {
-            uint16_t word = ioread16(src);
-            memcpy(dest, &word, sizeof(word));
-            src += 2;
-            dest += 2;
-            remaining -= 2;
-        } else {
-            uint8_t byte = ioread8(src);
-            memcpy(dest, &byte, sizeof(byte));
-
-            src += 1;
-            dest += 1;
-            remaining -= 1;
-        }
-    }
-
-    hailo_dbg(board, "(%d): bar read success\n", current->tgid);
-    return 0;
-}
-
-long hailo_bar_transfer(struct hailo_pcie_board *board, unsigned long arg)
+static long hailo_memory_transfer_ioctl(struct hailo_pcie_board *board, unsigned long arg)
 {
     long err = 0;
-    struct hailo_bar_transfer_params* transfer = &board->bar_transfer_params;
-    struct hailo_bar *bar = NULL;
+    struct hailo_memory_transfer_params* transfer = &board->memory_transfer_params;
 
-    hailo_dbg(board, "HAILO_BAR_TRANSFER\n");
+    hailo_dbg(board, "Start memory transfer ioctl\n");
 
     if (copy_from_user(transfer, (void __user*)arg, sizeof(*transfer))) {
         hailo_err(board, "copy_from_user fail\n");
         return -ENOMEM;
     }
 
-    // Check for valid bar
-    if (MAX_BAR <= transfer->bar_index) {
-        hailo_err(board, "Invalid bar index %u\n", transfer->bar_index);
-        return -EINVAL;
-    }
-
-    bar = &board->bar[transfer->bar_index];
-    if ((!bar->memory_flag) || (!bar->active_flag)) {
-        hailo_err(board, "invalid bar access\n");
-        return -EINVAL;
-    }
-
-    // Check for transfer size
-    if ((transfer->offset + transfer->count) > bar->length) {
-        hailo_err(board, "trying to access beyond bar length (bar %u,"
-            "bar length %llu, offset %llu, count:%zu\n", transfer->bar_index,
-            bar->length, (u64)transfer->offset, transfer->count);
-        return -EINVAL;
-    }
-
-    if (transfer->count > ARRAY_SIZE(transfer->buffer)) {
-        hailo_err(board, "Transfer count is bigger than buffer %zu\n", transfer->count);
-        return -EINVAL;
-    }
-
-    if (TRANSFER_READ == transfer->transfer_direction) {
-        err = hailo_bar_read(board, transfer);
-    } else if (TRANSFER_WRITE == transfer->transfer_direction) {
-        err = hailo_bar_write(board, transfer);
-    } else {
-        hailo_err(board, "unknown bar transfer type %d\n", transfer->transfer_direction);
-        err = -EINVAL;
-    }
-
+    err = hailo_pcie_memory_transfer(&board->pcie_resources, transfer);
     if (err < 0) {
-        hailo_err(board, "Bar transfer Failed with error: %ld\n", err);
-        return err;
+        hailo_err(board, "memory transfer failed %ld", err);
     }
 
     if (copy_to_user((void __user*)arg, transfer, sizeof(*transfer))) {
@@ -417,7 +315,7 @@ irqreturn_t hailo_irqhandler(int irq, void *dev_id)
     hailo_dbg(board, "hailo_irqhandler\n");
 
     while (true) {
-        if (!hailo_is_device_connected(board)) {
+        if (!hailo_pcie_is_device_connected(&board->pcie_resources)) {
             hailo_err(board, "Device disconnected while handling irq\n");
             break;
         }
@@ -616,10 +514,10 @@ long hailo_query_device_properties(struct hailo_pcie_board *board, unsigned long
 {
     struct hailo_device_properties props = {
         .desc_max_page_size = board->desc_max_page_size,
-        .board_type = board->board_type,
         .allocation_mode = board->allocation_mode,
         .dma_type = HAILO_DMA_TYPE_PCIE,
         .dma_engines_count = board->vdma.vdma_engines_count,
+        .is_fw_loaded = hailo_pcie_is_firmware_loaded(&board->pcie_resources),
     };
 
     hailo_info(board, "HAILO_QUERY_DEVICE_PROPERTIES: desc_max_page_size=%u\n", props.desc_max_page_size);
@@ -655,8 +553,8 @@ static long hailo_general_ioctl(struct hailo_file_context *context, struct hailo
     unsigned int cmd, unsigned long arg, struct file *filp, bool *should_up_board_mutex)
 {
     switch (cmd) {
-    case HAILO_BAR_TRANSFER:
-        return hailo_bar_transfer(board, arg);
+    case HAILO_MEMORY_TRANSFER:
+        return hailo_memory_transfer_ioctl(board, arg);
     case HAILO_FW_CONTROL:
         return hailo_fw_control(board, arg, should_up_board_mutex);
     case HAILO_READ_NOTIFICATION:

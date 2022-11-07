@@ -43,14 +43,6 @@ struct hailo_fw_boot {
     struct completion completion;
 };
 
-struct hailo_bar {
-    void *user_address;
-    uint8_t *kernel_address;
-    uint64_t phys_address;
-    uint64_t length;
-    int memory_flag;
-    int active_flag;
-};
 
 // Context for each open file handle
 // TODO: store board and use as actual context
@@ -69,15 +61,13 @@ struct hailo_pcie_board {
     struct hailo_pcie_resources pcie_resources;
     struct hailo_fw_control_info fw_control;
     struct semaphore mutex;
-    struct hailo_bar bar[MAX_BAR];
     struct hailo_vdma_controller vdma;
     spinlock_t notification_read_spinlock;
     struct list_head notification_wait_list;
     struct hailo_d2h_notification notification_cache;
     struct hailo_d2h_notification notification_to_user;
-    struct hailo_bar_transfer_params bar_transfer_params;
+    struct hailo_memory_transfer_params memory_transfer_params;
     u32 desc_max_page_size;
-    enum hailo_board_type board_type;
     enum hailo_allocation_mode allocation_mode;
     struct completion fw_loaded_completion;
     bool interrupts_enabled;
@@ -86,20 +76,8 @@ struct hailo_pcie_board {
 bool power_mode_enabled(void);
 
 struct hailo_pcie_board* hailo_pcie_get_board_index(uint32_t index);
-bool hailo_is_device_connected(struct hailo_pcie_board *board);
 void hailo_disable_interrupts(struct hailo_pcie_board *board);
 int hailo_enable_interrupts(struct hailo_pcie_board *board);
-
-
-/*******************************************************************************
- * Bridge Configuration Space
-*******************************************************************************/
-#define INTERRUPT_BAR (BAR0)
-#define FW_CONTROL_BAR (BAR4)
-#define FW_NOTIFICATION_BAR (BAR4)
-#define FW_LOG_BAR (BAR4)
-
-#define PCIE_CONFIG_VENDOR_OFFSET (0x0098)
 
 #endif /* _HAILO_PCI_PCIE_H_ */
 
