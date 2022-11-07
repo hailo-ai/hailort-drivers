@@ -133,3 +133,25 @@ int hailo_resource_write_buffer(struct hailo_resource *resource, size_t offset, 
 
     return 0;
 }
+
+int hailo_resource_transfer(struct hailo_resource *resource, struct hailo_memory_transfer_params *transfer)
+{
+    // Check for transfer size (address is in resources address-space)
+    if ((transfer->address + transfer->count) > (u64)resource->size) {
+        return -EINVAL;
+    }
+
+    if (transfer->count > ARRAY_SIZE(transfer->buffer)) {
+        return -EINVAL;
+    }
+
+    switch (transfer->transfer_direction) {
+    case TRANSFER_READ:
+        hailo_resource_read_buffer(resource, (u32)transfer->address, transfer->count, transfer->buffer);
+        return 0;
+    case TRANSFER_WRITE:
+        return hailo_resource_write_buffer(resource, (u32)transfer->address, transfer->count, transfer->buffer);
+    default:
+        return -EINVAL;
+    }
+}

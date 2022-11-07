@@ -64,50 +64,11 @@ static void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *cont
     controller->ops->update_channel_interrupts(controller, engine_index, channel_bitmap);
 }
 
-static int start_channel(struct hailo_vdma_file_context *context,
-    struct hailo_vdma_controller *controller,
-    struct hailo_vdma_channel_enable_params *enable_params)
-{
-    struct hailo_descriptors_list *desc_list = NULL;
-    uint8_t depth = 0;
-    int err = 0;
-    uint64_t address = 0;
-    struct hailo_resource *channel_registers = NULL;
-    uint8_t channel_id = hailo_vdma_get_channel_id(enable_params->channel_index);
-
-    desc_list = hailo_vdma_get_descriptors_buffer(context, enable_params->desc_list_handle);
-    if (NULL == desc_list) {
-        hailo_dev_err(controller->dev, "Descriptors list %llu not found\n",
-            (uint64_t)enable_params->desc_list_handle);
-        return -EINVAL;
-    }
-
-    channel_registers = &controller->vdma_engines[enable_params->engine_index].channel_registers;
-
-    address = controller->ops->encode_channel_dma_address(desc_list->dma_address,
-        channel_id);
-    if (INVALID_VDMA_ADDRESS == address) {
-        hailo_dev_err(controller->dev, "Failed encode dma address %pad\n", &desc_list->dma_address);
-        return -EINVAL;
-    }
-
-    depth = hailo_vdma_get_channel_depth(desc_list->desc_count);
-    err = hailo_vdma_start_channel(channel_registers,
-        enable_params->channel_index, enable_params->direction, address, depth);
-    if (err < 0) {
-        hailo_dev_err(controller->dev, "Vdma start channel failed, err %d\n", err);
-        return err;
-    }
-
-    return 0;
-}
-
 long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg)
 {
     struct hailo_vdma_channel_enable_params input;
     struct hailo_vdma_channel *channel = NULL;
-    long err = 0;
 
     if (copy_from_user(&input, (void *)arg, sizeof(input))) {
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
@@ -131,13 +92,6 @@ long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct h
         hailo_dev_err(controller->dev, "Channel %u:%u was already enabled\n",
             input.engine_index, input.channel_index);
         return -EINVAL;
-    }
-
-    if (INVALID_DRIVER_HANDLE_VALUE != input.desc_list_handle) {
-        err = start_channel(context, controller, &input);
-        if (err < 0) {
-            return err;
-        }
     }
 
     if (input.enable_timestamps_measure) {

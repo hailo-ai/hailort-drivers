@@ -9,7 +9,7 @@ Hailo's PCIe driver is required when working with a Hailo device via the PCIe in
 and the device, and loads the device's firmware when working through this interface. The device driver
 is used to manage the Hailo device, communicate with the device and transfer data to/from the device.
 
-## Usage
+## Usage and Compilation
 
 See [**hailo.ai developer zone documentation**](https://hailo.ai/developer-zone/documentation/hailort/latest/?sp_referrer=drivers/pcie_linux.html) (registration is required for  full documentation access).
 

@@ -39,7 +39,7 @@ static inline long get_user_pages_compact(unsigned long start, unsigned long nr_
 }
 #endif
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 8, 0)
+#ifndef _LINUX_MMAP_LOCK_H
 static inline void mmap_read_lock(struct mm_struct *mm)
 {
     down_read(&mm->mmap_sem);
@@ -49,7 +49,7 @@ static inline void mmap_read_unlock(struct mm_struct *mm)
 {
     up_read(&mm->mmap_sem);
 }
-#endif
+#endif /* _LINUX_MMAP_LOCK_H */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
 #define sg_alloc_table_from_pages_segment_compat __sg_alloc_table_from_pages
@@ -100,6 +100,13 @@ static inline struct scatterlist *sg_alloc_table_from_pages_segment_compat(struc
 #define compatible_access_ok(a,b,c) access_ok(b, c)
 #else
 #define compatible_access_ok(a,b,c) access_ok(a, b, c)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0)
+#define PCI_DEVICE_DATA(vend, dev, data) \
+	.vendor = PCI_VENDOR_ID_##vend, .device = PCI_DEVICE_ID_##vend##_##dev, \
+	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID, 0, 0, \
+	.driver_data = (kernel_ulong_t)(data)
 #endif
 
 #endif /* _HAILO_PCI_COMPACT_H_ */
