@@ -134,6 +134,10 @@ ifneq ($(shell id -u),0)
 	@echo "make install_dkms should run as root"
 	exit 1
 endif 
+ifeq ($(strip $(shell which dkms)),)
+	@echo "make install_dkms requires dkms to be installed"
+	exit 1
+endif 
 # build DKMS
 	$(Q)mkdir -p /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/linux
 	$(Q)cp -r . /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/linux/pcie
@@ -152,9 +156,13 @@ ifneq ($(shell id -u),0)
 	@echo "make uninstall_all_dkms should run as root"
 	exit 1
 endif 
+# Uninstall driver from dkms, if dkms is installed
+# If the driver wasn't installed with dkms, the following commands won't do anything
+ifneq ($(strip $(shell which dkms)),)
 	-$(Q)dkms status -m $(DRIVER_NAME_NO_EXT) | grep added | cut -d ' ' -f 2 | sed 's/://' | xargs -I{} dkms remove $(DRIVER_NAME_NO_EXT)/{} --all
 	-$(Q)dkms status -m $(DRIVER_NAME_NO_EXT) | cut -d ' ' -f 2 | sed 's/,//' | xargs -I{} dkms remove $(DRIVER_NAME_NO_EXT)/{} --all
 	-$(Q)rm -rf /usr/src/$(DRIVER_NAME_NO_EXT)-*
+endif
 
 endif
 

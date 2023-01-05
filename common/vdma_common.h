@@ -34,8 +34,6 @@ struct hailo_channel_interrupt_timestamp_list {
     struct hailo_channel_interrupt_timestamp timestamps[CHANNEL_IRQ_TIMESTAMPS_SIZE];
 };
 
-int hailo_vdma_start_channel(struct hailo_resource *vdma_registers, size_t channel_index,
-    enum hailo_dma_data_direction direction, uint64_t desc_dma_address, uint8_t desc_depth);
 // to_device_control_reg, from_device_control_reg - out params
 int hailo_vdma_stop_channel(struct hailo_resource *vdma_registers, size_t channel_index,
     u8 *to_device_control_reg, u8 *from_device_control_reg);
@@ -54,8 +52,6 @@ void hailo_vdma_pop_timestamps_to_response(struct hailo_channel_interrupt_timest
     struct hailo_vdma_channel_wait_params *interrupt_args);
 
 bool hailo_vdma_is_valid_channel(uint8_t channel_index, enum hailo_dma_data_direction direction);
-
-uint8_t hailo_vdma_get_channel_depth(size_t decs_count);
 
 int hailo_vdma_channel_read_register(struct hailo_vdma_channel_read_register_params *params,
     struct hailo_resource *vdma_registers);

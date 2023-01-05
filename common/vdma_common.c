@@ -52,16 +52,6 @@
 #define TIMESTAMPS_CIRC_CNT(timestamp_list) \
     CIRC_CNT((timestamp_list).head, (timestamp_list).tail, CHANNEL_IRQ_TIMESTAMPS_SIZE)
 
-
-// control_reg_value is an inout param
-static void start_vdma_control_register(struct hailo_resource *vdma_registers, size_t channel_index,
-    enum hailo_dma_data_direction direction, u8 *control_reg_value)
-{
-    size_t control_reg_addr = CHANNEL_BASE_OFFSET(channel_index, direction) + CHANNEL_CONTROL_OFFSET;
-    *control_reg_value = (*control_reg_value & VDMA_CHANNEL_CONTROL_MASK) | VDMA_CHANNEL_CONTROL_START_RESUME;
-    hailo_resource_write8(vdma_registers, control_reg_addr, *control_reg_value);
-}
-
 // control_reg_value is an inout param
 static void hailo_vdma_channel_pause(struct hailo_resource *vdma_registers, size_t control_reg_addr, u8 *control_reg_value)
 {
@@ -74,50 +64,6 @@ static void hailo_vdma_channel_abort(struct hailo_resource *vdma_registers, size
 {
     *control_reg_value = (*control_reg_value & VDMA_CHANNEL_CONTROL_MASK) | VDMA_CHANNEL_CONTROL_ABORT;
     hailo_resource_write8(vdma_registers, control_reg_addr, *control_reg_value);
-}
-
-int hailo_vdma_start_channel(struct hailo_resource *vdma_registers, size_t channel_index,
-    enum hailo_dma_data_direction direction, uint64_t desc_dma_address, uint8_t desc_depth)
-{
-    size_t channel_offset = CHANNEL_BASE_OFFSET(channel_index, direction);
-    uint16_t dma_address_l = 0;
-    uint32_t dma_address_h = 0;
-    uint8_t depth_id = 0;
-    u8 to_device_control_reg = 0;
-    u8 from_device_control_reg = 0;
-    int err = 0;
-
-    if (((desc_dma_address & 0xFFFF) != 0) || 
-         (desc_depth > DESCRIPTOR_LIST_MAX_DEPTH)) {
-        return -EINVAL;
-    }
-
-    // According to spec, depth 16 is equivalent to depth 0.
-    if (DESCRIPTOR_LIST_MAX_DEPTH == desc_depth) {
-        desc_depth = 0;
-    }
-
-    // Stop old channel state
-    err = hailo_vdma_stop_channel(vdma_registers, channel_index, &to_device_control_reg, &from_device_control_reg);
-    if (err != 0) {
-        return err;
-    }
-
-    // Configure address, depth and id
-    dma_address_l = (uint16_t)((desc_dma_address >> 16) & 0xFFFF);
-    hailo_resource_write16(vdma_registers, channel_offset+CHANNEL_ADDRESS_L_OFFSET, dma_address_l);
-
-    dma_address_h = (uint32_t)(desc_dma_address >> 32);
-    hailo_resource_write32(vdma_registers, channel_offset+CHANNEL_ADDRESS_H_OFFSET, dma_address_h);
-
-    depth_id = (uint8_t)((desc_depth << VDMA_CHANNEL_DESC_DEPTH_SHIFT) | VDMA_CHANNEL_DATA_ID);
-    hailo_resource_write8(vdma_registers, channel_offset+CHANNEL_DEPTH_ID_OFFSET, depth_id);
-
-    // Start channel
-    start_vdma_control_register(vdma_registers, channel_index, HAILO_DMA_TO_DEVICE, &to_device_control_reg);
-    start_vdma_control_register(vdma_registers, channel_index, HAILO_DMA_FROM_DEVICE, &from_device_control_reg);
-
-    return 0;
 }
 
 bool hailo_vdma_channel_is_idle(struct hailo_resource *vdma_registers, size_t channel_index,
@@ -269,15 +215,6 @@ bool hailo_vdma_is_valid_channel(uint8_t channel_index, enum hailo_dma_data_dire
     default:
         return false;
     }
-}
-
-uint8_t hailo_vdma_get_channel_depth(size_t decs_count)
-{
-    uint8_t depth = 0;
-    while (decs_count >>= 1) {
-        ++depth;
-    }
-    return depth;
 }
 
 int hailo_vdma_channel_read_register(struct hailo_vdma_channel_read_register_params *params,

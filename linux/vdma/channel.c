@@ -64,50 +64,12 @@ static void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *cont
     controller->ops->update_channel_interrupts(controller, engine_index, channel_bitmap);
 }
 
-static int start_channel(struct hailo_vdma_file_context *context,
-    struct hailo_vdma_controller *controller,
-    struct hailo_vdma_channel_enable_params *enable_params)
-{
-    struct hailo_descriptors_list *desc_list = NULL;
-    uint8_t depth = 0;
-    int err = 0;
-    uint64_t address = 0;
-    struct hailo_resource *channel_registers = NULL;
-    uint8_t channel_id = hailo_vdma_get_channel_id(enable_params->channel_index);
-
-    desc_list = hailo_vdma_get_descriptors_buffer(context, enable_params->desc_list_handle);
-    if (NULL == desc_list) {
-        hailo_dev_err(controller->dev, "Descriptors list %llu not found\n",
-            (uint64_t)enable_params->desc_list_handle);
-        return -EINVAL;
-    }
-
-    channel_registers = &controller->vdma_engines[enable_params->engine_index].channel_registers;
-
-    address = controller->ops->encode_channel_dma_address(desc_list->dma_address,
-        channel_id);
-    if (INVALID_VDMA_ADDRESS == address) {
-        hailo_dev_err(controller->dev, "Failed encode dma address %pad\n", &desc_list->dma_address);
-        return -EINVAL;
-    }
-
-    depth = hailo_vdma_get_channel_depth(desc_list->desc_count);
-    err = hailo_vdma_start_channel(channel_registers,
-        enable_params->channel_index, enable_params->direction, address, depth);
-    if (err < 0) {
-        hailo_dev_err(controller->dev, "Vdma start channel failed, err %d\n", err);
-        return err;
-    }
-
-    return 0;
-}
-
 long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg)
 {
+    static const bool DONT_STOP_CHANNEL = false;
     struct hailo_vdma_channel_enable_params input;
     struct hailo_vdma_channel *channel = NULL;
-    long err = 0;
 
     if (copy_from_user(&input, (void *)arg, sizeof(input))) {
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
@@ -133,13 +95,6 @@ long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct h
         return -EINVAL;
     }
 
-    if (INVALID_DRIVER_HANDLE_VALUE != input.desc_list_handle) {
-        err = start_channel(context, controller, &input);
-        if (err < 0) {
-            return err;
-        }
-    }
-
     if (input.enable_timestamps_measure) {
         channel->timestamp_measure_enabled = true;
         channel->timestamp_list.head = channel->timestamp_list.tail = 0;
@@ -159,8 +114,10 @@ long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct h
     input.channel_handle = channel->handle;
     if (copy_to_user((void __user*)arg, &input, sizeof(input))) {
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
+        // Channels will be stopped by the fw or in hailo_vdma_file_context_finalize
+        // (Also, the channel hasn't been started => no need to stop)
         hailo_vdma_channel_disable_internal(context, controller,
-            input.engine_index, input.channel_index);
+            input.engine_index, input.channel_index, DONT_STOP_CHANNEL);
         return -ENOMEM;
     }
 
@@ -171,7 +128,7 @@ long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct h
 
 void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller, const size_t engine_index,
-    const size_t channel_index)
+    const size_t channel_index, bool stop_channel)
 {
     int err = 0;
     unsigned long irq_saved_flags;
@@ -199,7 +156,7 @@ void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context
 
     hailo_clear_bit(channel_index, &context->enabled_channels_per_engine[engine_index]);
 
-    if (is_device_up) {
+    if (stop_channel && is_device_up) {
         hailo_dev_info(controller->dev, "Aborting channel %u", (u32)channel_index);
         err = hailo_vdma_stop_channel(
             &controller->vdma_engines[engine_index].channel_registers,
@@ -213,6 +170,7 @@ void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context
 long hailo_vdma_channel_disable(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg)
 {
+    static const bool DONT_STOP_CHANNEL = false;
     struct hailo_vdma_channel_disable_params input;
     struct hailo_vdma_channel *channel = NULL;
     long err = -EINVAL;
@@ -238,8 +196,9 @@ long hailo_vdma_channel_disable(struct hailo_vdma_file_context *context, struct 
         return -EINVAL;
     }
 
+    // Channels will be stopped by the fw or in hailo_vdma_file_context_finalize
     hailo_vdma_channel_disable_internal(context, controller,
-        input.engine_index, input.channel_index);
+        input.engine_index, input.channel_index, DONT_STOP_CHANNEL);
 
     return 0;
 }

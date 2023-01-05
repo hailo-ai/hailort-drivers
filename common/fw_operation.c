@@ -1,20 +1,34 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
- **/
+ * Copyright (c) 2022 Hailo Technologies Ltd. All rights reserved.
+**/
 
-#include "types.h"
-#include "common_fw_logger.h"
-#include "hailo_resource.h"
+#include "fw_operation.h"
 
-#ifdef __linux__
-#if LINUX_VERSION_CODE >= KERNEL_VERSION( 5, 0, 0 )
-#define compatible_access_ok(a,b,c) access_ok(b, c)
-#else
-#define compatible_access_ok(a,b,c) access_ok(a, b, c)
-#endif
+typedef struct {
+    uint32_t host_offset;
+    uint32_t chip_offset;
+} FW_DEBUG_BUFFER_HEADER_t;
 
-#endif // ifdef __linux__
+#define DEBUG_BUFFER_DATA_SIZE (DEBUG_BUFFER_TOTAL_SIZE - sizeof(FW_DEBUG_BUFFER_HEADER_t))
+
+int hailo_read_firmware_notification(struct hailo_resource *resource, struct hailo_d2h_notification *notification)
+{
+    hailo_d2h_buffer_details_t d2h_buffer_details = {0, 0};
+    hailo_resource_read_buffer(resource, 0, sizeof(d2h_buffer_details),
+        &d2h_buffer_details);
+
+    if ((sizeof(notification->buffer) < d2h_buffer_details.buffer_len) || (0 == d2h_buffer_details.is_buffer_in_use)) {
+        return -EINVAL;
+    }
+
+    notification->buffer_len = d2h_buffer_details.buffer_len;
+    hailo_resource_read_buffer(resource, sizeof(d2h_buffer_details), notification->buffer_len, notification->buffer);
+
+    // Write is_buffer_in_use = false
+    hailo_resource_write16(resource, 0, 0);
+    return 0;
+}
 
 static inline size_t calculate_log_ready_to_read(FW_DEBUG_BUFFER_HEADER_t *header)
 {
