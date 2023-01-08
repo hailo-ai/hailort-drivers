@@ -92,12 +92,11 @@ void hailo_vdma_file_context_init(struct hailo_vdma_file_context *context)
 static void disable_channels_per_engine(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller, size_t engine_index)
 {
+    static const bool STOP_CHANNEL = true;
     u32 channel_index = 0;
     for (channel_index = 0; channel_index < MAX_VDMA_CHANNELS_PER_ENGINE; channel_index++) {
-        if (hailo_test_bit(channel_index, &context->enabled_channels_per_engine[engine_index])) {
-            hailo_vdma_channel_disable_internal(context, controller,
-                engine_index, channel_index);
-        }
+        // We'll stop the channels here, in case they weren't stopped by the fw
+        hailo_vdma_channel_disable_internal(context, controller, engine_index, channel_index, STOP_CHANNEL);
     }
 }
 
@@ -106,8 +105,14 @@ void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
 {
     size_t engine_index = 0;
 
-    for (engine_index = 0; engine_index < controller->vdma_engines_count; engine_index++) {
-        disable_channels_per_engine(context, controller, engine_index);
+    // TODO: Use controller->used_by_filp to guard creation of vdma resources (or at least vdma channels).
+    //       Currently we can guarantee that only one filp has access to vdma resources  
+    //       due to user-mode flow in libhailort (HRT-8490)
+    if (filp == controller->used_by_filp) {
+        // If the current filp isn't marked as the "vdma user" (via used_by_filp), we won't close the vdma channels
+        for (engine_index = 0; engine_index < controller->vdma_engines_count; engine_index++) {
+            disable_channels_per_engine(context, controller, engine_index);
+        }
     }
 
     hailo_vdma_clear_mapped_user_buffer_list(context, controller);

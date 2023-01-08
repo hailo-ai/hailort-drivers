@@ -14,7 +14,7 @@
 long hailo_vdma_channel_enable(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg);
 void hailo_vdma_channel_disable_internal(struct hailo_vdma_file_context *context,
-    struct hailo_vdma_controller *controller, size_t engine_index, size_t channel_index);
+    struct hailo_vdma_controller *controller, size_t engine_index, size_t channel_index, bool stop_channel);
 long hailo_vdma_channel_disable(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg);
 long hailo_vdma_channel_wait_interrupts_ioctl(struct hailo_vdma_controller *controller, unsigned long arg,

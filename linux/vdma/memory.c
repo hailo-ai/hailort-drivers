@@ -341,3 +341,15 @@ static void hailo_clear_sg_list(struct sg_table *sgt, bool put_pages)
 
     sg_free_table(sgt);
 }
+
+bool hailo_buffer_to_device(struct hailo_vdma_buffer *mapped_buffer)
+{
+    return (mapped_buffer->data_direction == DMA_BIDIRECTIONAL || 
+        mapped_buffer->data_direction == DMA_TO_DEVICE);
+}
+
+bool hailo_buffer_from_device(struct hailo_vdma_buffer *mapped_buffer)
+{
+    return (mapped_buffer->data_direction == DMA_BIDIRECTIONAL || 
+        mapped_buffer->data_direction == DMA_FROM_DEVICE);
+}

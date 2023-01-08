@@ -42,5 +42,6 @@ struct hailo_vdma_continuous_buffer* hailo_vdma_get_continuous_buffer(struct hai
     uintptr_t buf_handle);
 void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller);
-
+bool hailo_buffer_to_device(struct hailo_vdma_buffer *mapped_buffer);
+bool hailo_buffer_from_device(struct hailo_vdma_buffer *mapped_buffer);
 #endif /* _HAILO_VDMA_MEMORY_H_ */
