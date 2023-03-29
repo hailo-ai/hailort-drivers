@@ -8,6 +8,13 @@
 
 #include "vdma/vdma.h"
 
+long hailo_vdma_interrupts_enable_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
+long hailo_vdma_interrupts_disable_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
+long hailo_vdma_interrupts_wait_ioctl(struct hailo_vdma_controller *controller, unsigned long arg,
+    struct semaphore *mutex, bool *should_up_board_mutex);
+long hailo_vdma_channel_read_register_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
+long hailo_vdma_channel_write_register_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
+
 long hailo_vdma_buffer_map_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
 long hailo_vdma_buffer_unmap_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long handle);
 long hailo_vdma_buffer_sync(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
@@ -23,5 +30,7 @@ long hailo_mark_as_in_use(struct hailo_vdma_controller *controller, unsigned lon
 
 long hailo_vdma_continuous_buffer_alloc_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
 long hailo_vdma_continuous_buffer_free_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
+
+long hailo_vdma_interrupts_read_timestamps_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
 
 #endif /* _HAILO_VDMA_IOCTL_H_ */

@@ -57,10 +57,8 @@ ifndef kernelver
 endif
 
 MODULES := /lib/modules/${kernelver}/
-
-ifndef KERNEL_DIR
-    KERNEL_DIR:=$(MODULES)/build
-endif
+KERNEL_DIR ?= $(MODULES)/build
+DEPMOD ?= depmod
 
 PWD  := $(shell pwd)
 
@@ -113,21 +111,15 @@ clean:
 	$(Q)rm -rf $(BUILD_DIR)
 	$(Q)rm -f src/*o.ur-safe
 
-install: uninstall
-ifneq ($(shell id -u),0)
-	@echo "make install should run as root"
-	exit 1
-endif 
+install:
 	$(Q)$(MAKE) -C $(KERNEL_DIR) M=$(PWD) INSTALL_MOD_DIR=kernel/drivers/misc modules_install
-	$(Q)depmod -a
+	$(Q)$(DEPMOD) -a
 
 uninstall: uninstall_all_dkms
-ifneq ($(shell id -u),0)
-	@echo "make uninstall should run as root"
-	exit 1
-endif 
+ifneq ($(wildcard $(MODULES)),)
 	$(Q)rm -f $(MODULES)kernel/drivers/misc/$(DRIVER_NAME)
-	$(Q)depmod -a
+	$(Q)$(DEPMOD) -a
+endif
 
 install_dkms: uninstall
 ifneq ($(shell id -u),0)
@@ -159,9 +151,7 @@ endif
 # Uninstall driver from dkms, if dkms is installed
 # If the driver wasn't installed with dkms, the following commands won't do anything
 ifneq ($(strip $(shell which dkms)),)
-	-$(Q)dkms status -m $(DRIVER_NAME_NO_EXT) | grep added | cut -d ' ' -f 2 | sed 's/://' | xargs -I{} dkms remove $(DRIVER_NAME_NO_EXT)/{} --all
-	-$(Q)dkms status -m $(DRIVER_NAME_NO_EXT) | cut -d ' ' -f 2 | sed 's/,//' | xargs -I{} dkms remove $(DRIVER_NAME_NO_EXT)/{} --all
-	-$(Q)rm -rf /usr/src/$(DRIVER_NAME_NO_EXT)-*
+	-$(Q)sh dkms_uninstall.sh
 endif
 
 endif

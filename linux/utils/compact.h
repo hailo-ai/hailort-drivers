@@ -8,6 +8,7 @@
 
 #include <linux/version.h>
 #include <linux/scatterlist.h>
+#include <linux/vmalloc.h>
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 16, 0)
 #define pci_printk(level, pdev, fmt, arg...) \
@@ -108,6 +109,18 @@ static inline struct scatterlist *sg_alloc_table_from_pages_segment_compat(struc
 	.vendor = PCI_VENDOR_ID_##vend, .device = PCI_DEVICE_ID_##vend##_##dev, \
 	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID, 0, 0, \
 	.driver_data = (kernel_ulong_t)(data)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
+// On kernels < 4.1.12,  kvmalloc, kvfree is not implemented. For simplicity, instead of implement our own
+// kvmalloc/kvfree, just using vmalloc and vfree (It may reduce allocate/access performance, but it worth it).
+static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
+{
+    (void)flags; //ignore
+    return vmalloc(n * size);
+}
+
+#define kvfree vfree
 #endif
 
 #endif /* _HAILO_PCI_COMPACT_H_ */

@@ -1,0 +1,13 @@
+.Module.symvers.cmd
+Module.symvers
+.modules.order.cmd
+modules.order
+*.mod.c
+*.o
+*.o.cmd
+*.ko
+*.ko.cmd
+*.mod
+*.mod.cmd
+
+linux/pcie/build

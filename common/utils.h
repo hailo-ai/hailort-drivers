@@ -26,6 +26,10 @@ static inline void hailo_set_bit(int nr, uint32_t* addr) {
 	*p  |= mask;
 }
 
+#ifndef DIV_ROUND_UP
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+#endif
+
 #ifdef __cplusplus
 }
 #endif

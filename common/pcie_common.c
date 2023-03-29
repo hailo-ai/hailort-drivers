@@ -87,7 +87,7 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
             .max_size = PCIE_HAILO8_FW_CFG_MAX_SIZE,
         },
     },
-    [HAILO_BOARD_TYPE_MERCURY] = {
+    [HAILO_BOARD_TYPE_HAILO15] = {
         .fw_addresses = {
             .boot_fw_header = 0x88000,
             .boot_fw_trigger = 0x88c98,
@@ -99,7 +99,7 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
             .atr0_trsl_addr1 = 0x000BE000,
             .raise_ready_offset = 0x1754,
         },
-        .fw_filename = "hailo/mercury_fw.bin",
+        .fw_filename = "hailo/hailo15_fw.bin",
         .board_cfg = {
             .filename = NULL,
             .address = 0,
@@ -116,6 +116,8 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
 
 bool hailo_pcie_read_interrupt(struct hailo_pcie_resources *resources, struct hailo_pcie_interrupt_source *source)
 {
+    uint32_t channel_data_source = 0;
+    uint32_t channel_data_dest = 0;
     memset(source, 0, sizeof(*source));
 
     source->interrupt_bitmask = hailo_resource_read32(&resources->config, BCS_ISTATUS_HOST);
@@ -127,13 +129,14 @@ bool hailo_pcie_read_interrupt(struct hailo_pcie_resources *resources, struct ha
     hailo_resource_write32(&resources->config, BCS_ISTATUS_HOST, source->interrupt_bitmask);
 
     if (source->interrupt_bitmask & BCS_ISTATUS_HOST_VDMA_SRC_IRQ_MASK) {
-        source->channel_data_source = hailo_resource_read32(&resources->config, BCS_SOURCE_INTERRUPT_PER_CHANNEL);
-        hailo_resource_write32(&resources->config, BCS_SOURCE_INTERRUPT_PER_CHANNEL, source->channel_data_source);
+        channel_data_source = hailo_resource_read32(&resources->config, BCS_SOURCE_INTERRUPT_PER_CHANNEL);
+        hailo_resource_write32(&resources->config, BCS_SOURCE_INTERRUPT_PER_CHANNEL, channel_data_source);
     }
     if (source->interrupt_bitmask & BCS_ISTATUS_HOST_VDMA_DEST_IRQ_MASK) {
-        source->channel_data_dest = hailo_resource_read32(&resources->config, BCS_DESTINATION_INTERRUPT_PER_CHANNEL);
-        hailo_resource_write32(&resources->config, BCS_DESTINATION_INTERRUPT_PER_CHANNEL, source->channel_data_dest);
+        channel_data_dest = hailo_resource_read32(&resources->config, BCS_DESTINATION_INTERRUPT_PER_CHANNEL);
+        hailo_resource_write32(&resources->config, BCS_DESTINATION_INTERRUPT_PER_CHANNEL, channel_data_dest);
     }
+    source->vdma_channels_bitmap = channel_data_source | channel_data_dest;
 
     return true;
 }
@@ -180,7 +183,7 @@ int hailo_pcie_read_firmware_control(struct hailo_pcie_resources *resources, str
     }
 
     // Copy response buffer
-    hailo_resource_read_buffer(&resources->fw_access, PCIE_REQUEST_SIZE_OFFSET + response_header_size,
+    hailo_resource_read_buffer(&resources->fw_access, PCIE_REQUEST_SIZE_OFFSET + (size_t)response_header_size,
         command->buffer_len, &command->buffer);
     
     return 0;
@@ -231,7 +234,7 @@ static void configure_atr_table(struct hailo_pcie_resources *resources,
 static void write_memory_chunk(struct hailo_pcie_resources *resources,
     hailo_ptr_t dest, u32 dest_offset, const void *src, u32 len)
 {
-    BUG_ON(dest_offset + len > resources->fw_access.size);
+    BUG_ON(dest_offset + len > (u32)resources->fw_access.size);
 
     configure_atr_table(resources, dest);
     (void)hailo_resource_write_buffer(&resources->fw_access, dest_offset, len, src);
@@ -240,7 +243,7 @@ static void write_memory_chunk(struct hailo_pcie_resources *resources,
 static void read_memory_chunk(
     struct hailo_pcie_resources *resources, hailo_ptr_t src, u32 src_offset, void *dest, u32 len)
 {
-    BUG_ON(src_offset + len > resources->fw_access.size);
+    BUG_ON(src_offset + len > (u32)resources->fw_access.size);
 
     configure_atr_table(resources, src);
     (void)hailo_resource_read_buffer(&resources->fw_access, src_offset, len, dest);
@@ -438,17 +441,17 @@ int hailo_pcie_write_config_common(struct hailo_pcie_resources *resources, const
 }
 
 const struct hailo_config_constants* hailo_pcie_get_board_config_constants(const enum hailo_board_type board_type) {
-    BUG_ON(board_type >= HAILO_BOARD_TYPE_COUNT);
+    BUG_ON(board_type >= HAILO_BOARD_TYPE_COUNT || board_type < 0);
     return &compat[board_type].board_cfg;
 }
 
 const struct hailo_config_constants* hailo_pcie_get_user_config_constants(const enum hailo_board_type board_type) {
-    BUG_ON(board_type >= HAILO_BOARD_TYPE_COUNT);
+    BUG_ON(board_type >= HAILO_BOARD_TYPE_COUNT || board_type < 0);
     return &compat[board_type].fw_cfg;
 }
 
 const char* hailo_pcie_get_fw_filename(const enum hailo_board_type board_type) {
-    BUG_ON(board_type >= HAILO_BOARD_TYPE_COUNT);
+    BUG_ON(board_type >= HAILO_BOARD_TYPE_COUNT || board_type < 0);
     return compat[board_type].fw_filename;
 }
 

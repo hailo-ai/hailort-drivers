@@ -95,7 +95,8 @@ int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintp
     descriptors->kernel_address = dma_alloc_coherent(dev, buffer_size,
         &descriptors->dma_address, GFP_KERNEL | __GFP_ZERO);
     if (descriptors->kernel_address == NULL) {
-        dev_err(dev, "Failed to allocate descriptors list, desc_count 0x%x, buffer_size 0x%zx\n",
+        dev_err(dev, "Failed to allocate descriptors list, desc_count 0x%x, buffer_size 0x%zx, This failure means there is not a sufficient amount of CMA memory "
+            "(contiguous physical memory), This usually is caused by lack of general system memory. Please check you have sufficent memory.\n",
             descriptors_count, buffer_size);
         return -ENOMEM;
     }
@@ -225,7 +226,8 @@ int hailo_vdma_continuous_buffer_alloc(struct device *dev, size_t size,
 
     kernel_address = dma_alloc_coherent(dev, size, &dma_address, GFP_KERNEL);
     if (NULL == kernel_address) {
-        dev_err(dev, "Failed to allocate continuous buffer, size 0x%zx\n", size);
+        dev_err(dev, "Failed to allocate continuous buffer, size 0x%zx. This failure means there is not a sufficient amount of CMA memory "
+            "(contiguous physical memory), This usually is caused by lack of general system memory. Please check you have sufficent memory.\n", size);
         return -ENOMEM;
     }
 
@@ -269,46 +271,49 @@ void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *con
 static int hailo_set_sg_list(struct sg_table *sg_table, void __user *user_address, uint32_t size,
     struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer)
 {
-    int  nPages, result;
-    struct page **pages;
+    int result = -EINVAL;
+    size_t npages = 0;
+    struct page **pages = NULL;
     int i = 0;
     struct scatterlist *sg_alloc_res = NULL;
 
-    nPages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
-    if ( !(pages = kmalloc(nPages * sizeof(*pages), GFP_KERNEL)) )
-    {
+    npages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+    pages = kvmalloc_array(npages, sizeof(*pages), GFP_KERNEL);
+    if (!pages) {
         return -ENOMEM;
     }
 
     // Check weather mapping user allocated buffer or driver allocated buffer
     if (NULL == allocated_vdma_buffer) {
         mmap_read_lock(current->mm);
-        result = get_user_pages_compact((unsigned long)user_address, nPages, FOLL_WRITE | FOLL_FORCE, pages, NULL);
+        result = get_user_pages_compact((unsigned long)user_address, npages, FOLL_WRITE | FOLL_FORCE, pages, NULL);
         mmap_read_unlock(current->mm);
 
-        if (result != nPages) {
-            kfree(pages);
+        if (result != npages) {
+            // TODO: HRT-9680 need to put user pages here (those who got pinned)
+            kvfree(pages);
             return -EINVAL;
         }
     }
     // Meaning buffer we are mapping is driver allocated
     else {
         // Check to make sure in case user provides wrong buffer
-        if ((size_t)nPages != allocated_vdma_buffer->pages_count) {
+        if (npages != allocated_vdma_buffer->pages_count) {
             pr_err("Recieved wrong amount of pages to map - user may have provided wrong buffer\n");
+            kvfree(pages);
             return -EINVAL;
         }
-        for (i = 0; i < nPages; i++) {
+        for (i = 0; i < npages; i++) {
             pages[i] = virt_to_page(allocated_vdma_buffer->pages_address[i]);
         }
     }
 
-    sg_alloc_res = sg_alloc_table_from_pages_segment_compat(sg_table, pages, nPages,
+    sg_alloc_res = sg_alloc_table_from_pages_segment_compat(sg_table, pages, npages,
         0, size, SGL_MAX_SEGMENT_SIZE, NULL, 0, GFP_KERNEL);
     if (IS_ERR(sg_alloc_res)) {
         pr_err("sg table alloc failed (err %ld)..\n", PTR_ERR(sg_alloc_res));
         if (NULL == allocated_vdma_buffer) {
-            for (i = 0; i < nPages; i++) {
+            for (i = 0; i < npages; i++) {
                 if (!PageReserved(pages[i])) {
                     SetPageDirty(pages[i]);
                 }
@@ -316,11 +321,11 @@ static int hailo_set_sg_list(struct sg_table *sg_table, void __user *user_addres
             }
         }
 
-        kfree(pages);
+        kvfree(pages);
         return PTR_ERR(sg_alloc_res);
     }
 
-    kfree(pages);
+    kvfree(pages);
     return 0;
 }
 

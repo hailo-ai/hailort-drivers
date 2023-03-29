@@ -5,9 +5,8 @@
 
 # Hailo PCIe driver #
 
-Hailo's PCIe driver is required when working with a Hailo device via the PCIe interface. It links the [**HailoRT library**](https://github.com/hailo-ai/hailort)
-and the device, and loads the device's firmware when working through this interface. The device driver
-is used to manage the Hailo device, communicate with the device and transfer data to/from the device.
+The Hailo PCIe driver is necessary for interacting with a Hailo device over the PCIe interface. It connects the [**HailoRT library**](https://github.com/hailo-ai/hailort) to the device and loads the
+device's firmware when using this interface. The driver is responsible for managing the Hailo device, communicating with it, and transferring data to and from the device.
 
 ## Usage and Compilation
 

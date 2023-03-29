@@ -654,7 +654,7 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
 
     /* Initialize device extension for the board*/
     pci_notice(pDev, "Probing: Allocate memory for device extension, %zu\n", sizeof(struct hailo_pcie_board));
-    pBoard = (struct hailo_pcie_board*) kzalloc( sizeof(struct hailo_pcie_board), GFP_KERNEL );
+    pBoard = (struct hailo_pcie_board*) kzalloc( sizeof(struct hailo_pcie_board), GFP_KERNEL);
     if (pBoard == NULL)
     {
         pci_err(pDev, "Probing: Failed to allocate memory for device extension structure\n");
@@ -672,33 +672,6 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
     pci_notice(pDev, "Probing: Device enabled\n");
 
     pci_set_master(pDev);
-
-    /* Check and configuration DMA length */
-    if ( !(err = dma_set_mask_and_coherent(&pDev->dev, DMA_BIT_MASK(64))) )
-    {
-        pci_notice(pDev, "Probing: Enabled 64 bit dma\n");
-    }
-    else if ( !(err = dma_set_mask_and_coherent(&pDev->dev, DMA_BIT_MASK(48))) )
-    {
-        pci_notice(pDev, "Probing: Enabled 48 bit dma\n");
-    }
-    else if ( !(err = dma_set_mask_and_coherent(&pDev->dev, DMA_BIT_MASK(40))) )
-    {
-        pci_notice(pDev, "Probing: Enabled 40 bit dma\n");
-    }
-    else if ( !(err = dma_set_mask_and_coherent(&pDev->dev, DMA_BIT_MASK(36))) )
-    {
-        pci_notice(pDev, "Probing: Enabled 36 bit dma\n");
-    }
-    else if ( !(err = dma_set_mask_and_coherent(&pDev->dev, DMA_BIT_MASK(32))) )
-    {
-        pci_notice(pDev, "Probing: Enabled 32 bit dma\n");
-    }
-    else
-    {
-        pci_err(pDev, "Probing: Error enabling dma %d\n", err);
-        goto probe_disable_device;
-    }
 
     err = pcie_resources_init(pDev, &pBoard->pcie_resources, id->driver_data);
     if (err < 0) {
@@ -871,7 +844,7 @@ static SIMPLE_DEV_PM_OPS(hailo_pcie_pm_ops, hailo_pcie_suspend, hailo_pcie_resum
 static struct pci_device_id hailo_pcie_id_table[] =
 {
     {PCI_DEVICE_DATA(HAILO, HAILO8, HAILO_BOARD_TYPE_HAILO8)},
-    {PCI_DEVICE_DATA(HAILO, MERCURY, HAILO_BOARD_TYPE_MERCURY)},
+    {PCI_DEVICE_DATA(HAILO, HAILO15, HAILO_BOARD_TYPE_HAILO15)},
     {0,0,0,0,0,0,0 },
 };
 

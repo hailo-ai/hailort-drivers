@@ -22,7 +22,6 @@ hailo_pci-objs += $(UTILS_SRC_DIRECTORY)/logs.o
 
 hailo_pci-objs += $(VDMA_SRC_DIRECTORY)/vdma.o
 hailo_pci-objs += $(VDMA_SRC_DIRECTORY)/memory.o
-hailo_pci-objs += $(VDMA_SRC_DIRECTORY)/channel.o
 hailo_pci-objs += $(VDMA_SRC_DIRECTORY)/ioctl.o
 
 ccflags-y      += -Werror

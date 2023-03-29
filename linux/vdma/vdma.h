@@ -63,22 +63,6 @@ struct hailo_vdma_continuous_buffer {
     size_t              size;
 };
 
-struct hailo_vdma_channel {
-    // direction of the channel. should be only from_device or to_device
-    enum dma_data_direction direction;
-    // Unique identifer to the opened channel. The channel is enabled if this value
-    // it not INVALID_CHANNEL_HANDLE_VALUE
-    u64 handle;
-    // called from the interrupt handler to notify that an interrupt was raised
-    struct completion completion;
-
-    bool timestamp_measure_enabled;
-    struct hailo_channel_interrupt_timestamp_list timestamp_list;
-
-    bool should_abort;
-};
-
-
 struct hailo_vdma_controller;
 struct hailo_vdma_controller_ops {
     void (*update_channel_interrupts)(struct hailo_vdma_controller *controller, size_t engine_index,
@@ -88,18 +72,6 @@ struct hailo_vdma_controller_ops {
     uint8_t (*get_dma_data_id)(void);
 };
 
-struct hailo_vdma_channel_interrupts {
-    spinlock_t lock;
-    uint32_t channel_data_source;
-    uint32_t channel_data_dest;
-};
-
-struct hailo_vdma_engine {
-    struct hailo_resource channel_registers;
-    struct hailo_vdma_channel channels[MAX_VDMA_CHANNELS_PER_ENGINE];
-    struct hailo_vdma_channel_interrupts interrupts;
-};
-
 struct hailo_vdma_controller {
     struct hailo_vdma_controller_ops *ops;
     struct device *dev;
@@ -107,14 +79,20 @@ struct hailo_vdma_controller {
     size_t vdma_engines_count;
     struct hailo_vdma_engine *vdma_engines;
 
-    atomic64_t last_channel_handle;
+    spinlock_t interrupts_lock;
+    wait_queue_head_t interrupts_wq;
+
     struct file *used_by_filp;
+
+    // Putting big IOCTL structures here to avoid stack allocation.
+    struct hailo_vdma_interrupts_read_timestamp_params read_interrupt_timestamps_params;
 };
 
-struct hailo_vdma_file_context {
-    // Amount of engines is in hailo_vdma_controller::vdma_engines_count
-    uint32_t enabled_channels_per_engine[MAX_VDMA_ENGINES];
+#define for_each_vdma_engine(controller, engine, engine_index)                          \
+    _for_each_element_array(controller->vdma_engines, controller->vdma_engines_count,   \
+        engine, engine_index)
 
+struct hailo_vdma_file_context {
     atomic_t last_vdma_user_buffer_handle;
     struct list_head mapped_user_buffer_list;
 
@@ -131,12 +109,18 @@ int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
     struct device *dev, struct hailo_vdma_controller_ops *ops,
     struct hailo_resource *channel_registers_per_engine, size_t engines_count);
 
+void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *controller,
+    size_t engine_index);
+
+void hailo_vdma_engine_interrupts_disable(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_engine *engine, u8 engine_index, u32 channels_bitmap);
+
 void hailo_vdma_file_context_init(struct hailo_vdma_file_context *context);
 void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller, struct file *filp);
 
 void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller, size_t engine_index,
-    u32 channel_data_source, u32 channel_data_dest);
+    u32 channels_bitmap);
 
 // TODO: reduce params count
 long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
