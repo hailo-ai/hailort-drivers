@@ -36,8 +36,8 @@ int FW_VALIDATION__validate_fw_header(uintptr_t firmware_base_address,
     case HAILO_BOARD_TYPE_HAILO8:
         expected_firmware_magic = FIRMWARE_HEADER_MAGIC_HAILO8; 
         break;
-    case HAILO_BOARD_TYPE_MERCURY:
-        expected_firmware_magic = FIRMWARE_HEADER_MAGIC_MERCURY; 
+    case HAILO_BOARD_TYPE_HAILO15:
+        expected_firmware_magic = FIRMWARE_HEADER_MAGIC_HAILO15; 
         break;
     default:
         err = -EINVAL;

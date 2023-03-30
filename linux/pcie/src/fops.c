@@ -26,7 +26,6 @@
 #include "utils/logs.h"
 #include "vdma/memory.h"
 #include "vdma/ioctl.h"
-#include "vdma/channel.h"
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 4, 13, 0 )
@@ -191,6 +190,7 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
         context = find_file_context(pBoard, filp);
         if (NULL == context) {
             hailo_err(pBoard, "Invalid driver state, file context does not exist\n");
+            up(&pBoard->mutex);
             return -EINVAL;
         }
 
@@ -341,9 +341,9 @@ irqreturn_t hailo_irqhandler(int irq, void *dev_id)
             }
         }
 
-        if ((0 != irq_source.channel_data_source) || (0 != irq_source.channel_data_dest)) {
+        if (0 != irq_source.vdma_channels_bitmap) {
             hailo_vdma_irq_handler(&board->vdma, DEFAULT_VDMA_ENGINE_INDEX,
-                irq_source.channel_data_source, irq_source.channel_data_dest);
+                irq_source.vdma_channels_bitmap);
         }
     }
 

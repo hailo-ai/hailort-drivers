@@ -51,7 +51,7 @@
 
 #define PCI_VENDOR_ID_HAILO           0x1e60
 #define PCI_DEVICE_ID_HAILO_HAILO8    0x2864
-#define PCI_DEVICE_ID_HAILO_MERCURY   0x45C4
+#define PCI_DEVICE_ID_HAILO_HAILO15   0x45C4
 
 struct hailo_pcie_resources {
     struct hailo_resource config;               // BAR0
@@ -69,8 +69,7 @@ enum hailo_pcie_interrupt_masks {
 
 struct hailo_pcie_interrupt_source {
     uint32_t interrupt_bitmask;
-    uint32_t channel_data_source;
-    uint32_t channel_data_dest;
+    uint32_t vdma_channels_bitmap;
 };
 
 struct hailo_config_constants {
