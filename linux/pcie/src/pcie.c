@@ -576,7 +576,7 @@ static uint8_t get_dma_data_id(void)
 static struct hailo_vdma_controller_ops pcie_vdma_controller_ops = {
     .update_channel_interrupts = update_channel_interrupts,
     .encode_channel_dma_address = encode_dma_address,
-    .encode_desc_dma_address = encode_dma_address,
+    .encode_desc_dma_address = hailo_pcie_encode_dma_address,
     .get_dma_data_id = get_dma_data_id,
 };
 

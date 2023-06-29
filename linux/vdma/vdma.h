@@ -39,13 +39,14 @@ struct hailo_vdma_buffer {
     uintptr_t                   driver_buffer_handle;
 };
 
-struct hailo_descriptors_list {
-    struct list_head            descriptors_buffer_list;
-    uintptr_t                   handle;
-    void                        *kernel_address;
-    dma_addr_t                  dma_address;
-    uint32_t                    desc_count;
-    uint32_t                    buffer_size;
+// Continous buffer that holds a descriptor list.
+struct hailo_descriptors_list_buffer {
+    struct list_head                   descriptors_buffer_list;
+    uintptr_t                          handle;
+    void                               *kernel_address;
+    dma_addr_t                         dma_address;
+    uint32_t                           buffer_size;
+    struct hailo_vdma_descriptors_list desc_list;
 };
 
 struct hailo_vdma_low_memory_buffer {
@@ -129,7 +130,6 @@ long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma
 int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     struct vm_area_struct *vma, uintptr_t vdma_handle);
 
-uint8_t hailo_vdma_get_channel_id(uint8_t channel_index);
 enum dma_data_direction get_dma_direction(enum hailo_dma_data_direction hailo_direction);
 
 #endif /* _HAILO_VDMA_VDMA_H_ */

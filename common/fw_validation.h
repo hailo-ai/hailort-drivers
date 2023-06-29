@@ -6,7 +6,6 @@
 #ifndef PCIE_COMMON_FIRMWARE_HEADER_UTILS_H_
 #define PCIE_COMMON_FIRMWARE_HEADER_UTILS_H_
 
-#include "types.h"
 #include "hailo_ioctl_common.h"
 
 #define FIRMWARE_HEADER_MAGIC_HAILO8 (0x1DD89DE0)
@@ -34,11 +33,21 @@ typedef struct {
     uint32_t code_size;
 } firmware_header_t;
 
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4200)
+#endif /* _MSC_VER */
+
 typedef struct {
     uint32_t key_size;
     uint32_t content_size;
     uint8_t certificates_data[0];
 } secure_boot_certificate_t;
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif /* _MSC_VER */
 
 #define MINIMUM_FIRMWARE_CODE_SIZE (20*4)
 #define MAXIMUM_FIRMWARE_CERT_KEY_SIZE (0x1000)

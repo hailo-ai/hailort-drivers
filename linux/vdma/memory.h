@@ -21,9 +21,9 @@ void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *co
     struct hailo_vdma_controller *controller);
 
 int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintptr_t desc_handle,
-    struct hailo_descriptors_list *descriptors);
-void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list *descriptors);
-struct hailo_descriptors_list* hailo_vdma_get_descriptors_buffer(struct hailo_vdma_file_context *context,
+    bool is_circular, struct hailo_descriptors_list_buffer *descriptors);
+void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list_buffer *descriptors);
+struct hailo_descriptors_list_buffer* hailo_vdma_get_descriptors_buffer(struct hailo_vdma_file_context *context,
     uintptr_t desc_handle);
 void hailo_vdma_clear_descriptors_buffer_list(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller);

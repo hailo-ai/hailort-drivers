@@ -6,9 +6,11 @@
 #ifndef _HAILO_COMMON_VDMA_COMMON_H_
 #define _HAILO_COMMON_VDMA_COMMON_H_
 
-#include "types.h"
 #include "hailo_resource.h"
 #include "utils.h"
+
+#include <linux/types.h>
+#include <linux/scatterlist.h>
 
 #define VDMA_DESCRIPTOR_LIST_ALIGN  (1 << 16)
 #define INVALID_VDMA_ADDRESS        (0)
@@ -23,6 +25,12 @@ struct hailo_vdma_descriptor {
     uint32_t    AddrL_rsvd_DataID;
     uint32_t    AddrH;
     uint32_t    RemainingPageSize_Status;
+};
+
+struct hailo_vdma_descriptors_list {
+    struct hailo_vdma_descriptor *desc_list;
+    uint32_t                      desc_count;  // Must be power of 2 if is_circular is set.
+    bool                          is_circular;
 };
 
 struct hailo_channel_interrupt_timestamp_list {
@@ -53,6 +61,15 @@ struct hailo_vdma_engine {
         channel, channel_index)
 
 void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *descriptor, uint64_t dma_address, size_t page_size,
+    uint8_t data_id);
+
+typedef uint64_t (*encode_desc_dma_address_t)(dma_addr_t dma_address, uint8_t channel_id);
+
+int hailo_vdma_program_descriptors_list(
+    struct hailo_desc_list_bind_vdma_buffer_params *params,
+    struct hailo_vdma_descriptors_list *desc_list,
+    struct sg_table *buffer,
+    encode_desc_dma_address_t address_encoder,
     uint8_t data_id);
 
 int hailo_vdma_channel_read_register(struct hailo_vdma_channel_read_register_params *params,

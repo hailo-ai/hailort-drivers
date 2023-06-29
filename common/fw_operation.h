@@ -6,12 +6,7 @@
 #ifndef _HAILO_COMMON_FIRMWARE_OPERATION_H_
 #define _HAILO_COMMON_FIRMWARE_OPERATION_H_
 
-#include "types.h"
 #include "hailo_resource.h"
-
-#ifdef __linux__
-#include "utils/compact.h"
-#endif // ifdef __linux__
 
 #define DEBUG_BUFFER_TOTAL_SIZE (4*1024)
 
