@@ -6,6 +6,8 @@
 #ifndef _HAILO_DRIVER_UTILS_H_
 #define _HAILO_DRIVER_UTILS_H_
 
+#include <linux/bitops.h>
+
 #define hailo_clear_bit(bit, pval)  { *(pval) &= ~(1 << bit); }
 #define hailo_test_bit(pos,var_addr)  ((*var_addr) & (1<<(pos)))
 

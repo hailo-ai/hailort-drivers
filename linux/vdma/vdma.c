@@ -10,6 +10,7 @@
 #include "ioctl.h"
 #include "utils/logs.h"
 
+#include <linux/sched.h>
 
 static struct hailo_vdma_engine* init_vdma_engines(struct device *dev,
     struct hailo_resource *channel_registers_per_engine, size_t engines_count)
@@ -221,7 +222,7 @@ long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma
 }
 
 static int desc_list_mmap(struct hailo_vdma_controller *controller,
-    struct hailo_descriptors_list *vdma_descriptors_buffer, struct vm_area_struct *vma)
+    struct hailo_descriptors_list_buffer *vdma_descriptors_buffer, struct vm_area_struct *vma)
 {
     int err = 0;
     unsigned long vsize = vma->vm_end - vma->vm_start;
@@ -313,7 +314,7 @@ static int continuous_buffer_mmap(struct hailo_vdma_controller *controller,
 int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     struct vm_area_struct *vma, uintptr_t vdma_handle)
 {
-    struct hailo_descriptors_list *vdma_descriptors_buffer = NULL;
+    struct hailo_descriptors_list_buffer *vdma_descriptors_buffer = NULL;
     struct hailo_vdma_low_memory_buffer *low_memory_buffer = NULL;
     struct hailo_vdma_continuous_buffer *continuous_buffer = NULL;
 
@@ -330,22 +331,6 @@ int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_c
     else {
         hailo_dev_err(controller->dev, "Can't mmap vdma handle: %llu (not existing)\n", (uint64_t)vdma_handle);
         return -EINVAL;
-    }
-}
-
-uint8_t hailo_vdma_get_channel_id(uint8_t channel_index)
-{
-    if (channel_index < VDMA_DEST_CHANNELS_START) {
-        // H2D channel
-        return channel_index;
-    }
-    else if ((channel_index >= VDMA_DEST_CHANNELS_START) && 
-             (channel_index < MAX_VDMA_CHANNELS_PER_ENGINE)) {
-        // D2H channel
-        return channel_index - VDMA_DEST_CHANNELS_START;
-    }
-    else {
-        return INVALID_VDMA_CHANNEL;
     }
 }
 

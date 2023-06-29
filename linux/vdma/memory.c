@@ -10,6 +10,7 @@
 
 #include <linux/slab.h>
 #include <linux/scatterlist.h>
+#include <linux/sched.h>
 
 
 #define SGL_MAX_SEGMENT_SIZE 	(0x10000)
@@ -83,8 +84,8 @@ void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *co
 }
 
 
-int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintptr_t desc_handle,
-    struct hailo_descriptors_list *descriptors)
+int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintptr_t desc_handle, bool is_circular,
+    struct hailo_descriptors_list_buffer *descriptors)
 {
     size_t buffer_size = 0;
     const u64 align = VDMA_DESCRIPTOR_LIST_ALIGN; //First addr must be aligned on 64 KB  (from the VDMA registers documentation)
@@ -101,22 +102,25 @@ int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintp
         return -ENOMEM;
     }
 
-    descriptors->desc_count = descriptors_count;
     descriptors->buffer_size = buffer_size;
     descriptors->handle = desc_handle;
+
+    descriptors->desc_list.desc_list = descriptors->kernel_address;
+    descriptors->desc_list.desc_count = descriptors_count;
+    descriptors->desc_list.is_circular = is_circular;
 
     return 0;
 }
 
-void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list *descriptors)
+void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list_buffer *descriptors)
 {
     dma_free_coherent(dev, descriptors->buffer_size, descriptors->kernel_address, descriptors->dma_address);
 }
 
-struct hailo_descriptors_list* hailo_vdma_get_descriptors_buffer(struct hailo_vdma_file_context *context,
+struct hailo_descriptors_list_buffer* hailo_vdma_get_descriptors_buffer(struct hailo_vdma_file_context *context,
     uintptr_t desc_handle)
 {
-    struct hailo_descriptors_list *cur = NULL;
+    struct hailo_descriptors_list_buffer *cur = NULL;
     list_for_each_entry(cur, &context->descriptors_buffer_list, descriptors_buffer_list) {
         if (cur->handle == desc_handle) {
             return cur;
@@ -128,7 +132,7 @@ struct hailo_descriptors_list* hailo_vdma_get_descriptors_buffer(struct hailo_vd
 void hailo_vdma_clear_descriptors_buffer_list(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller)
 {
-    struct hailo_descriptors_list *cur = NULL, *next = NULL;
+    struct hailo_descriptors_list_buffer *cur = NULL, *next = NULL;
     list_for_each_entry_safe(cur, next, &context->descriptors_buffer_list, descriptors_buffer_list) {
         list_del(&cur->descriptors_buffer_list);
         hailo_desc_list_release(controller->dev, cur);
@@ -226,7 +230,7 @@ int hailo_vdma_continuous_buffer_alloc(struct device *dev, size_t size,
 
     kernel_address = dma_alloc_coherent(dev, size, &dma_address, GFP_KERNEL);
     if (NULL == kernel_address) {
-        dev_err(dev, "Failed to allocate continuous buffer, size 0x%zx. This failure means there is not a sufficient amount of CMA memory "
+        dev_warn(dev, "Failed to allocate continuous buffer, size 0x%zx. This failure means there is not a sufficient amount of CMA memory "
             "(contiguous physical memory), This usually is caused by lack of general system memory. Please check you have sufficent memory.\n", size);
         return -ENOMEM;
     }

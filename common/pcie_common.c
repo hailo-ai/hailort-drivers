@@ -6,6 +6,11 @@
 #include "pcie_common.h"
 #include "fw_operation.h"
 
+#include <linux/errno.h>
+#include <linux/bug.h>
+#include <linux/delay.h>
+#include <linux/kernel.h>
+
 
 #define BCS_ISTATUS_HOST (0x018C)
 #define BCS_SOURCE_INTERRUPT_PER_CHANNEL (0x400)
@@ -567,6 +572,13 @@ int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct ha
     default:
         return -EINVAL;
     }
+}
+
+// On PCIe, just return the address
+uint64_t hailo_pcie_encode_dma_address(dma_addr_t dma_address, uint8_t channel_id)
+{
+    (void)channel_id;
+    return (uint64_t)dma_address;
 }
 
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources)

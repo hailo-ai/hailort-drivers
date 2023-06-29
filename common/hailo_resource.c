@@ -5,40 +5,11 @@
 
 #include "hailo_resource.h"
 
-// TODO: HRT-6137 - Change defined(__QNX__) to ifdef for POSIX 
-#if defined(_MSC_VER) || defined(__QNX__)
+#include <linux/io.h>
+#include <linux/errno.h>
+#include <linux/types.h>
+#include <linux/kernel.h>
 
-static uint8_t ioread8(volatile void* src)
-{
-    return *(volatile uint8_t*)src;
-}
-
-static uint16_t ioread16(volatile void* src)
-{
-    return *(volatile uint16_t*)src;
-}
-
-static uint32_t ioread32(volatile void* src)
-{
-    return *(volatile uint32_t*)src;
-}
-
-static void iowrite8(uint8_t value, volatile void* dest)
-{
-    *(volatile uint8_t*)dest = value;
-}
-
-static void iowrite16(uint16_t value, volatile void* dest)
-{
-    *(volatile uint16_t*)dest = value;
-}
-
-static void iowrite32(uint32_t value, volatile void* dest)
-{
-    *(volatile uint32_t *)dest = value;
-}
-
-#endif
 
 uint8_t hailo_resource_read8(struct hailo_resource *resource, size_t offset)
 {

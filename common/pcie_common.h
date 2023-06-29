@@ -7,11 +7,12 @@
 #define _HAILO_COMMON_PCIE_COMMON_H_
 
 #include "hailo_resource.h"
-#include "types.h"
 #include "hailo_ioctl_common.h"
 #include "fw_validation.h"
 #include "fw_operation.h"
 #include "utils.h"
+
+#include <linux/types.h>
 
 #ifdef __linux__
 #include <linux/delay.h>
@@ -127,6 +128,8 @@ const char* hailo_pcie_get_fw_filename(const enum hailo_board_type board_type);
 
 long hailo_pcie_read_firmware_log(struct hailo_pcie_resources *resources, struct hailo_read_log_params *params);
 int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct hailo_memory_transfer_params *params);
+
+uint64_t hailo_pcie_encode_dma_address(dma_addr_t dma_address, uint8_t channel_id);
 
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources);
 

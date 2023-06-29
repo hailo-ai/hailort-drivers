@@ -6,7 +6,8 @@
 #ifndef _HAILO_COMMON_HAILO_RESOURCE_H_
 #define _HAILO_COMMON_HAILO_RESOURCE_H_
 
-#include "types.h"
+#include "hailo_ioctl_common.h"
+
 
 struct hailo_resource {
     uintptr_t   address;

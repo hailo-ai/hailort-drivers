@@ -5,6 +5,11 @@
 
 #include "fw_operation.h"
 
+#include <linux/errno.h>
+#include <linux/types.h>
+#include <linux/kernel.h>
+#include <linux/bug.h>
+
 typedef struct {
     uint32_t host_offset;
     uint32_t chip_offset;

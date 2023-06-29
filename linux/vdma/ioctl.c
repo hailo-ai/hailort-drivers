@@ -322,7 +322,7 @@ long hailo_vdma_buffer_unmap_ioctl(struct hailo_vdma_file_context *context, stru
 static void hailo_vdma_sync_entire_buffer(struct hailo_vdma_buffer_sync_params *sync_info,
     struct hailo_vdma_buffer *mapped_buffer, struct hailo_vdma_controller *controller)
 {
-    if (sync_info->sync_type == HAILO_SYNC_FOR_HOST) {
+    if (sync_info->sync_type == HAILO_SYNC_FOR_CPU) {
         dma_sync_sg_for_cpu(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
             mapped_buffer->data_direction);
     } else {
@@ -338,7 +338,7 @@ static void hailo_vdma_sync_buffer_interval(struct hailo_vdma_buffer_sync_params
 {
     unsigned long sync_start_offset = sync_info->offset;
     unsigned long sync_end_offset = sync_start_offset + sync_info->count;
-    dma_sync_single_callback dma_sync_single = (sync_info->sync_type == HAILO_SYNC_FOR_HOST) ? dma_sync_single_for_cpu :
+    dma_sync_single_callback dma_sync_single = (sync_info->sync_type == HAILO_SYNC_FOR_CPU) ? dma_sync_single_for_cpu :
         dma_sync_single_for_device;
     struct scatterlist* sg_entry = NULL;
     unsigned long offset = 0;
@@ -371,9 +371,8 @@ long hailo_vdma_buffer_sync(struct hailo_vdma_file_context *context, struct hail
         return -EINVAL;
     }
 
-    if (!(sync_info.sync_type == HAILO_SYNC_FOR_HOST && hailo_buffer_from_device(mapped_buffer)) &&
-        !(sync_info.sync_type == HAILO_SYNC_FOR_DEVICE && hailo_buffer_to_device(mapped_buffer))) {
-            hailo_dev_err(controller->dev, "Invalid direction given for vdma buffer sync.\n");
+    if ((sync_info.sync_type != HAILO_SYNC_FOR_CPU) && (sync_info.sync_type != HAILO_SYNC_FOR_DEVICE)) {
+            hailo_dev_err(controller->dev, "Invalid sync_type given for vdma buffer sync.\n");
             return -EINVAL;
     }
 
@@ -396,7 +395,7 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
     unsigned long arg)
 {
     struct hailo_desc_list_create_params create_descriptors_info;
-    struct hailo_descriptors_list *descriptors_buffer = NULL;
+    struct hailo_descriptors_list_buffer *descriptors_buffer = NULL;
     uintptr_t next_handle = 0;
     long err = -EINVAL;
 
@@ -405,8 +404,8 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
         return -EFAULT;
     }
 
-    if (!is_powerof2(create_descriptors_info.desc_count)) {
-        hailo_dev_err(controller->dev, "Invalid desc count given : %zu , must be power of 2\n",
+    if (create_descriptors_info.is_circular && !is_powerof2(create_descriptors_info.desc_count)) {
+        hailo_dev_err(controller->dev, "Invalid desc count given : %zu , circular descriptors count must be power of 2\n",
             create_descriptors_info.desc_count);
         return -EINVAL;
     }
@@ -422,7 +421,7 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
     next_handle = hailo_get_next_vdma_handle(context);
 
     err = hailo_desc_list_create(controller->dev, create_descriptors_info.desc_count, next_handle,
-        descriptors_buffer);
+        create_descriptors_info.is_circular, descriptors_buffer);
     if (err < 0) {
         hailo_dev_err(controller->dev, "failed to allocate descriptors buffer\n");
         kfree(descriptors_buffer);
@@ -453,7 +452,7 @@ long hailo_desc_list_release_ioctl(struct hailo_vdma_file_context *context, stru
     unsigned long arg)
 {
     uintptr_t desc_handle = 0;
-    struct hailo_descriptors_list *descriptors_buffer = NULL;
+    struct hailo_descriptors_list_buffer *descriptors_buffer = NULL;
 
     if (copy_from_user(&desc_handle, (void __user*)arg, sizeof(uintptr_t))) {
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
@@ -477,32 +476,15 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
 {
     struct hailo_desc_list_bind_vdma_buffer_params configure_info;
     struct hailo_vdma_buffer *mapped_buffer = NULL;
-    struct hailo_descriptors_list *descriptors_buffer = NULL;
-    struct hailo_vdma_descriptor *dma_desc = NULL;
-    uint8_t channel_id;
+    struct hailo_descriptors_list_buffer *descriptors_buffer = NULL;
     const uint8_t data_id = controller->ops->get_dma_data_id();
-    uint32_t desc_index = 0;
-    uint32_t desc_in_sg = 0;
-    dma_addr_t desc_buffer_addr = 0;
-    uint64_t encoded_addr = 0;
-    uint32_t desc_per_sg = 0;
-    struct scatterlist *sg_entry = NULL;
-    int i = 0;
+
+    // TODO HRT-9946 validate if not circular desc list
 
     if (copy_from_user(&configure_info, (void __user*)arg, sizeof(configure_info))) {
         hailo_dev_err(controller->dev, "copy from user fail\n");
         return -EFAULT;
     }
-
-    if (!is_powerof2(configure_info.desc_page_size)) {
-        hailo_dev_err(controller->dev, "invalid desc_page_size - %u (must be a power of two)\n",
-            configure_info.desc_page_size);
-        return -EFAULT;
-    }
-
-    // On hailo8, we allow channel_id may be INVALID_VDMA_CHANNEL.
-    channel_id = hailo_vdma_get_channel_id(configure_info.channel_index);
-
     hailo_dev_info(controller->dev, "config buffer_handle=%zu desc_handle=%llu starting_desc=%u\n",
         configure_info.buffer_handle, (uint64_t)configure_info.desc_handle, configure_info.starting_desc);
 
@@ -513,39 +495,12 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
         return -EFAULT;
     }
 
-    if (configure_info.starting_desc >= descriptors_buffer->desc_count) {
-        hailo_dev_err(controller->dev, "invalid starting_desc - %u (must be smaller than desc_count %u)\n",
-            configure_info.starting_desc, descriptors_buffer->desc_count);
-        return -EFAULT;
-    }
-
-    if (descriptors_buffer->desc_count * configure_info.desc_page_size < mapped_buffer->size) {
-        hailo_dev_err(controller->dev, "descriptor list should be big enough (max size %u, user actual size %u)\n",
-            descriptors_buffer->desc_count * configure_info.desc_page_size, mapped_buffer->size);
-        return -EINVAL;
-    }
-
-    dma_desc = (struct hailo_vdma_descriptor*)descriptors_buffer->kernel_address;
-    desc_index = configure_info.starting_desc;
-    for_each_sg(mapped_buffer->sg_table.sgl, sg_entry, mapped_buffer->sg_table.nents, i) {
-        desc_per_sg = DIV_ROUND_UP(sg_dma_len(sg_entry), configure_info.desc_page_size);
-        desc_buffer_addr = sg_dma_address(sg_entry);
-        for (desc_in_sg = 0; desc_in_sg < desc_per_sg; desc_in_sg++) {
-            encoded_addr = controller->ops->encode_desc_dma_address(desc_buffer_addr, channel_id);
-            if (INVALID_VDMA_ADDRESS == encoded_addr) {
-                hailo_dev_err(controller->dev, "Failed encoding dma address %pad for channel %u\n",
-                    &desc_buffer_addr, configure_info.channel_index);
-                return -EINVAL;
-            }
-
-            hailo_vdma_program_descriptor(&dma_desc[desc_index % descriptors_buffer->desc_count], encoded_addr,
-                configure_info.desc_page_size, data_id);
-
-            desc_buffer_addr += configure_info.desc_page_size;
-            desc_index++;
-        }
-    }
-    return 0;
+    return hailo_vdma_program_descriptors_list(&configure_info,
+        &descriptors_buffer->desc_list,
+        &mapped_buffer->sg_table,
+        controller->ops->encode_desc_dma_address,
+        data_id
+    );
 }
 
 long hailo_vdma_low_memory_buffer_alloc_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
@@ -653,7 +608,6 @@ long hailo_vdma_continuous_buffer_alloc_ioctl(struct hailo_vdma_file_context *co
     err = hailo_vdma_continuous_buffer_alloc(controller->dev, aligned_buffer_size, continuous_buffer);
     if (err < 0) {
         kfree(continuous_buffer);
-        hailo_dev_err(controller->dev, "failed allocating continuous buffer\n");
         return err;
     }
 

@@ -5,6 +5,13 @@
 
 #include "vdma_common.h"
 
+#include <linux/errno.h>
+#include <linux/bug.h>
+#include <linux/circ_buf.h>
+#include <linux/ktime.h>
+#include <linux/timekeeping.h>
+#include <linux/kernel.h>
+
 
 #define CHANNEL_BASE_OFFSET(channel_index, direction) (((direction) == HAILO_DMA_TO_DEVICE) ? \
     (((channel_index) << 5) + 0x0) : (((channel_index) << 5) + 0x10))
@@ -56,6 +63,11 @@
     CIRC_SPACE((timestamp_list).head, (timestamp_list).tail, CHANNEL_IRQ_TIMESTAMPS_SIZE)
 #define TIMESTAMPS_CIRC_CNT(timestamp_list) \
     CIRC_CNT((timestamp_list).head, (timestamp_list).tail, CHANNEL_IRQ_TIMESTAMPS_SIZE)
+
+#ifndef for_each_sgtable_dma_sg
+#define for_each_sgtable_dma_sg(sgt, sg, i)	\
+    for_each_sg((sgt)->sgl, sg, (sgt)->nents, i)
+#endif /* for_each_sgtable_dma_sg */
 
 // control_reg_value is an inout param
 static void hailo_vdma_channel_pause(struct hailo_resource *vdma_registers, size_t control_reg_addr, u8 *control_reg_value)
@@ -162,6 +174,79 @@ void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *descriptor, uin
     descriptor->AddrL_rsvd_DataID = (uint32_t)(((dma_address & DESCRIPTOR_ADDR_L_MASK)) | data_id);
     descriptor->AddrH = (uint32_t)(dma_address >> 32);
     descriptor->RemainingPageSize_Status = 0 ;
+}
+
+static uint8_t get_channel_id(uint8_t channel_index)
+{
+    if (channel_index < VDMA_DEST_CHANNELS_START) {
+        // H2D channel
+        return channel_index;
+    }
+    else if ((channel_index >= VDMA_DEST_CHANNELS_START) && 
+             (channel_index < MAX_VDMA_CHANNELS_PER_ENGINE)) {
+        // D2H channel
+        return channel_index - VDMA_DEST_CHANNELS_START;
+    }
+    else {
+        return INVALID_VDMA_CHANNEL;
+    }
+}
+
+int hailo_vdma_program_descriptors_list(
+    struct hailo_desc_list_bind_vdma_buffer_params *params,
+    struct hailo_vdma_descriptors_list *desc_list,
+    struct sg_table *buffer,
+    encode_desc_dma_address_t address_encoder,
+    uint8_t data_id)
+{
+    struct hailo_vdma_descriptor *dma_desc = NULL;
+    const uint8_t channel_id = get_channel_id(params->channel_index);
+    uint32_t desc_index = 0;
+    uint32_t max_desc_index = 0;
+    uint32_t desc_in_sg = 0;
+    dma_addr_t desc_buffer_addr = 0;
+    uint64_t encoded_addr = 0;
+    uint32_t desc_per_sg = 0;
+    struct scatterlist *sg_entry = NULL;
+    unsigned int i = 0;
+
+    if (!is_powerof2(params->desc_page_size)) {
+        return -EFAULT;
+    }
+
+    if (params->starting_desc >= desc_list->desc_count) {
+        return -EFAULT;
+    }
+
+    // On circular buffer, allow programming  desc_count descriptors (starting
+    // from starting_desc). On non circular, don't allow is to pass desc_count
+    max_desc_index = desc_list->is_circular ?
+        params->starting_desc + desc_list->desc_count - 1 :
+        desc_list->desc_count - 1;
+    desc_index = params->starting_desc;
+    for_each_sgtable_dma_sg(buffer, sg_entry, i) {
+        desc_per_sg = DIV_ROUND_UP(sg_dma_len(sg_entry), params->desc_page_size);
+        desc_buffer_addr = sg_dma_address(sg_entry);
+        for (desc_in_sg = 0; desc_in_sg < desc_per_sg; desc_in_sg++) {
+            if (desc_index > max_desc_index) {
+                return -ERANGE;
+            }
+
+            encoded_addr = address_encoder(desc_buffer_addr, channel_id);
+            if (INVALID_VDMA_ADDRESS == encoded_addr) {
+                return -EFAULT;
+            }
+
+            dma_desc = &desc_list->desc_list[desc_index % desc_list->desc_count];
+            hailo_vdma_program_descriptor(dma_desc, encoded_addr,
+                params->desc_page_size, data_id);
+
+            desc_buffer_addr += params->desc_page_size;
+            desc_index++;
+        }
+    }
+
+    return 0;
 }
 
 static void hailo_vdma_push_timestamp(struct hailo_channel_interrupt_timestamp_list *timestamp_list,

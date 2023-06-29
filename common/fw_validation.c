@@ -3,9 +3,9 @@
  * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
  **/
 
-#include "types.h"
-
 #include "fw_validation.h"
+#include <linux/errno.h>
+#include <linux/types.h>
 
 
 
