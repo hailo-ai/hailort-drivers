@@ -10,4 +10,10 @@ modules.order
 *.mod
 *.mod.cmd
 
-linux/pcie/build
+linux/*/build
+linux/*/oe-workdir
+linux/*/oe-logs
+
+win/x64
+win/driver/x64
+win/test/x64

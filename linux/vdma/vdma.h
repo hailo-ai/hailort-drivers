@@ -30,8 +30,12 @@
 
 struct hailo_vdma_buffer {
     struct list_head            mapped_user_buffer_list;
-    void __user                 *user_address;
     size_t                      handle;
+
+    struct kref                 kref;
+    struct device               *device;
+
+    void __user                 *user_address;
     uint32_t                    size;
     enum dma_data_direction     data_direction;
     struct sg_table             sg_table;
@@ -131,5 +135,6 @@ int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_c
     struct vm_area_struct *vma, uintptr_t vdma_handle);
 
 enum dma_data_direction get_dma_direction(enum hailo_dma_data_direction hailo_direction);
+void hailo_vdma_disable_vdma_channels(struct hailo_vdma_controller *controller, const bool should_close_channels);
 
 #endif /* _HAILO_VDMA_VDMA_H_ */
