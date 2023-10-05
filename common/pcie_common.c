@@ -115,6 +115,33 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
             .address = 0,
             .max_size = 0,
         },
+    },
+    // HRT-11344 : none of these matter except raise_ready_offset seeing as we load fw seperately - not through driver
+    // After implementing bootloader put correct values here
+    [HAILO_BOARD_TYPE_PLUTO] = {
+        .fw_addresses = {
+            .boot_fw_header = 0x88000,
+            .boot_fw_trigger = 0x88c98,
+            .boot_key_cert = 0x88018,
+            .boot_cont_cert = 0x886a8,
+            .app_fw_code_ram_base = 0x20000,
+            .core_code_ram_base = 0x60000,
+            .core_fw_header = 0xC0000,
+            .atr0_trsl_addr1 = 0x000BE000,
+            // NOTE: After they update hw consts - check register fw_access_interrupt_w1s of pcie_config
+            .raise_ready_offset = 0x174c,
+        },
+        .fw_filename = "hailo/pluto_fw.bin",
+        .board_cfg = {
+            .filename = NULL,
+            .address = 0,
+            .max_size = 0,
+        },
+        .fw_cfg = {
+            .filename = NULL,
+            .address = 0,
+            .max_size = 0,
+        },
     }
 };
 
@@ -192,6 +219,15 @@ int hailo_pcie_read_firmware_control(struct hailo_pcie_resources *resources, str
         command->buffer_len, &command->buffer);
     
     return 0;
+}
+
+void hailo_pcie_write_firmware_driver_shutdown(struct hailo_pcie_resources *resources)
+{
+    const struct hailo_fw_addresses *fw_addresses = &(compat[resources->board_type].fw_addresses);
+    const uint32_t fw_access_value = FW_ACCESS_DRIVER_SHUTDOWN_MASK;
+
+    // Write shutdown flag to FW
+    hailo_resource_write32(&resources->fw_access, fw_addresses->raise_ready_offset, fw_access_value);
 }
 
 int hailo_pcie_read_firmware_notification(struct hailo_pcie_resources *resources,
@@ -486,8 +522,8 @@ void hailo_pcie_enable_interrupts(struct hailo_pcie_resources *resources)
     hailo_resource_write32(&resources->config, BCS_ISTATUS_HOST, 0xFFFFFFFF);
     hailo_resource_write32(&resources->config, BCS_DESTINATION_INTERRUPT_PER_CHANNEL, 0xFFFFFFFF);
     hailo_resource_write32(&resources->config, BCS_SOURCE_INTERRUPT_PER_CHANNEL, 0xFFFFFFFF);
-    
-    mask |= BCS_ISTATUS_HOST_FW_IRQ_CONTROL_MASK | BCS_ISTATUS_HOST_FW_IRQ_NOTIFICATION;
+
+    mask |= BCS_ISTATUS_HOST_FW_IRQ_CONTROL_MASK | BCS_ISTATUS_HOST_FW_IRQ_NOTIFICATION | BCS_ISTATUS_HOST_DRIVER_DOWN;
     hailo_resource_write32(&resources->config, BSC_IMASK_HOST, mask);
 }
 

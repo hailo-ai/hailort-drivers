@@ -89,15 +89,6 @@ static inline struct scatterlist *sg_alloc_table_from_pages_segment_compat(struc
 }
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 5, 0)
-#define dma_capable_compat(dev, addr, size, is_ram) dma_capable(dev, addr, size, is_ram)
-// Case for Rasberry Pie kernel versions 5.4.83 <=> 5.5.0 - do not follow other linux conventions regarding dma_capable
-#elif defined(HAILO_RASBERRY_PIE) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 83)
-#define dma_capable_compat(dev, addr, size, is_ram) dma_capable(dev, addr, size, is_ram)
-#else
-#define dma_capable_compat(dev, addr, size, is_ram) dma_capable(dev, addr, size)
-#endif
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 5, 0, 0 )
 #define compatible_access_ok(a,b,c) access_ok(b, c)
 #else
@@ -122,5 +113,34 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 
 #define kvfree vfree
 #endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+static inline bool is_dma_capable(struct device *dev, dma_addr_t dma_addr, size_t size)
+{
+// Case for Rasberry Pie kernel versions 5.4.83 <=> 5.5.0 - already changed bus_dma_mask -> bus_dma_limit
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 5, 0)) || (defined(HAILO_RASBERRY_PIE) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 83))
+    const u64 bus_dma_limit = dev->bus_dma_limit;
+#else
+    const u64 bus_dma_limit = dev->bus_dma_mask;
+#endif
+
+    return (dma_addr <= min_not_zero(*dev->dma_mask, bus_dma_limit));
+}
+#else
+static inline bool is_dma_capable(struct device *dev, dma_addr_t dma_addr, size_t size)
+{
+    // Implementation of dma_capable from linux kernel
+    const u64 bus_dma_limit = (*dev->dma_mask + 1) & ~(*dev->dma_mask);
+	if (bus_dma_limit && size > bus_dma_limit) {
+        return false;
+    }
+
+	if ((dma_addr | (dma_addr + size - 1)) & ~(*dev->dma_mask)) {
+        return false;
+    }
+
+    return true;
+}
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
 
 #endif /* _HAILO_PCI_COMPACT_H_ */

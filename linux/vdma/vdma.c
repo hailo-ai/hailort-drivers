@@ -119,33 +119,16 @@ void hailo_vdma_engine_interrupts_disable(struct hailo_vdma_controller *controll
         engine_index, channels_bitmap);
 }
 
-static void disable_channels_per_engine(struct hailo_vdma_controller *controller, struct hailo_vdma_engine *engine,
-    size_t engine_index)
-{
-    int err = -EINVAL;
-    const u32 channels_bitmap = 0xFFFFFFFF; // disable all
-
-    hailo_vdma_engine_interrupts_disable(controller, engine, engine_index, channels_bitmap);
-
-    err = hailo_vdma_engine_stop_all_channels(engine);
-    if (err < 0) {
-        hailo_dev_err(controller->dev, "stop engine %zu failed %d", engine_index, err);
-    }
-}
-
 void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller, struct file *filp)
 {
     size_t engine_index = 0;
     struct hailo_vdma_engine *engine = NULL;
+    const u32 channels_bitmap = 0xFFFFFFFF; // disable all channel interrupts
 
-    // TODO: Use controller->used_by_filp to guard creation of vdma resources (or at least vdma channels).
-    //       Currently we can guarantee that only one filp has access to vdma resources  
-    //       due to user-mode flow in libhailort (HRT-8490)
     if (filp == controller->used_by_filp) {
-        // If the current filp isn't marked as the "vdma user" (via used_by_filp), we won't close the vdma channels
         for_each_vdma_engine(controller, engine, engine_index) {
-            disable_channels_per_engine(controller, engine, engine_index);
+            hailo_vdma_engine_interrupts_disable(controller, engine, engine_index, channels_bitmap);
         }
     }
 
@@ -319,13 +302,13 @@ int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_c
     struct hailo_vdma_continuous_buffer *continuous_buffer = NULL;
 
     hailo_dev_info(controller->dev, "Map vdma_handle %llu\n", (uint64_t)vdma_handle);
-    if (NULL != (vdma_descriptors_buffer = hailo_vdma_get_descriptors_buffer(context, vdma_handle))) {
+    if (NULL != (vdma_descriptors_buffer = hailo_vdma_find_descriptors_buffer(context, vdma_handle))) {
         return desc_list_mmap(controller, vdma_descriptors_buffer, vma);
     }
-    else if (NULL != (low_memory_buffer = hailo_vdma_get_low_memory_buffer(context, vdma_handle))) {
+    else if (NULL != (low_memory_buffer = hailo_vdma_find_low_memory_buffer(context, vdma_handle))) {
         return low_memory_buffer_mmap(controller, low_memory_buffer, vma);
     }
-    else if (NULL != (continuous_buffer = hailo_vdma_get_continuous_buffer(context, vdma_handle))) {
+    else if (NULL != (continuous_buffer = hailo_vdma_find_continuous_buffer(context, vdma_handle))) {
         return continuous_buffer_mmap(controller, continuous_buffer, vma);
     }
     else {

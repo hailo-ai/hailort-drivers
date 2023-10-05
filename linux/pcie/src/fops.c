@@ -47,6 +47,12 @@
 // On pcie driver there is only one dma engine
 #define DEFAULT_VDMA_ENGINE_INDEX       (0)
 
+#if !defined(HAILO_EMULATOR)
+#define DEFAULT_SHUTDOWN_TIMEOUT_MS (5)
+#else /* !defined(HAILO_EMULATOR) */
+#define DEFAULT_SHUTDOWN_TIMEOUT_MS (1000)
+#endif /* !defined(HAILO_EMULATOR) */
+
 static long hailo_add_notification_wait(struct hailo_pcie_board *board, struct file *filp);
 
 static struct hailo_file_context *create_file_context(struct hailo_pcie_board *board, struct file *filp)
@@ -60,11 +66,13 @@ static struct hailo_file_context *create_file_context(struct hailo_pcie_board *b
     context->filp = filp;
     hailo_vdma_file_context_init(&context->vdma_context);
     list_add(&context->open_files_list, &board->open_files_list);
+    context->is_valid = true;
     return context;
 }
 
 static void release_file_context(struct hailo_file_context *context)
 {
+    context->is_valid = false;
     list_del(&context->open_files_list);
     kfree(context);
 }
@@ -171,6 +179,34 @@ l_exit:
     return err;
 }
 
+int hailo_pcie_driver_down(struct hailo_pcie_board *board)
+{
+    long completion_result = 0;
+    int err = 0;
+
+    reinit_completion(&board->driver_down.reset_completed);
+
+    hailo_pcie_write_firmware_driver_shutdown(&board->pcie_resources);
+
+    // Wait for response
+    completion_result =
+        wait_for_completion_timeout(&board->driver_down.reset_completed, msecs_to_jiffies(DEFAULT_SHUTDOWN_TIMEOUT_MS));
+    if (completion_result <= 0) {
+        if (0 == completion_result) {
+            hailo_err(board, "hailo_pcie_driver_down, timeout waiting for shutdown response (timeout_ms=%d)\n", DEFAULT_SHUTDOWN_TIMEOUT_MS);
+            err = -ETIMEDOUT;
+        } else {
+            hailo_info(board, "hailo_pcie_driver_down, wait for completion failed with err=%ld (process was interrupted or killed)\n",
+                completion_result);
+            err = completion_result;
+        }
+        goto l_exit;
+    }
+
+l_exit:
+    return err;
+}
+
 int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
 {
     struct hailo_pcie_board *pBoard = (struct hailo_pcie_board *)filp->private_data;
@@ -194,7 +230,18 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
             return -EINVAL;
         }
 
+        if (false == context->is_valid) {
+            // File context is invalid, but open. It's OK to continue finalize and release it.
+            hailo_err(pBoard, "Invalid file context\n");
+        }
+
         hailo_pcie_clear_notification_wait_list(pBoard, filp);
+
+        if (filp == pBoard->vdma.used_by_filp) {
+            if (hailo_pcie_driver_down(pBoard)) {
+                hailo_err(pBoard, "Failed sending FW shutdown event");
+            }
+        }
 
         hailo_vdma_file_context_finalize(&context->vdma_context, &pBoard->vdma, filp);
         release_file_context(context);
@@ -330,6 +377,11 @@ irqreturn_t hailo_irqhandler(int irq, void *dev_id)
         // wake fw_control if needed
         if (irq_source.interrupt_bitmask & FW_CONTROL) {
             complete(&board->fw_control.completion);
+        }
+
+        // wake driver_down if needed
+        if (irq_source.interrupt_bitmask & DRIVER_DOWN) {
+            complete(&board->driver_down.reset_completed);
         }
 
         if (irq_source.interrupt_bitmask & FW_NOTIFICATION) {
@@ -495,7 +547,7 @@ int hailo_fw_control(struct hailo_pcie_board *pBoard, unsigned long arg, bool* s
 
     err = hailo_pcie_read_firmware_control(&pBoard->pcie_resources, command);
     if (err < 0) {
-        hailo_err(pBoard, "Failed writing fw control to pcie\n");
+        hailo_err(pBoard, "Failed reading fw control from pcie\n");
         goto l_exit;
     }
 
@@ -608,6 +660,13 @@ long hailo_pcie_fops_unlockedioctl(struct file* filp, unsigned int cmd, unsigned
     context = find_file_context(board, filp);
     if (NULL == context) {
         hailo_err(board, "Invalid driver state, file context does not exist\n");
+        up(&board->mutex);
+        return -EINVAL;
+    }
+
+    if (false == context->is_valid) {
+        hailo_err(board, "Invalid file context\n");
+        up(&board->mutex);
         return -EINVAL;
     }
 
@@ -661,6 +720,12 @@ int hailo_pcie_fops_mmap(struct file* filp, struct vm_area_struct *vma)
     if (NULL == context) {
         up(&board->mutex);
         hailo_err(board, "Invalid driver state, file context does not exist\n");
+        return -EINVAL;
+    }
+
+    if (false == context->is_valid) {
+        up(&board->mutex);
+        hailo_err(board, "Invalid file context\n");
         return -EINVAL;
     }
 

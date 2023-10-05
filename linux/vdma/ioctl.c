@@ -243,7 +243,6 @@ long hailo_vdma_buffer_map_ioctl(struct hailo_vdma_file_context *context, struct
 {
     struct hailo_vdma_buffer_map_params buf_info;
     struct hailo_vdma_buffer *mapped_buffer = NULL;
-    long err = -EFAULT;
     enum dma_data_direction direction = DMA_NONE;
     struct hailo_vdma_low_memory_buffer *low_memory_buffer = NULL;
 
@@ -261,34 +260,25 @@ long hailo_vdma_buffer_map_ioctl(struct hailo_vdma_file_context *context, struct
         return -EINVAL;
     }
 
-    mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
-    if (NULL == mapped_buffer) {
-        hailo_dev_err(controller->dev, "memory alloc failed\n");
-        return -ENOMEM;
+    low_memory_buffer = hailo_vdma_find_low_memory_buffer(context, buf_info.allocated_buffer_handle);
+
+    mapped_buffer = hailo_vdma_buffer_map(controller->dev,
+        buf_info.user_address, buf_info.size, direction, low_memory_buffer);
+    if (IS_ERR(mapped_buffer)) {
+        hailo_dev_err(controller->dev, "failed map buffer %px\n",
+            buf_info.user_address);
+        return PTR_ERR(mapped_buffer);
     }
 
-    low_memory_buffer = hailo_vdma_get_low_memory_buffer(context, buf_info.allocated_buffer_handle);
-
-    err = hailo_vdma_buffer_map(controller->dev, buf_info.user_address, buf_info.size, direction,
-        mapped_buffer, low_memory_buffer);
-    if (err < 0) {
-        kfree(mapped_buffer);
-        hailo_dev_err(controller->dev, "failed map buffer with handle %lu\n",
-            (long unsigned)buf_info.allocated_buffer_handle);
-        return err;
-    }
-
-    mapped_buffer->driver_buffer_handle = buf_info.allocated_buffer_handle;
     mapped_buffer->handle = atomic_inc_return(&context->last_vdma_user_buffer_handle);
-    list_add(&mapped_buffer->mapped_user_buffer_list, &context->mapped_user_buffer_list);
     buf_info.mapped_handle = mapped_buffer->handle;
     if (copy_to_user((void __user*)arg, &buf_info, sizeof(buf_info))) {
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
-        list_del(&mapped_buffer->mapped_user_buffer_list);
-        hailo_vdma_buffer_unmap(controller->dev, mapped_buffer);
-        kfree(mapped_buffer);
+        hailo_vdma_buffer_put(mapped_buffer);
         return -EFAULT;
     }
+
+    list_add(&mapped_buffer->mapped_user_buffer_list, &context->mapped_user_buffer_list);
     hailo_dev_info(controller->dev, "buffer %px (handle %zu) is mapped\n",
         buf_info.user_address, buf_info.mapped_handle);
     return 0;
@@ -307,15 +297,14 @@ long hailo_vdma_buffer_unmap_ioctl(struct hailo_vdma_file_context *context, stru
 
     hailo_dev_info(controller->dev, "unmap user buffer handle %zu\n", buffer_unmap_params.mapped_handle);
 
-    mapped_buffer = hailo_vdma_get_mapped_user_buffer(context, buffer_unmap_params.mapped_handle);
+    mapped_buffer = hailo_vdma_find_mapped_user_buffer(context, buffer_unmap_params.mapped_handle);
     if (mapped_buffer == NULL) {
         hailo_dev_warn(controller->dev, "buffer handle %zu not found\n", buffer_unmap_params.mapped_handle);
         return -EINVAL;
     }
 
     list_del(&mapped_buffer->mapped_user_buffer_list);
-    hailo_vdma_buffer_unmap(controller->dev, mapped_buffer);
-    kfree(mapped_buffer);
+    hailo_vdma_buffer_put(mapped_buffer);
     return 0;
 }
 
@@ -366,7 +355,7 @@ long hailo_vdma_buffer_sync(struct hailo_vdma_file_context *context, struct hail
         return -EFAULT;
     }
 
-    if (!(mapped_buffer = hailo_vdma_get_mapped_user_buffer(context, sync_info.handle))) {
+    if (!(mapped_buffer = hailo_vdma_find_mapped_user_buffer(context, sync_info.handle))) {
         hailo_dev_err(controller->dev, "buffer handle %zu doesn't exist\n", sync_info.handle);
         return -EINVAL;
     }
@@ -459,7 +448,7 @@ long hailo_desc_list_release_ioctl(struct hailo_vdma_file_context *context, stru
         return -EFAULT;
     }
 
-    descriptors_buffer = hailo_vdma_get_descriptors_buffer(context, desc_handle);
+    descriptors_buffer = hailo_vdma_find_descriptors_buffer(context, desc_handle);
     if (descriptors_buffer == NULL) {
         hailo_dev_warn(controller->dev, "not found desc handle %llu\n", (uint64_t)desc_handle);
         return -EINVAL;
@@ -488,8 +477,8 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
     hailo_dev_info(controller->dev, "config buffer_handle=%zu desc_handle=%llu starting_desc=%u\n",
         configure_info.buffer_handle, (uint64_t)configure_info.desc_handle, configure_info.starting_desc);
 
-    mapped_buffer = hailo_vdma_get_mapped_user_buffer(context, configure_info.buffer_handle);
-    descriptors_buffer = hailo_vdma_get_descriptors_buffer(context, configure_info.desc_handle);
+    mapped_buffer = hailo_vdma_find_mapped_user_buffer(context, configure_info.buffer_handle);
+    descriptors_buffer = hailo_vdma_find_descriptors_buffer(context, configure_info.desc_handle);
     if (mapped_buffer == NULL || descriptors_buffer == NULL) {
         hailo_dev_err(controller->dev, "invalid user/descriptors buffer\n");
         return -EFAULT;
@@ -551,7 +540,7 @@ long hailo_vdma_low_memory_buffer_free_ioctl(struct hailo_vdma_file_context *con
     struct hailo_vdma_low_memory_buffer *low_memory_buffer = NULL;
     uintptr_t buf_handle = (uintptr_t)arg;
 
-    low_memory_buffer = hailo_vdma_get_low_memory_buffer(context, buf_handle);
+    low_memory_buffer = hailo_vdma_find_low_memory_buffer(context, buf_handle);
     if (NULL == low_memory_buffer) {
         hailo_dev_warn(controller->dev, "vdma buffer handle %lx not found\n", buf_handle);
         return -EINVAL;
@@ -632,7 +621,7 @@ long hailo_vdma_continuous_buffer_free_ioctl(struct hailo_vdma_file_context *con
     struct hailo_vdma_continuous_buffer *continuous_buffer = NULL;
     uintptr_t buf_handle = (uintptr_t)arg;
 
-    continuous_buffer = hailo_vdma_get_continuous_buffer(context, buf_handle);
+    continuous_buffer = hailo_vdma_find_continuous_buffer(context, buf_handle);
     if (NULL == continuous_buffer) {
         hailo_dev_warn(controller->dev, "vdma buffer handle %lx not found\n", buf_handle);
         return -EINVAL;

@@ -27,7 +27,7 @@
 #include "sysfs.h"
 #include "utils/logs.h"
 #include "utils/compact.h"
-
+#include "vdma/vdma.h"
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION( 5, 4, 0 )
 #include <linux/pci-aspm.h>
@@ -425,8 +425,6 @@ int hailo_enable_interrupts(struct hailo_pcie_board *board)
         return -EINVAL;
     }
 
-    hailo_pcie_enable_interrupts(&board->pcie_resources);
-
     // TODO HRT-2253: use new api for enabling msi: (pci_alloc_irq_vectors)
     if ((err = pci_enable_msi(board->pDev))) {
         hailo_err(board, "Failed to enable MSI %d\n", err);
@@ -441,6 +439,8 @@ int hailo_enable_interrupts(struct hailo_pcie_board *board)
         return err;
     }
     hailo_info(board, "irq enabled %u\n", board->pDev->irq);
+
+    hailo_pcie_enable_interrupts(&board->pcie_resources);
 
     board->interrupts_enabled = true;
     return 0;
@@ -458,10 +458,10 @@ void hailo_disable_interrupts(struct hailo_pcie_board *board)
         return;
     }
 
+    board->interrupts_enabled = false;
     hailo_pcie_disable_interrupts(&board->pcie_resources);
     free_irq(board->pDev->irq, board);
     pci_disable_msi(board->pDev);
-    board->interrupts_enabled = false;
 }
 
 static int hailo_bar_iomap(struct pci_dev *pdev, int bar, struct hailo_resource *resource)
@@ -589,16 +589,38 @@ static int hailo_pcie_vdma_controller_init(struct hailo_vdma_controller *control
         &pcie_vdma_controller_ops, vdma_registers, engines_count);
 }
 
-// Function that allocates a page and sees if the 
-int hailo_get_allocation_mode(struct pci_dev *pdev, enum hailo_allocation_mode *allocation_mode)
+// Tries to check if address allocated with kmalloc is dma capable.
+// If kmalloc address is not dma capable we assume other addresses
+// won't be dma capable as well.
+static bool is_kmalloc_dma_capable(struct device *dev)
 {
     void *check_addr = NULL;
-    dma_addr_t dma_address = 0;
+    dma_addr_t dma_addr = 0;
     phys_addr_t phys_addr = 0;
+    bool capable = false;
 
+    if (!dev->dma_mask) {
+        return false;
+    }
+
+    check_addr = kmalloc(PAGE_SIZE, GFP_KERNEL);
+    if (NULL == check_addr) {
+        dev_err(dev, "failed allocating page!\n");
+        return false;
+    }
+
+    phys_addr = virt_to_phys(check_addr);
+    dma_addr = phys_to_dma(dev, phys_addr);
+
+    capable = is_dma_capable(dev, dma_addr, PAGE_SIZE);
+    kfree(check_addr);
+    return capable;
+}
+
+int hailo_get_allocation_mode(struct pci_dev *pdev, enum hailo_allocation_mode *allocation_mode)
+{
     // Check if module paramater was given to override driver choice
-    if (HAILO_NO_FORCE_BUFFER != force_allocation_from_driver)
-    {
+    if (HAILO_NO_FORCE_BUFFER != force_allocation_from_driver) {
         if (HAILO_FORCE_BUFFER_FROM_USERSPACE == force_allocation_from_driver) {
             *allocation_mode = HAILO_ALLOCATION_MODE_USERSPACE;
             pci_notice(pdev, "Probing: Using userspace allocated vdma buffers\n");
@@ -616,25 +638,14 @@ int hailo_get_allocation_mode(struct pci_dev *pdev, enum hailo_allocation_mode *
         return 0;
     }
 
-    check_addr = kmalloc(PAGE_SIZE, GFP_KERNEL);
-    if (NULL == check_addr) {
-        pci_err(pdev, "failed allocating page!\n");
-        return -ENOMEM;
-    }
-
-    phys_addr = virt_to_phys(check_addr);
-    dma_address = phys_to_dma(&pdev->dev, phys_addr);
-
-    if (dma_capable_compat(&pdev->dev, dma_address, PAGE_SIZE, true)) {
+    if (is_kmalloc_dma_capable(&pdev->dev)) {
         *allocation_mode = HAILO_ALLOCATION_MODE_USERSPACE;
         pci_notice(pdev, "Probing: Using userspace allocated vdma buffers\n");
-    }
-    else {
+    } else {
         *allocation_mode = HAILO_ALLOCATION_MODE_DRIVER;
         pci_notice(pdev, "Probing: Using driver allocated vdma buffers\n");
     }
 
-    kfree(check_addr);
     return 0;
 }
 
@@ -700,6 +711,8 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
     sema_init(&pBoard->fw_control.mutex, 1);
     spin_lock_init(&pBoard->notification_read_spinlock);
     init_completion(&pBoard->fw_control.completion);
+
+    init_completion(&pBoard->driver_down.reset_completed);
 
     INIT_LIST_HEAD(&pBoard->notification_wait_list);
 
@@ -819,9 +832,35 @@ void hailo_pcie_remove(struct pci_dev* pDev)
 #ifdef CONFIG_PM_SLEEP
 static int hailo_pcie_suspend(struct device *dev)
 {
+    struct hailo_pcie_board *board = (struct hailo_pcie_board*) dev_get_drvdata(dev);
+    struct hailo_file_context *cur = NULL;
+    int err = 0;
+
+    // lock board to wait for any pending operations
+    down(&board->mutex);
+
+    // Disable all interrupts. All interrupts from Hailo chip would be masked.
+    hailo_disable_interrupts(board);
+
+    // Close all vDMA channels
+    if (board->vdma.used_by_filp != NULL) {
+        err = hailo_pcie_driver_down(board);
+        if (err < 0) {
+            dev_notice(dev, "Error while trying to call FW to close vdma channels\n");
+        }
+    }
+
+    // Un validate all activae file contexts so every new action would return error to the user.
+    list_for_each_entry(cur, &board->open_files_list, open_files_list) {
+        cur->is_valid = false;
+    }
+
+    // Release board
+    up(&board->mutex);
+
     dev_notice(dev, "PM's suspend\n");
     // Continue system suspend
-    return 0;
+    return err;
 }
 
 static int hailo_pcie_resume(struct device *dev)
@@ -832,7 +871,7 @@ static int hailo_pcie_resume(struct device *dev)
     if ((err = hailo_activate_board(board)) < 0) {
         dev_err(dev, "Failed activating board %d\n", err);
         return err;
-    } 
+    }
 
     dev_notice(dev, "PM's resume\n");
     return 0;
@@ -841,10 +880,56 @@ static int hailo_pcie_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(hailo_pcie_pm_ops, hailo_pcie_suspend, hailo_pcie_resume);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION( 3, 16, 0 )
+static void hailo_pci_reset_prepare(struct pci_dev *pdev)
+{
+    struct hailo_pcie_board* board = (struct hailo_pcie_board*) pci_get_drvdata(pdev);
+    int err = 0;
+    /* Reset preparation logic goes here */
+    pci_err(pdev, "Reset preparation for PCI device \n");
+
+    if (board)
+    {
+        // lock board to wait for any pending operations and for synchronization with open
+        down(&board->mutex);
+        if (board->vdma.used_by_filp != NULL) {
+            // Try to close all vDMA channels before reset
+            err = hailo_pcie_driver_down(board);
+            if (err < 0) {
+                pci_err(pdev, "Error while trying to call FW to close vdma channels (errno %d)\n", err);
+            }
+        }
+        up(&board->mutex);
+    }
+}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION( 3, 16, 0 ) */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION( 4, 13, 0 ) && LINUX_VERSION_CODE >= KERNEL_VERSION( 3, 16, 0 )
+static void hailo_pci_reset_notify(struct pci_dev *pdev, bool prepare)
+{
+    if (prepare) {
+        hailo_pci_reset_prepare(pdev);
+    }
+}
+#endif
+
+static const struct pci_error_handlers hailo_pcie_err_handlers = {
+#if LINUX_VERSION_CODE < KERNEL_VERSION( 3, 16, 0 )
+/* No FLR callback */
+#elif LINUX_VERSION_CODE < KERNEL_VERSION( 4, 13, 0 )
+/* FLR Callback is reset_notify */
+	.reset_notify	= hailo_pci_reset_notify,
+#else
+/* FLR Callback is reset_prepare */
+	.reset_prepare	= hailo_pci_reset_prepare,
+#endif
+};
+
 static struct pci_device_id hailo_pcie_id_table[] =
 {
     {PCI_DEVICE_DATA(HAILO, HAILO8, HAILO_BOARD_TYPE_HAILO8)},
     {PCI_DEVICE_DATA(HAILO, HAILO15, HAILO_BOARD_TYPE_HAILO15)},
+    {PCI_DEVICE_DATA(HAILO, PLUTO, HAILO_BOARD_TYPE_PLUTO)},
     {0,0,0,0,0,0,0 },
 };
 
@@ -860,13 +945,14 @@ static struct file_operations hailo_pcie_fops =
 
 static struct pci_driver hailo_pci_driver =
 {
-    name:		DRIVER_NAME,
-    id_table:   hailo_pcie_id_table,
-    probe:		hailo_pcie_probe,
-    remove:		hailo_pcie_remove,
+    name:		 DRIVER_NAME,
+    id_table:    hailo_pcie_id_table,
+    probe:		 hailo_pcie_probe,
+    remove:		 hailo_pcie_remove,
     driver: {
         pm: &hailo_pcie_pm_ops,
     },
+    err_handler: &hailo_pcie_err_handlers,
 };
 
 MODULE_DEVICE_TABLE (pci, hailo_pcie_id_table);
@@ -934,7 +1020,7 @@ module_param_named(no_power_mode, g_is_power_mode_enabled, invbool, S_IRUGO);
 MODULE_PARM_DESC(no_power_mode, "Disables automatic D0->D3 PCIe transactions");
 
 module_param(force_allocation_from_driver, int, S_IRUGO);
-MODULE_PARM_DESC(force_allocation_from_driver, "Determines weather to force buffer allocation from driver or userspace");
+MODULE_PARM_DESC(force_allocation_from_driver, "Determines whether to force buffer allocation from driver or userspace");
 
 module_param(force_desc_page_size, int, S_IRUGO);
 MODULE_PARM_DESC(force_desc_page_size, "Determines the maximum DMA descriptor page size (must be a power of 2)");

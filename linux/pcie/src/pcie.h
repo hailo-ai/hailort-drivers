@@ -28,6 +28,11 @@ struct hailo_fw_control_info {
     struct hailo_fw_control command;
 };
 
+struct hailo_pcie_driver_down_info {
+    // called from the interrupt handler to notify that FW completed reset
+    struct completion   reset_completed;
+};
+
 struct hailo_fw_boot {
     // the filp that enabled interrupts for fw boot. the interrupt is enabled if this is not null
     struct file *filp;
@@ -42,6 +47,7 @@ struct hailo_file_context {
     struct list_head open_files_list;
     struct file *filp;
     struct hailo_vdma_file_context vdma_context;
+    bool is_valid;
 };
 
 struct hailo_pcie_board {
@@ -52,6 +58,7 @@ struct hailo_pcie_board {
     struct list_head open_files_list;
     struct hailo_pcie_resources pcie_resources;
     struct hailo_fw_control_info fw_control;
+    struct hailo_pcie_driver_down_info driver_down;
     struct semaphore mutex;
     struct hailo_vdma_controller vdma;
     spinlock_t notification_read_spinlock;

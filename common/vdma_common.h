@@ -91,8 +91,6 @@ void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u32 bit
 int hailo_vdma_engine_read_timestamps(struct hailo_vdma_engine *engine,
     struct hailo_vdma_interrupts_read_timestamp_params *params);
 
-int hailo_vdma_engine_stop_all_channels(struct hailo_vdma_engine *engine);
-
 static inline bool hailo_vdma_engine_got_interrupt(struct hailo_vdma_engine *engine,
     u32 channels_bitmap)
 {

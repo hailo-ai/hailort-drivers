@@ -10,5 +10,6 @@ int hailo_pcie_fops_open(struct inode* inode, struct file* filp);
 int hailo_pcie_fops_release(struct inode* inode, struct file* filp);
 long hailo_pcie_fops_unlockedioctl(struct file* filp, unsigned int cmd, unsigned long arg);
 int hailo_pcie_fops_mmap(struct file* filp, struct vm_area_struct *vma);
+int hailo_pcie_driver_down(struct hailo_pcie_board *board);
 
 #endif /* _HAILO_PCI_FOPS_H_ */

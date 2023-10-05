@@ -36,6 +36,7 @@
 
 #define BCS_ISTATUS_HOST_FW_IRQ_CONTROL_MASK (0x04000000)
 #define BCS_ISTATUS_HOST_FW_IRQ_NOTIFICATION (0x02000000)
+#define BCS_ISTATUS_HOST_DRIVER_DOWN         (0x08000000)
 #define BCS_ISTATUS_HOST_VDMA_SRC_IRQ_MASK   (0x000000FF)
 #define BCS_ISTATUS_HOST_VDMA_DEST_IRQ_MASK  (0x0000FF00)
 
@@ -53,6 +54,7 @@
 #define PCI_VENDOR_ID_HAILO           0x1e60
 #define PCI_DEVICE_ID_HAILO_HAILO8    0x2864
 #define PCI_DEVICE_ID_HAILO_HAILO15   0x45C4
+#define PCI_DEVICE_ID_HAILO_PLUTO     0x43a2
 
 struct hailo_pcie_resources {
     struct hailo_resource config;               // BAR0
@@ -64,6 +66,7 @@ struct hailo_pcie_resources {
 enum hailo_pcie_interrupt_masks {
     FW_CONTROL = BCS_ISTATUS_HOST_FW_IRQ_CONTROL_MASK,
     FW_NOTIFICATION = BCS_ISTATUS_HOST_FW_IRQ_NOTIFICATION,
+    DRIVER_DOWN = BCS_ISTATUS_HOST_DRIVER_DOWN,
     VDMA_SRC_IRQ_MASK = BCS_ISTATUS_HOST_VDMA_SRC_IRQ_MASK,
     VDMA_DEST_IRQ_MASK = BCS_ISTATUS_HOST_VDMA_DEST_IRQ_MASK
 };
@@ -132,7 +135,7 @@ int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct ha
 uint64_t hailo_pcie_encode_dma_address(dma_addr_t dma_address, uint8_t channel_id);
 
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources);
-
+void hailo_pcie_write_firmware_driver_shutdown(struct hailo_pcie_resources *resources);
 #ifdef __cplusplus
 }
 #endif

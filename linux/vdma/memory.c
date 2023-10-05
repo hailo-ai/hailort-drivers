@@ -15,52 +15,79 @@
 
 #define SGL_MAX_SEGMENT_SIZE 	(0x10000)
 
-static int hailo_set_sg_list(struct sg_table *sg_table, void __user* user_address, uint32_t size,
+static int prepare_sg_table(struct sg_table *sg_table, void __user* user_address, uint32_t size,
     struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer);
-static void hailo_clear_sg_list(struct sg_table *sgt, bool put_pages);
+static void clear_sg_table(struct sg_table *sgt, bool put_pages);
 
-int hailo_vdma_buffer_map(struct device *dev, void __user *user_address, uint32_t size, 
-    enum dma_data_direction data_direction, struct hailo_vdma_buffer *mapped_buffer,
+struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
+    void __user *user_address, size_t size, enum dma_data_direction direction,
     struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer)
 {
-    int err = -EINVAL;
+    int ret = -EINVAL;
+    struct hailo_vdma_buffer *mapped_buffer = NULL;
+    struct sg_table sgt = {0};
 
-    err = hailo_set_sg_list(&mapped_buffer->sg_table, user_address, size, allocated_vdma_buffer);
-    if (err < 0) {
-        dev_err(dev, "failed to set sg list for user buffer %d\n", err);
-        return err;
+    mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
+    if (NULL == mapped_buffer) {
+        dev_err(dev, "memory alloc failed\n");
+        ret = -ENOMEM;
+        goto cleanup;
     }
 
-    mapped_buffer->sg_table.nents = dma_map_sg(dev,
-        mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.orig_nents, data_direction);
-    if (0 == mapped_buffer->sg_table.nents) {
+    ret = prepare_sg_table(&sgt, user_address, size, allocated_vdma_buffer);
+    if (ret < 0) {
+        dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
+        goto free_buffer_struct;
+    }
+
+    sgt.nents = dma_map_sg(dev, sgt.sgl, sgt.orig_nents, direction);
+    if (0 == sgt.nents) {
         dev_err(dev, "failed to map sg list for user buffer\n");
-        hailo_clear_sg_list(&mapped_buffer->sg_table, (NULL == allocated_vdma_buffer));
-        return -ENXIO;
+        ret = -ENXIO;
+        goto clear_sg_table;
     }
 
+    kref_init(&mapped_buffer->kref);
+    mapped_buffer->device = dev;
     mapped_buffer->user_address = user_address;
     mapped_buffer->size = size;
-    mapped_buffer->data_direction = data_direction;
+    mapped_buffer->data_direction = direction;
+    mapped_buffer->sg_table = sgt;
+    mapped_buffer->driver_buffer_handle = allocated_vdma_buffer ?
+        (allocated_vdma_buffer->handle) : INVALID_DRIVER_HANDLE_VALUE;
+    return mapped_buffer;
 
-    return 0;
+clear_sg_table:
+    clear_sg_table(&sgt, (NULL == allocated_vdma_buffer));
+free_buffer_struct:
+    kfree(mapped_buffer);
+cleanup:
+    return ERR_PTR(ret);
 }
 
-void hailo_vdma_buffer_unmap(struct device *dev, struct hailo_vdma_buffer *mapped_buffer)
+static void unmap_buffer(struct kref *kref)
 {
-    dma_unmap_sg(dev, mapped_buffer->sg_table.sgl,
-        mapped_buffer->sg_table.orig_nents, mapped_buffer->data_direction);
-    
-    // Check if clearing for user space buffer or driver allocated buffer
-    if (INVALID_DRIVER_HANDLE_VALUE == mapped_buffer->driver_buffer_handle) {
-        hailo_clear_sg_list(&mapped_buffer->sg_table, true);
-    }
-    else {
-        hailo_clear_sg_list(&mapped_buffer->sg_table, false);
-    }
+    bool put_pages = false;
+    struct hailo_vdma_buffer *buf = container_of(kref, struct hailo_vdma_buffer, kref);
+
+    dma_unmap_sg(buf->device, buf->sg_table.sgl, buf->sg_table.orig_nents,
+        buf->data_direction);
+
+    put_pages = ((INVALID_DRIVER_HANDLE_VALUE) == buf->driver_buffer_handle);
+    clear_sg_table(&buf->sg_table, put_pages);
 }
 
-struct hailo_vdma_buffer* hailo_vdma_get_mapped_user_buffer(struct hailo_vdma_file_context *context,
+void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf)
+{
+    kref_get(&buf->kref);
+}
+
+void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf)
+{
+    kref_put(&buf->kref, unmap_buffer);
+}
+
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_user_buffer(struct hailo_vdma_file_context *context,
     size_t buffer_handle)
 {
     struct hailo_vdma_buffer *cur = NULL;
@@ -78,8 +105,7 @@ void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *co
     struct hailo_vdma_buffer *cur = NULL, *next = NULL;
     list_for_each_entry_safe(cur, next, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
         list_del(&cur->mapped_user_buffer_list);
-        hailo_vdma_buffer_unmap(controller->dev, cur);
-        kfree(cur);
+        hailo_vdma_buffer_put(cur);
     }
 }
 
@@ -117,7 +143,7 @@ void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list_b
     dma_free_coherent(dev, descriptors->buffer_size, descriptors->kernel_address, descriptors->dma_address);
 }
 
-struct hailo_descriptors_list_buffer* hailo_vdma_get_descriptors_buffer(struct hailo_vdma_file_context *context,
+struct hailo_descriptors_list_buffer* hailo_vdma_find_descriptors_buffer(struct hailo_vdma_file_context *context,
     uintptr_t desc_handle)
 {
     struct hailo_descriptors_list_buffer *cur = NULL;
@@ -142,16 +168,16 @@ void hailo_vdma_clear_descriptors_buffer_list(struct hailo_vdma_file_context *co
 
 int hailo_vdma_low_memory_buffer_alloc(size_t size, struct hailo_vdma_low_memory_buffer *low_memory_buffer)
 {
+    int ret = -EINVAL;
     void *kernel_address = NULL;
     size_t pages_count = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
     size_t num_allocated = 0, i = 0;
     void **pages = NULL;
-    int err = -EINVAL;
 
     pages = kcalloc(pages_count, sizeof(*pages), GFP_KERNEL);
     if (NULL == pages) {
         pr_err("Failed to allocate pages for buffer (size %zu)", size);
-        err = -ENOMEM;
+        ret = -ENOMEM;
         goto cleanup;
     }
 
@@ -161,7 +187,7 @@ int hailo_vdma_low_memory_buffer_alloc(size_t size, struct hailo_vdma_low_memory
         kernel_address = (void*)__get_free_page(__GFP_DMA32);
         if (NULL == kernel_address) {
             pr_err("Failed to allocate %zu coherent bytes\n", (size_t)PAGE_SIZE);
-            err = -ENOMEM;
+            ret = -ENOMEM;
             goto cleanup;
         }
 
@@ -182,7 +208,7 @@ cleanup:
         kfree(pages);
     }
 
-    return err;
+    return ret;
 }
 
 void hailo_vdma_low_memory_buffer_free(struct hailo_vdma_low_memory_buffer *low_memory_buffer)
@@ -199,7 +225,7 @@ void hailo_vdma_low_memory_buffer_free(struct hailo_vdma_low_memory_buffer *low_
     kfree(low_memory_buffer->pages_address);
 }
 
-struct hailo_vdma_low_memory_buffer* hailo_vdma_get_low_memory_buffer(struct hailo_vdma_file_context *context,
+struct hailo_vdma_low_memory_buffer* hailo_vdma_find_low_memory_buffer(struct hailo_vdma_file_context *context,
     uintptr_t buf_handle)
 {
     struct hailo_vdma_low_memory_buffer *cur = NULL;
@@ -248,7 +274,7 @@ void hailo_vdma_continuous_buffer_free(struct device *dev,
         continuous_buffer->dma_address);
 }
 
-struct hailo_vdma_continuous_buffer* hailo_vdma_get_continuous_buffer(struct hailo_vdma_file_context *context,
+struct hailo_vdma_continuous_buffer* hailo_vdma_find_continuous_buffer(struct hailo_vdma_file_context *context,
     uintptr_t buf_handle)
 {
     struct hailo_vdma_continuous_buffer *cur = NULL;
@@ -272,10 +298,11 @@ void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *con
     }
 }
 
-static int hailo_set_sg_list(struct sg_table *sg_table, void __user *user_address, uint32_t size,
+static int prepare_sg_table(struct sg_table *sg_table, void __user *user_address, uint32_t size,
     struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer)
 {
-    int result = -EINVAL;
+    int ret = -EINVAL;
+    int pinned_pages = 0;
     size_t npages = 0;
     struct page **pages = NULL;
     int i = 0;
@@ -287,25 +314,29 @@ static int hailo_set_sg_list(struct sg_table *sg_table, void __user *user_addres
         return -ENOMEM;
     }
 
-    // Check weather mapping user allocated buffer or driver allocated buffer
+    // Check whether mapping user allocated buffer or driver allocated buffer
     if (NULL == allocated_vdma_buffer) {
         mmap_read_lock(current->mm);
-        result = get_user_pages_compact((unsigned long)user_address, npages, FOLL_WRITE | FOLL_FORCE, pages, NULL);
+        pinned_pages = get_user_pages_compact((unsigned long)user_address, npages, FOLL_WRITE | FOLL_FORCE, pages, NULL);
         mmap_read_unlock(current->mm);
 
-        if (result != npages) {
-            // TODO: HRT-9680 need to put user pages here (those who got pinned)
-            kvfree(pages);
-            return -EINVAL;
+        if (pinned_pages < 0) {
+            pr_err("get_user_pages failed with %d\n", pinned_pages);
+            ret = pinned_pages;
+            goto exit;
+        } else if (pinned_pages != npages) {
+            pr_err("Pinned %d out of %zu\n", pinned_pages, npages);
+            ret = -EINVAL;
+            goto release_pages;
         }
-    }
-    // Meaning buffer we are mapping is driver allocated
-    else {
+
+    } else {
         // Check to make sure in case user provides wrong buffer
         if (npages != allocated_vdma_buffer->pages_count) {
-            pr_err("Recieved wrong amount of pages to map - user may have provided wrong buffer\n");
-            kvfree(pages);
-            return -EINVAL;
+            pr_err("Received wrong amount of pages %zu to map expected %zu\n",
+                npages, allocated_vdma_buffer->pages_count);
+            ret = -EINVAL;
+            goto exit;
         }
         for (i = 0; i < npages; i++) {
             pages[i] = virt_to_page(allocated_vdma_buffer->pages_address[i]);
@@ -315,25 +346,26 @@ static int hailo_set_sg_list(struct sg_table *sg_table, void __user *user_addres
     sg_alloc_res = sg_alloc_table_from_pages_segment_compat(sg_table, pages, npages,
         0, size, SGL_MAX_SEGMENT_SIZE, NULL, 0, GFP_KERNEL);
     if (IS_ERR(sg_alloc_res)) {
-        pr_err("sg table alloc failed (err %ld)..\n", PTR_ERR(sg_alloc_res));
-        if (NULL == allocated_vdma_buffer) {
-            for (i = 0; i < npages; i++) {
-                if (!PageReserved(pages[i])) {
-                    SetPageDirty(pages[i]);
-                }
-                put_page(pages[i]);
-            }
-        }
-
-        kvfree(pages);
-        return PTR_ERR(sg_alloc_res);
+        ret = PTR_ERR(sg_alloc_res);
+        pr_err("sg table alloc failed (err %d)..\n", ret);
+        goto release_pages;
     }
 
+    ret = 0;
+    goto exit;
+release_pages:
+    for (i = 0; i < pinned_pages; i++) {
+        if (!PageReserved(pages[i])) {
+            SetPageDirty(pages[i]);
+        }
+        put_page(pages[i]);
+    }
+exit:
     kvfree(pages);
-    return 0;
+    return ret;
 }
 
-static void hailo_clear_sg_list(struct sg_table *sgt, bool put_pages) 
+static void clear_sg_table(struct sg_table *sgt, bool put_pages)
 {
     struct sg_page_iter iter;
     struct page *page = NULL;
@@ -349,16 +381,4 @@ static void hailo_clear_sg_list(struct sg_table *sgt, bool put_pages)
     }
 
     sg_free_table(sgt);
-}
-
-bool hailo_buffer_to_device(struct hailo_vdma_buffer *mapped_buffer)
-{
-    return (mapped_buffer->data_direction == DMA_BIDIRECTIONAL || 
-        mapped_buffer->data_direction == DMA_TO_DEVICE);
-}
-
-bool hailo_buffer_from_device(struct hailo_vdma_buffer *mapped_buffer)
-{
-    return (mapped_buffer->data_direction == DMA_BIDIRECTIONAL || 
-        mapped_buffer->data_direction == DMA_FROM_DEVICE);
 }
