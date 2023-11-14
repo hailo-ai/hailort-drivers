@@ -44,7 +44,7 @@ typedef struct {
 typedef struct {
     uint32_t key_size;
     uint32_t content_size;
-    uint8_t certificates_data[0];
+    uint8_t certificates_data[];
 } secure_boot_certificate_t;
 
 #ifdef _MSC_VER
