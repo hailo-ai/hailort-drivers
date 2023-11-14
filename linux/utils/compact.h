@@ -24,7 +24,10 @@
 #endif
 
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
+#define get_user_pages_compact(start, nr_pages, gup_flags, pages, vmas) \
+    get_user_pages(start, nr_pages, gup_flags, pages)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
 #define get_user_pages_compact get_user_pages
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 168)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
 #define get_user_pages_compact(start, nr_pages, gup_flags, pages, vmas) \

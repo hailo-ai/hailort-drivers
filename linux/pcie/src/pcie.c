@@ -963,7 +963,11 @@ int hailo_pcie_register_chrdev(unsigned int major, const char *name)
 
     char_major = register_chrdev(major, name, &hailo_pcie_fops);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0) 
     chardev_class = class_create(THIS_MODULE, "hailo_chardev");
+#else
+    chardev_class = class_create("hailo_chardev");
+#endif
 
     return char_major;
 }
