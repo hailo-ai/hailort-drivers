@@ -360,6 +360,11 @@ long hailo_vdma_buffer_sync(struct hailo_vdma_file_context *context, struct hail
         return -EINVAL;
     }
 
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && (INVALID_VDMA_ADDRESS != mapped_buffer->mmio_dma_address)) {
+        // MMIO buffers don't need to be sync'd
+        return 0;
+    }
+
     if ((sync_info.sync_type != HAILO_SYNC_FOR_CPU) && (sync_info.sync_type != HAILO_SYNC_FOR_DEVICE)) {
             hailo_dev_err(controller->dev, "Invalid sync_type given for vdma buffer sync.\n");
             return -EINVAL;
@@ -487,6 +492,8 @@ long hailo_desc_list_bind_vdma_buffer(struct hailo_vdma_file_context *context, s
     return hailo_vdma_program_descriptors_list(&configure_info,
         &descriptors_buffer->desc_list,
         &mapped_buffer->sg_table,
+        mapped_buffer->mmio_dma_address,
+        mapped_buffer->size,
         controller->ops->encode_desc_dma_address,
         data_id
     );

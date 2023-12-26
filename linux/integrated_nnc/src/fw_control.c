@@ -94,7 +94,7 @@ l_exit:
     return err;
 }
 
-void rx_callback(struct mbox_client *cl, void *mssg)
+static void rx_callback(struct mbox_client *cl, void *mssg)
 {
     struct fw_control *control = container_of(cl, struct fw_control, mbox_client);
     complete(&control->response_ready);

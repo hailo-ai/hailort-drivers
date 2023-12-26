@@ -22,7 +22,7 @@
 #include "fw_logger.h"
 #include "dram_vdma.h"
 #include "utils/logs.h"
-
+#include "utils/compact.h"
 
 #define DRIVER_NAME "hailo_integrated_nnc"
 #define DEVICE_NODE_NAME "hailo_integrated_nnc"
@@ -134,7 +134,7 @@ static int driver_probe(struct platform_device *pdev)
     }
 
     /* Creating struct class */
-    class = class_create(THIS_MODULE, "hailo_chardev");
+    class = class_create_compat("hailo_chardev");
     if (IS_ERR(class)) {
         err = PTR_ERR(class);
         hailo_err(board, "Failed creating class. err: %d", err);

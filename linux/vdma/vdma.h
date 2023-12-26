@@ -40,10 +40,17 @@ struct hailo_vdma_buffer {
     enum dma_data_direction     data_direction;
     struct sg_table             sg_table;
     // Can be INVALID_DRIVER_HANDLE_VALUE if the buffer is allocated by the user
-    uintptr_t                   driver_buffer_handle;
+    uintptr_t                   low_mem_driver_allocated_buffer_handle;
+    // This address will be used if user_address represents memory mapped I/O and isn't backed by 'struct page' (only
+    // by pure pfn), as designated by a vma's flags being set to VM_IO and VM_PFNMAP respectively (see linux/mm.h).
+    // In this case, mmio_dma_address will be used instead of the sg_table above, since dma_sg_* functions require
+    // standard memory addresses backed by 'struct page'.
+    // For standard memory addresses (backed by 'struct page'), mmio_dma_address will be INVALID_VDMA_ADDRESS and
+    // sg_table will be used.
+    dma_addr_t                  mmio_dma_address;
 };
 
-// Continous buffer that holds a descriptor list.
+// Continuous buffer that holds a descriptor list.
 struct hailo_descriptors_list_buffer {
     struct list_head                   descriptors_buffer_list;
     uintptr_t                          handle;

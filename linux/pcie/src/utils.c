@@ -10,6 +10,7 @@
 
 #include "hailo_pcie_version.h"
 #include "pcie.h"
+#include "utils.h"
 #include "utils/logs.h"
 
 

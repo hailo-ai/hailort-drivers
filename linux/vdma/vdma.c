@@ -11,6 +11,14 @@
 #include "utils/logs.h"
 
 #include <linux/sched.h>
+#include <linux/version.h>
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+#include <linux/dma-map-ops.h>
+#else
+#include <linux/dma-mapping.h>
+#endif
+
 
 static struct hailo_vdma_engine* init_vdma_engines(struct device *dev,
     struct hailo_resource *channel_registers_per_engine, size_t engines_count)
@@ -76,6 +84,10 @@ int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
     err = hailo_set_dma_mask(dev);
     if (0 > err) {
         return err;
+    }
+
+    if (get_dma_ops(controller->dev)) {
+        hailo_dev_notice(controller->dev, "Probing: Using specialized dma_ops=%ps", get_dma_ops(controller->dev));
     }
 
     return 0;
@@ -224,7 +236,9 @@ static int desc_list_mmap(struct hailo_vdma_controller *controller,
             return err;
         }
     } else {
-        unsigned long pfn = virt_to_phys(vdma_descriptors_buffer->kernel_address) >> PAGE_SHIFT;
+        const unsigned long pfn = is_vmalloc_addr(vdma_descriptors_buffer->kernel_address) ?
+            vmalloc_to_pfn(vdma_descriptors_buffer->kernel_address) :
+            virt_to_phys(vdma_descriptors_buffer->kernel_address) >> PAGE_SHIFT;
         err = remap_pfn_range(vma, vma->vm_start, pfn, vsize, vma->vm_page_prot);
         if (err != 0) {
             hailo_dev_err(controller->dev, " vdma_mmap failed remap_pfn_range %d\n", err);

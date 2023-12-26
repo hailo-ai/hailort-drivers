@@ -69,6 +69,8 @@ int hailo_vdma_program_descriptors_list(
     struct hailo_desc_list_bind_vdma_buffer_params *params,
     struct hailo_vdma_descriptors_list *desc_list,
     struct sg_table *buffer,
+    dma_addr_t mmio_dma_address,
+    uint32_t size,
     encode_desc_dma_address_t address_encoder,
     uint8_t data_id);
 
