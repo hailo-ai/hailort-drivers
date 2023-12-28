@@ -4,8 +4,9 @@
  **/
 
 #include "board.h"
-#include "vdma/vdma.h"
+#include "dram_vdma.h"
 #include "integrated_nnc_utils.h"
+#include "vdma/vdma.h"
 #include "utils/logs.h"
 
 #include <linux/interrupt.h>

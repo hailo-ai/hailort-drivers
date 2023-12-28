@@ -10,6 +10,12 @@
 #include <linux/scatterlist.h>
 #include <linux/vmalloc.h>
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+#define class_create_compat class_create
+#else
+#define class_create_compat(name) class_create(THIS_MODULE, name)
+#endif
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 16, 0)
 #define pci_printk(level, pdev, fmt, arg...) \
 	dev_printk(level, &(pdev)->dev, fmt, ##arg)
@@ -23,21 +29,22 @@
 #define pci_dbg(pdev, fmt, arg...)	dev_dbg(&(pdev)->dev, fmt, ##arg)
 #endif
 
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
 #define get_user_pages_compact get_user_pages
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+#define get_user_pages_compact(start, nr_pages, gup_flags, pages) \
+    get_user_pages(start, nr_pages, gup_flags, pages, NULL)
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 168)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
-#define get_user_pages_compact(start, nr_pages, gup_flags, pages, vmas) \
-    get_user_pages(current, current->mm, start, nr_pages, gup_flags, pages, vmas)
+#define get_user_pages_compact(start, nr_pages, gup_flags, pages) \
+    get_user_pages(current, current->mm, start, nr_pages, gup_flags, pages, NULL)
 #else
 static inline long get_user_pages_compact(unsigned long start, unsigned long nr_pages,
-    unsigned int gup_flags, struct page **pages,
-    struct vm_area_struct **vmas)
+    unsigned int gup_flags, struct page **pages)
 {
     int write = !!((gup_flags & FOLL_WRITE) == FOLL_WRITE);
     int force = !!((gup_flags & FOLL_FORCE) == FOLL_FORCE);
     return get_user_pages(current, current->mm, start, nr_pages, write, force,
-        pages, vmas);
+        pages, NULL);
 }
 #endif
 

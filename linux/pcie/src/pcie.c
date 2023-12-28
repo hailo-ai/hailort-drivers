@@ -61,12 +61,6 @@ static struct semaphore g_hailo_add_board_mutex = __SEMAPHORE_INITIALIZER(g_hail
 #define HAILO_IRQ_FLAGS (IRQF_SHARED)
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
-irqreturn_t hailo_irqhandler(int irq, void* dev_id, struct pt_regs *regs);
-#else
-irqreturn_t hailo_irqhandler(int irq, void* dev_id);
-#endif
-
  /* ****************************
   ******************************* */
 bool power_mode_enabled(void)
@@ -250,7 +244,7 @@ static int hailo_pcie_disable_aspm(struct hailo_pcie_board *board, u16 state, bo
     return 0;
 }
 
-void hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
+static void hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
 {
     uint32_t index = 0;
     struct hailo_pcie_board *pCurrent, *pNext;
@@ -284,7 +278,7 @@ void hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
     return;
 }
 
-void hailo_pcie_remove_board(struct hailo_pcie_board* pBoard)
+static void hailo_pcie_remove_board(struct hailo_pcie_board* pBoard)
 {
     down(&g_hailo_add_board_mutex);
     if (pBoard)
@@ -617,7 +611,7 @@ static bool is_kmalloc_dma_capable(struct device *dev)
     return capable;
 }
 
-int hailo_get_allocation_mode(struct pci_dev *pdev, enum hailo_allocation_mode *allocation_mode)
+static int hailo_get_allocation_mode(struct pci_dev *pdev, enum hailo_allocation_mode *allocation_mode)
 {
     // Check if module paramater was given to override driver choice
     if (HAILO_NO_FORCE_BUFFER != force_allocation_from_driver) {
@@ -695,12 +689,6 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
         goto probe_release_pcie_resources;
     }
 
-    err = hailo_get_allocation_mode(pDev, &pBoard->allocation_mode);
-    if (err < 0) {
-        pci_err(pDev, "Failed determining allocation of buffers from driver. error type: %d\n", err);
-        goto probe_release_pcie_resources;
-    }
-
     pBoard->interrupts_enabled = false;
     init_completion(&pBoard->fw_loaded_completion);
 
@@ -723,6 +711,13 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
         &pBoard->pcie_resources.vdma_registers);
     if (err < 0) {
         hailo_err(pBoard, "Failed init vdma controller %d\n", err);
+        goto probe_release_pcie_resources;
+    }
+
+    // Checks the dma mask => it must be called after the device's dma_mask is set by hailo_pcie_vdma_controller_init
+    err = hailo_get_allocation_mode(pDev, &pBoard->allocation_mode);
+    if (err < 0) {
+        pci_err(pDev, "Failed determining allocation of buffers from driver. error type: %d\n", err);
         goto probe_release_pcie_resources;
     }
 
@@ -769,7 +764,7 @@ probe_exit:
     return err;
 }
 
-void hailo_pcie_remove(struct pci_dev* pDev)
+static void hailo_pcie_remove(struct pci_dev* pDev)
 {
     struct hailo_pcie_board* pBoard = (struct hailo_pcie_board*) pci_get_drvdata(pDev);
     struct hailo_notification_wait *cursor = NULL;
@@ -957,24 +952,24 @@ static struct pci_driver hailo_pci_driver =
 
 MODULE_DEVICE_TABLE (pci, hailo_pcie_id_table);
 
-int hailo_pcie_register_chrdev(unsigned int major, const char *name)
+static int hailo_pcie_register_chrdev(unsigned int major, const char *name)
 {
     int char_major;
 
     char_major = register_chrdev(major, name, &hailo_pcie_fops);
 
-    chardev_class = class_create(THIS_MODULE, "hailo_chardev");
+    chardev_class = class_create_compat("hailo_chardev");
 
     return char_major;
 }
 
-void hailo_pcie_unregister_chrdev(unsigned int major, const char *name)
+static void hailo_pcie_unregister_chrdev(unsigned int major, const char *name)
 {
     class_destroy(chardev_class);
     unregister_chrdev(major, name);
 }
 
-int __init hailo_pcie_module_init(void)
+static int __init hailo_pcie_module_init(void)
 {
     int err;
 
@@ -998,7 +993,7 @@ int __init hailo_pcie_module_init(void)
     return 0;
 }
 
-void __exit hailo_pcie_module_exit(void)
+static void __exit hailo_pcie_module_exit(void)
 {
 
     pr_notice(DRIVER_NAME ": Exit module.\n");

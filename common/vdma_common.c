@@ -11,6 +11,7 @@
 #include <linux/ktime.h>
 #include <linux/timekeeping.h>
 #include <linux/kernel.h>
+#include <linux/kconfig.h>
 
 
 #define CHANNEL_BASE_OFFSET(channel_index, direction) (((direction) == HAILO_DMA_TO_DEVICE) ? \
@@ -73,23 +74,61 @@ static uint8_t get_channel_id(uint8_t channel_index)
     }
 }
 
+static int program_descriptors_in_chunk(
+    dma_addr_t chunk_addr,
+    unsigned int chunk_size,
+    struct hailo_vdma_descriptors_list *desc_list,
+    uint32_t *desc_index,
+    uint16_t desc_page_size,
+    uint32_t max_desc_index,
+    uint8_t data_id,
+    uint8_t channel_id,
+    encode_desc_dma_address_t address_encoder)
+{
+    const uint32_t desc_per_chunk = DIV_ROUND_UP(chunk_size, desc_page_size);
+    struct hailo_vdma_descriptor *dma_desc = NULL;
+    uint32_t index = 0;
+    uint64_t encoded_addr = 0;
+
+    for (index = 0; index < desc_per_chunk; index++) {
+        if (*desc_index > max_desc_index) {
+            return -ERANGE;
+        }
+
+        encoded_addr = address_encoder(chunk_addr, channel_id);
+        if (INVALID_VDMA_ADDRESS == encoded_addr) {
+            return -EFAULT;
+        }
+
+        dma_desc = &desc_list->desc_list[*desc_index % desc_list->desc_count];
+        hailo_vdma_program_descriptor(dma_desc, encoded_addr, desc_page_size, data_id);
+
+        chunk_addr += desc_page_size;
+        (*desc_index)++;
+    }
+
+    return 0;
+}
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4127)
+#endif
 int hailo_vdma_program_descriptors_list(
     struct hailo_desc_list_bind_vdma_buffer_params *params,
     struct hailo_vdma_descriptors_list *desc_list,
     struct sg_table *buffer,
+    dma_addr_t mmio_dma_address,
+    uint32_t size,
     encode_desc_dma_address_t address_encoder,
     uint8_t data_id)
 {
-    struct hailo_vdma_descriptor *dma_desc = NULL;
     const uint8_t channel_id = get_channel_id(params->channel_index);
     uint32_t desc_index = 0;
     uint32_t max_desc_index = 0;
-    uint32_t desc_in_sg = 0;
-    dma_addr_t desc_buffer_addr = 0;
-    uint64_t encoded_addr = 0;
-    uint32_t desc_per_sg = 0;
     struct scatterlist *sg_entry = NULL;
     unsigned int i = 0;
+    int ret = 0;
 
     if (!is_powerof2(params->desc_page_size)) {
         return -EFAULT;
@@ -105,30 +144,27 @@ int hailo_vdma_program_descriptors_list(
         params->starting_desc + desc_list->desc_count - 1 :
         desc_list->desc_count - 1;
     desc_index = params->starting_desc;
-    for_each_sgtable_dma_sg(buffer, sg_entry, i) {
-        desc_per_sg = DIV_ROUND_UP(sg_dma_len(sg_entry), params->desc_page_size);
-        desc_buffer_addr = sg_dma_address(sg_entry);
-        for (desc_in_sg = 0; desc_in_sg < desc_per_sg; desc_in_sg++) {
-            if (desc_index > max_desc_index) {
-                return -ERANGE;
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && (INVALID_VDMA_ADDRESS != mmio_dma_address)) {
+        ret = program_descriptors_in_chunk(mmio_dma_address, size, desc_list,
+            &desc_index, params->desc_page_size, max_desc_index, data_id, channel_id, address_encoder);
+        if (ret < 0) {
+            return ret;
+        }
+    } else {
+        for_each_sgtable_dma_sg(buffer, sg_entry, i) {
+            ret = program_descriptors_in_chunk(sg_dma_address(sg_entry), sg_dma_len(sg_entry), desc_list,
+                &desc_index, params->desc_page_size, max_desc_index, data_id, channel_id, address_encoder);
+            if (ret < 0) {
+                return ret;
             }
-
-            encoded_addr = address_encoder(desc_buffer_addr, channel_id);
-            if (INVALID_VDMA_ADDRESS == encoded_addr) {
-                return -EFAULT;
-            }
-
-            dma_desc = &desc_list->desc_list[desc_index % desc_list->desc_count];
-            hailo_vdma_program_descriptor(dma_desc, encoded_addr,
-                params->desc_page_size, data_id);
-
-            desc_buffer_addr += params->desc_page_size;
-            desc_index++;
         }
     }
 
     return 0;
 }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 static void hailo_vdma_push_timestamp(struct hailo_channel_interrupt_timestamp_list *timestamp_list,
     struct hailo_resource *vdma_registers, size_t channel_index, enum hailo_dma_data_direction direction)

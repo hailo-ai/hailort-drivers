@@ -14,18 +14,26 @@
 
 
 #define SGL_MAX_SEGMENT_SIZE 	(0x10000)
+// See linux/mm.h
+#define MMIO_AND_NO_PAGES_VMA_MASK (VM_IO | VM_PFNMAP)
 
+static int map_mmio_address(void __user* user_address, uint32_t size, struct vm_area_struct *vma,
+    struct device *dev, enum dma_data_direction direction, dma_addr_t *mmio_dma_address);
 static int prepare_sg_table(struct sg_table *sg_table, void __user* user_address, uint32_t size,
-    struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer);
+    struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer);
 static void clear_sg_table(struct sg_table *sgt, bool put_pages);
 
 struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     void __user *user_address, size_t size, enum dma_data_direction direction,
-    struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer)
+    struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer)
 {
     int ret = -EINVAL;
     struct hailo_vdma_buffer *mapped_buffer = NULL;
+    // Either sgt will be a zero initialized struct and mmio_dma_address != INVALID_VDMA_ADDRESS
+    // or sgt will be mapped to dma and mmio_dma_address will be INVALID_VDMA_ADDRESS
+    dma_addr_t mmio_dma_address = INVALID_VDMA_ADDRESS;
     struct sg_table sgt = {0};
+    struct vm_area_struct *vma = NULL;
 
     mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
     if (NULL == mapped_buffer) {
@@ -34,17 +42,43 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
         goto cleanup;
     }
 
-    ret = prepare_sg_table(&sgt, user_address, size, allocated_vdma_buffer);
-    if (ret < 0) {
-        dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
-        goto free_buffer_struct;
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING)) {
+        vma = find_vma(current->mm, (uintptr_t)user_address);
+        if (NULL == vma) {
+            dev_err(dev, "no vma for virt_addr/size = 0x%08lx/0x%08zx\n", (uintptr_t)user_address, size);
+            ret = -EFAULT;
+            goto cleanup;
+        }
     }
 
-    sgt.nents = dma_map_sg(dev, sgt.sgl, sgt.orig_nents, direction);
-    if (0 == sgt.nents) {
-        dev_err(dev, "failed to map sg list for user buffer\n");
-        ret = -ENXIO;
-        goto clear_sg_table;
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) &&
+            (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
+        // user_address represents memory mapped I/O and isn't backed by 'struct page' (only by pure pfn)
+        if (NULL != low_mem_driver_allocated_buffer) {
+            // low_mem_driver_allocated_buffer are backed by regular 'struct page' addresses, just in low memory
+            dev_err(dev, "low_mem_driver_allocated_buffer shouldn't be provided with an mmio address\n");
+            ret = -EINVAL;
+            goto free_buffer_struct;
+        }
+
+        ret = map_mmio_address(user_address, size, vma, dev, direction, &mmio_dma_address);
+        if (ret < 0) {
+            dev_err(dev, "failed to map mmio address %d\n", ret);
+            goto free_buffer_struct;
+        }
+    } else {
+        // user_address is a standard 'struct page' backed memory address
+        ret = prepare_sg_table(&sgt, user_address, size, low_mem_driver_allocated_buffer);
+        if (ret < 0) {
+            dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
+            goto free_buffer_struct;
+        }
+        sgt.nents = dma_map_sg(dev, sgt.sgl, sgt.orig_nents, direction);
+        if (0 == sgt.nents) {
+            dev_err(dev, "failed to map sg list for user buffer\n");
+            ret = -ENXIO;
+            goto clear_sg_table;
+        }
     }
 
     kref_init(&mapped_buffer->kref);
@@ -53,12 +87,16 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     mapped_buffer->size = size;
     mapped_buffer->data_direction = direction;
     mapped_buffer->sg_table = sgt;
-    mapped_buffer->driver_buffer_handle = allocated_vdma_buffer ?
-        (allocated_vdma_buffer->handle) : INVALID_DRIVER_HANDLE_VALUE;
+    mapped_buffer->low_mem_driver_allocated_buffer_handle = low_mem_driver_allocated_buffer ?
+        low_mem_driver_allocated_buffer->handle :
+        INVALID_DRIVER_HANDLE_VALUE;
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING)) {
+        mapped_buffer->mmio_dma_address = mmio_dma_address;
+    }
     return mapped_buffer;
 
 clear_sg_table:
-    clear_sg_table(&sgt, (NULL == allocated_vdma_buffer));
+    clear_sg_table(&sgt, (NULL == low_mem_driver_allocated_buffer));
 free_buffer_struct:
     kfree(mapped_buffer);
 cleanup:
@@ -67,14 +105,15 @@ cleanup:
 
 static void unmap_buffer(struct kref *kref)
 {
-    bool put_pages = false;
     struct hailo_vdma_buffer *buf = container_of(kref, struct hailo_vdma_buffer, kref);
 
-    dma_unmap_sg(buf->device, buf->sg_table.sgl, buf->sg_table.orig_nents,
-        buf->data_direction);
-
-    put_pages = ((INVALID_DRIVER_HANDLE_VALUE) == buf->driver_buffer_handle);
-    clear_sg_table(&buf->sg_table, put_pages);
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && (INVALID_VDMA_ADDRESS != buf->mmio_dma_address)) {
+        // TODO: need dma_unmap_resource here? add it if we add dma_map_resource (HRT-12521)
+    } else {
+        const bool put_pages = ((INVALID_DRIVER_HANDLE_VALUE) == buf->low_mem_driver_allocated_buffer_handle);
+        dma_unmap_sg(buf->device, buf->sg_table.sgl, buf->sg_table.orig_nents, buf->data_direction);
+        clear_sg_table(&buf->sg_table, put_pages);
+    }
 }
 
 void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf)
@@ -176,7 +215,7 @@ int hailo_vdma_low_memory_buffer_alloc(size_t size, struct hailo_vdma_low_memory
 
     pages = kcalloc(pages_count, sizeof(*pages), GFP_KERNEL);
     if (NULL == pages) {
-        pr_err("Failed to allocate pages for buffer (size %zu)", size);
+        pr_err("Failed to allocate pages for buffer (size %zu)\n", size);
         ret = -ENOMEM;
         goto cleanup;
     }
@@ -298,8 +337,58 @@ void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *con
     }
 }
 
+// Assumes the provided user_address belongs to the vma and that MMIO_AND_NO_PAGES_VMA_MASK bits are set under
+// vma->vm_flags. This is validated in hailo_vdma_buffer_map, and won't be checked here
+static int map_mmio_address(void __user* user_address, uint32_t size, struct vm_area_struct *vma,
+    struct device *dev, enum dma_data_direction direction, dma_addr_t *mmio_dma_address)
+{
+    int ret = -EINVAL;
+    unsigned long i = 0;
+    unsigned long pfn = 0;
+    unsigned long next_pfn = 0;
+    phys_addr_t phys_addr = 0;
+    const uintptr_t virt_addr = (uintptr_t)user_address;
+    const uint32_t vma_size = vma->vm_end - vma->vm_start + 1;
+    const uintptr_t num_pages = PFN_UP(virt_addr + size) - PFN_DOWN(virt_addr);
+
+    // Check that the vma that was marked as MMIO_AND_NO_PAGES_VMA_MASK is big enough
+    if (vma_size < size) {
+        pr_err("vma (%u bytes) smaller than provided buffer (%u bytes)\n", vma_size, size);
+        return -EINVAL;
+    }
+
+    // Get the physical address of user_address
+    ret = follow_pfn(vma, virt_addr, &pfn);
+    if (ret) {
+        pr_err("follow_pfn failed with %d\n", ret);
+        return ret;
+    }
+    phys_addr = __pfn_to_phys(pfn) + offset_in_page(virt_addr);
+
+    // Make sure the physical memory is contiguous
+    for (i = 1; i < num_pages; ++i) {
+        ret = follow_pfn(vma, virt_addr + (i << PAGE_SHIFT), &next_pfn);
+        if (ret < 0) {
+            pr_err("follow_pfn failed with %d\n", ret);
+            return ret;
+        }
+        if (next_pfn != pfn + 1) {
+            pr_err("non-contiguous physical memory\n");
+            return -EFAULT;
+        }
+        pfn = next_pfn;
+    }
+
+    // Finally - phys_addr to dma
+    // TODO: need dma_map_resource here? doesn't work currently (we get dma_mapping_error on the returned dma addr)
+    //       (HRT-12521)
+    *mmio_dma_address = (dma_addr_t)phys_addr;
+
+    return 0;
+}
+
 static int prepare_sg_table(struct sg_table *sg_table, void __user *user_address, uint32_t size,
-    struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer)
+    struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer)
 {
     int ret = -EINVAL;
     int pinned_pages = 0;
@@ -314,10 +403,11 @@ static int prepare_sg_table(struct sg_table *sg_table, void __user *user_address
         return -ENOMEM;
     }
 
-    // Check whether mapping user allocated buffer or driver allocated buffer
-    if (NULL == allocated_vdma_buffer) {
+    // Check whether mapping user allocated buffer or driver allocated low memory buffer
+    if (NULL == low_mem_driver_allocated_buffer) {
         mmap_read_lock(current->mm);
-        pinned_pages = get_user_pages_compact((unsigned long)user_address, npages, FOLL_WRITE | FOLL_FORCE, pages, NULL);
+        pinned_pages = get_user_pages_compact((unsigned long)user_address,
+            npages, FOLL_WRITE | FOLL_FORCE, pages);
         mmap_read_unlock(current->mm);
 
         if (pinned_pages < 0) {
@@ -329,17 +419,16 @@ static int prepare_sg_table(struct sg_table *sg_table, void __user *user_address
             ret = -EINVAL;
             goto release_pages;
         }
-
     } else {
         // Check to make sure in case user provides wrong buffer
-        if (npages != allocated_vdma_buffer->pages_count) {
+        if (npages != low_mem_driver_allocated_buffer->pages_count) {
             pr_err("Received wrong amount of pages %zu to map expected %zu\n",
-                npages, allocated_vdma_buffer->pages_count);
+                npages, low_mem_driver_allocated_buffer->pages_count);
             ret = -EINVAL;
             goto exit;
         }
         for (i = 0; i < npages; i++) {
-            pages[i] = virt_to_page(allocated_vdma_buffer->pages_address[i]);
+            pages[i] = virt_to_page(low_mem_driver_allocated_buffer->pages_address[i]);
         }
     }
 

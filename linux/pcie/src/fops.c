@@ -325,7 +325,7 @@ static long hailo_read_log_ioctl(struct hailo_pcie_board *pBoard, unsigned long 
     return 0;
 }
 
-void firmware_notification_irq_handler(struct hailo_pcie_board *board)
+static void firmware_notification_irq_handler(struct hailo_pcie_board *board)
 {
     struct hailo_notification_wait *notif_wait_cursor = NULL;
     int err = 0;
@@ -433,7 +433,7 @@ static long hailo_add_notification_wait(struct hailo_pcie_board *board, struct f
     return 0;
 }
 
-long hailo_read_notification_ioctl(struct hailo_pcie_board *pBoard, unsigned long arg, struct file *filp,
+static long hailo_read_notification_ioctl(struct hailo_pcie_board *pBoard, unsigned long arg, struct file *filp,
     bool* should_up_board_mutex)
 {
     long err = 0;
@@ -486,7 +486,7 @@ l_exit:
     return err;
 }
 
-long hailo_disable_notification(struct hailo_pcie_board *pBoard, struct file *filp)
+static long hailo_disable_notification(struct hailo_pcie_board *pBoard, struct file *filp)
 {
     struct hailo_notification_wait *cursor = NULL;
 
@@ -504,7 +504,7 @@ long hailo_disable_notification(struct hailo_pcie_board *pBoard, struct file *fi
     return 0;
 }
 
-int hailo_fw_control(struct hailo_pcie_board *pBoard, unsigned long arg, bool* should_up_board_mutex)
+static int hailo_fw_control(struct hailo_pcie_board *pBoard, unsigned long arg, bool* should_up_board_mutex)
 {
     struct hailo_fw_control *command = &pBoard->fw_control.command;
     long completion_result = 0;
@@ -562,7 +562,7 @@ l_exit:
     return err;
 }
 
-long hailo_query_device_properties(struct hailo_pcie_board *board, unsigned long arg)
+static long hailo_query_device_properties(struct hailo_pcie_board *board, unsigned long arg)
 {
     struct hailo_device_properties props = {
         .desc_max_page_size = board->desc_max_page_size,
@@ -582,7 +582,7 @@ long hailo_query_device_properties(struct hailo_pcie_board *board, unsigned long
     return 0;
 }
 
-long hailo_query_driver_info(struct hailo_pcie_board *board, unsigned long arg)
+static long hailo_query_driver_info(struct hailo_pcie_board *board, unsigned long arg)
 {
     struct hailo_driver_info info = {
         .major_version = HAILO_DRV_VER_MAJOR,

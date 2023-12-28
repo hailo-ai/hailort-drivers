@@ -13,7 +13,7 @@
 
 struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     void __user *user_address, size_t size, enum dma_data_direction direction,
-    struct hailo_vdma_low_memory_buffer *allocated_vdma_buffer);
+    struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer);
 void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf);
 void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf);
 
