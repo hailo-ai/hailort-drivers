@@ -28,6 +28,9 @@ int hailo_ioremap_resource(struct platform_device *pdev, struct hailo_resource *
     resource->address = (uintptr_t)address;
     resource->size = resource_size(platform_resource);
 
+    hailo_dev_dbg(&pdev->dev, "resource[%s]: remap %pr of %zx bytes to virtual start address %lx\n",
+        platform_resource->name, platform_resource, resource->size, (uintptr_t)address);
+
     return 0;
 }
 

@@ -58,6 +58,7 @@ struct hailo_integrated_nnc_cpu {
     struct reset_control *reset;
     struct hailo_resource fw_header;
     struct hailo_resource fw_code;
+    struct hailo_resource fw_isr_vector;
 };
 
 struct hailo_vdma_engine_resources
