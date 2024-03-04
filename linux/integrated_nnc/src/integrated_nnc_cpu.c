@@ -21,18 +21,28 @@
 static int hailo_write_core_firmware(struct hailo_board *board, firmware_header_t *fw_header)
 {
     void *fw_code = NULL;
+    void *fw_isr_vector = NULL;
+    size_t fw_code_size;
+    size_t fw_isr_vector_size;
+
     int err = -EINVAL;
 
     /* Make sure the resource is large enough to contain the data */
     if (board->integrated_nnc_cpu.fw_header.size < sizeof(firmware_header_t)) {
-        hailo_err(board, "Memory resource for firmware header is not large enough. Should be at least 0x%lx bytes",
+        hailo_err(board, "Memory resource for firmware header is not large enough. Should be at least 0x%zx bytes",
              sizeof(firmware_header_t));
         return -EINVAL;
     }
 
-    if (board->integrated_nnc_cpu.fw_code.size < fw_header->code_size) {
+    if (board->integrated_nnc_cpu.fw_code.size + board->integrated_nnc_cpu.fw_isr_vector.size < fw_header->code_size) {
         hailo_err(board, "Memory resource for firmware code is not large enough. Should be at least 0x%x bytes",
              fw_header->code_size);
+        return -EINVAL;
+    }
+
+    if (board->integrated_nnc_cpu.fw_isr_vector.size >= fw_header->code_size) {
+        hailo_err(board, "firmware code size is to small. Should be at least 0x%zx bytes",
+             board->integrated_nnc_cpu.fw_isr_vector.size);
         return -EINVAL;
     }
 
@@ -43,13 +53,26 @@ static int hailo_write_core_firmware(struct hailo_board *board, firmware_header_
     }
 
     /* copy firmware header to mapped region */
+    hailo_dbg(board, "write_buffer[fw_header]: to sram-virt[%lx] size %zx bytes from dram-virt[%lx]\n",
+        board->integrated_nnc_cpu.fw_header.address, sizeof(firmware_header_t), (uintptr_t)fw_header);
     hailo_resource_write_buffer(&board->integrated_nnc_cpu.fw_header, 0,
         sizeof(firmware_header_t), fw_header);
 
     /* copy firmware code to mapped region (at this point the header was verified and we can trust the header declared size */
     fw_code = (void*)((u8*)fw_header + sizeof(firmware_header_t));
+    fw_code_size = fw_header->code_size - board->integrated_nnc_cpu.fw_isr_vector.size;
+    hailo_dbg(board, "write_buffer[fw_code]: to sram-virt[%lx] size %zx bytes from dram-virt[%lx]\n",
+        board->integrated_nnc_cpu.fw_code.address, fw_code_size, (uintptr_t)fw_code);
     hailo_resource_write_buffer(&board->integrated_nnc_cpu.fw_code, 0,
-        fw_header->code_size, fw_code);
+        fw_code_size, fw_code);
+
+    /* copy firmware isr_vectore to mapped region (at this point the header was verified and we can trust the header declared size */
+    fw_isr_vector = (void*)((u8*)fw_header + sizeof(firmware_header_t) + fw_code_size);
+    fw_isr_vector_size = board->integrated_nnc_cpu.fw_isr_vector.size;
+    hailo_dbg(board, "write_buffer[fw_isr_vector]: to sram-virt[%lx] size %zx bytes from dram-virt[%lx]\n",
+        board->integrated_nnc_cpu.fw_isr_vector.address, fw_isr_vector_size, (uintptr_t)fw_isr_vector);
+    hailo_resource_write_buffer(&board->integrated_nnc_cpu.fw_isr_vector, 0,
+        fw_isr_vector_size, fw_isr_vector);
 
     /* memory barrier just to make sure the firmware is fully written before we continue exectuion */
     mb();
@@ -84,6 +107,7 @@ int hailo_integrated_nnc_cpu_struct_init(struct hailo_board *board)
     int err = -EINVAL;
     struct hailo_resource fw_header = {};
     struct hailo_resource fw_code = {};
+    struct hailo_resource fw_isr_vector = {};
     struct reset_control *cpu_reset = NULL;
 
     /* Retrieve core cpu reset from device-tree */
@@ -106,9 +130,16 @@ int hailo_integrated_nnc_cpu_struct_init(struct hailo_board *board)
         return err;
     }
 
+    err = hailo_ioremap_resource(board->pDev, &fw_isr_vector, "core-fw-isr-vector");
+    if (err < 0) {
+        hailo_err(board, "Failed ioremap fw isr-vector. err %d\n", err);
+        return err;
+    }
     board->integrated_nnc_cpu.reset = cpu_reset;
     board->integrated_nnc_cpu.fw_header = fw_header;
     board->integrated_nnc_cpu.fw_code = fw_code;
+    board->integrated_nnc_cpu.fw_isr_vector = fw_isr_vector;
+
     return 0;
 }
 

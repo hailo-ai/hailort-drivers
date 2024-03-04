@@ -10,7 +10,7 @@
 
 #define HAILO_DRV_VER_MAJOR 4
 #define HAILO_DRV_VER_MINOR 16
-#define HAILO_DRV_VER_REVISION 1
+#define HAILO_DRV_VER_REVISION 2
 
 #define HAILO_DRV_VER __stringify(HAILO_DRV_VER_MAJOR) "." __stringify(HAILO_DRV_VER_MINOR) "."  __stringify(HAILO_DRV_VER_REVISION)
 
