@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 
 
+#define BSC_IMASK_HOST (0x0188)
 #define BCS_ISTATUS_HOST (0x018C)
 #define BCS_SOURCE_INTERRUPT_PER_CHANNEL (0x400)
 #define BCS_DESTINATION_INTERRUPT_PER_CHANNEL (0x500)
@@ -36,9 +37,16 @@
 #define PCIE_APP_CPU_DEBUG_OFFSET (8*1024)
 #define PCIE_CORE_CPU_DEBUG_OFFSET (PCIE_APP_CPU_DEBUG_OFFSET + DEBUG_BUFFER_TOTAL_SIZE)
 
+#define PCIE_D2H_NOTIFICATION_SRAM_OFFSET (0x640 + 0x640)
+#define PCIE_REQUEST_SIZE_OFFSET (0x640)
+
 #define PCIE_CONFIG_VENDOR_OFFSET (0x0098)
 
-typedef uint32_t hailo_ptr_t;
+#define HAILO_PCIE_HOST_DMA_DATA_ID (0)
+#define HAILO_PCIE_DMA_DEVICE_INTERRUPTS_BITMASK    (1 << 4)
+#define HAILO_PCIE_DMA_HOST_INTERRUPTS_BITMASK      (1 << 5)
+
+typedef u32 hailo_ptr_t;
 
 struct hailo_fw_addresses {
     u32 boot_fw_header;
@@ -53,11 +61,11 @@ struct hailo_fw_addresses {
 };
 
 struct hailo_atr_config {
-    uint32_t atr_param;
-    uint32_t atr_src;
-    uint32_t atr_trsl_addr_1;
-    uint32_t atr_trsl_addr_2;
-    uint32_t atr_trsl_param;
+    u32 atr_param;
+    u32 atr_src;
+    u32 atr_trsl_addr_1;
+    u32 atr_trsl_addr_2;
+    u32 atr_trsl_param;
 };
 
 struct hailo_board_compatibility {
@@ -148,8 +156,8 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
 
 bool hailo_pcie_read_interrupt(struct hailo_pcie_resources *resources, struct hailo_pcie_interrupt_source *source)
 {
-    uint32_t channel_data_source = 0;
-    uint32_t channel_data_dest = 0;
+    u32 channel_data_source = 0;
+    u32 channel_data_dest = 0;
     memset(source, 0, sizeof(*source));
 
     source->interrupt_bitmask = hailo_resource_read32(&resources->config, BCS_ISTATUS_HOST);
@@ -176,8 +184,8 @@ bool hailo_pcie_read_interrupt(struct hailo_pcie_resources *resources, struct ha
 int hailo_pcie_write_firmware_control(struct hailo_pcie_resources *resources, const struct hailo_fw_control *command)
 {
     int err = 0;
-    uint32_t request_size = 0;
-    uint8_t fw_access_value = FW_ACCESS_APP_CPU_CONTROL_MASK;
+    u32 request_size = 0;
+    u8 fw_access_value = FW_ACCESS_APP_CPU_CONTROL_MASK;
     const struct hailo_fw_addresses *fw_addresses = &(compat[resources->board_type].fw_addresses);
 
     if (!hailo_pcie_is_firmware_loaded(resources)) {
@@ -197,13 +205,13 @@ int hailo_pcie_write_firmware_control(struct hailo_pcie_resources *resources, co
         FW_ACCESS_APP_CPU_CONTROL_MASK;
     
     // Raise ready flag to FW
-    hailo_resource_write32(&resources->fw_access, fw_addresses->raise_ready_offset, (uint32_t)fw_access_value);
+    hailo_resource_write32(&resources->fw_access, fw_addresses->raise_ready_offset, (u32)fw_access_value);
     return 0;
 }
 
 int hailo_pcie_read_firmware_control(struct hailo_pcie_resources *resources, struct hailo_fw_control *command)
 {
-    uint32_t response_header_size = 0;
+    u32 response_header_size = 0;
 
     // Copy response md5 + buffer_len
     response_header_size = sizeof(command->expected_md5) + sizeof(command->buffer_len);
@@ -224,7 +232,7 @@ int hailo_pcie_read_firmware_control(struct hailo_pcie_resources *resources, str
 void hailo_pcie_write_firmware_driver_shutdown(struct hailo_pcie_resources *resources)
 {
     const struct hailo_fw_addresses *fw_addresses = &(compat[resources->board_type].fw_addresses);
-    const uint32_t fw_access_value = FW_ACCESS_DRIVER_SHUTDOWN_MASK;
+    const u32 fw_access_value = FW_ACCESS_DRIVER_SHUTDOWN_MASK;
 
     // Write shutdown flag to FW
     hailo_resource_write32(&resources->fw_access, fw_addresses->raise_ready_offset, fw_access_value);
@@ -384,7 +392,7 @@ static int FW_VALIDATION__validate_fw_headers(uintptr_t firmware_base_address, s
     firmware_header_t *core_firmware_header = NULL;
     secure_boot_certificate_t *firmware_cert = NULL;
     int err = -EINVAL;
-    uint32_t consumed_firmware_offset = 0;
+    u32 consumed_firmware_offset = 0;
 
     err = FW_VALIDATION__validate_fw_header(firmware_base_address, firmware_size, MAXIMUM_APP_FIRMWARE_CODE_SIZE,
         &consumed_firmware_offset, &app_firmware_header, board_type);
@@ -496,10 +504,10 @@ const char* hailo_pcie_get_fw_filename(const enum hailo_board_type board_type) {
     return compat[board_type].fw_filename;
 }
 
-void hailo_pcie_update_channel_interrupts_mask(struct hailo_pcie_resources* resources, uint32_t channels_bitmap)
+void hailo_pcie_update_channel_interrupts_mask(struct hailo_pcie_resources* resources, u32 channels_bitmap)
 {
     size_t i = 0;
-    uint32_t mask = hailo_resource_read32(&resources->config, BSC_IMASK_HOST);
+    u32 mask = hailo_resource_read32(&resources->config, BSC_IMASK_HOST);
 
     // Clear old channel interrupts
     mask &= ~BCS_ISTATUS_HOST_VDMA_SRC_IRQ_MASK;
@@ -508,7 +516,7 @@ void hailo_pcie_update_channel_interrupts_mask(struct hailo_pcie_resources* reso
     for (i = 0; i < MAX_VDMA_CHANNELS_PER_ENGINE; ++i) {
         if (hailo_test_bit(i, &channels_bitmap)) {
             // based on 18.5.2 "vDMA Interrupt Registers" in PLDA documentation
-            uint32_t offset = (i < VDMA_DEST_CHANNELS_START) ? 0 : 8;
+            u32 offset = (i < VDMA_DEST_CHANNELS_START) ? 0 : 8;
             hailo_set_bit((((int)i*8) / MAX_VDMA_CHANNELS_PER_ENGINE) + offset, &mask);
         }
     }
@@ -517,7 +525,7 @@ void hailo_pcie_update_channel_interrupts_mask(struct hailo_pcie_resources* reso
 
 void hailo_pcie_enable_interrupts(struct hailo_pcie_resources *resources)
 {
-    uint32_t mask = hailo_resource_read32(&resources->config, BSC_IMASK_HOST);
+    u32 mask = hailo_resource_read32(&resources->config, BSC_IMASK_HOST);
 
     hailo_resource_write32(&resources->config, BCS_ISTATUS_HOST, 0xFFFFFFFF);
     hailo_resource_write32(&resources->config, BCS_DESTINATION_INTERRUPT_PER_CHANNEL, 0xFFFFFFFF);
@@ -610,14 +618,24 @@ int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct ha
     }
 }
 
-// On PCIe, just return the address
-uint64_t hailo_pcie_encode_dma_address(dma_addr_t dma_address, uint8_t channel_id)
-{
-    (void)channel_id;
-    return (uint64_t)dma_address;
-}
-
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources)
 {
     return PCI_VENDOR_ID_HAILO == hailo_resource_read16(&resources->config, PCIE_CONFIG_VENDOR_OFFSET);
 }
+
+// On PCIe, just return the address
+static u64 encode_dma_address(dma_addr_t dma_address, u8 channel_id)
+{
+    (void)channel_id;
+    return (u64)dma_address;
+}
+
+struct hailo_vdma_hw hailo_pcie_vdma_hw = {
+    .hw_ops = {
+        .encode_desc_dma_address = encode_dma_address
+    },
+    .ddr_data_id = HAILO_PCIE_HOST_DMA_DATA_ID,
+    .device_interrupts_bitmask = HAILO_PCIE_DMA_DEVICE_INTERRUPTS_BITMASK,
+    .host_interrupts_bitmask = HAILO_PCIE_DMA_HOST_INTERRUPTS_BITMASK,
+
+};

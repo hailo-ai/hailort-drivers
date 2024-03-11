@@ -21,9 +21,9 @@ static inline bool is_powerof2(size_t v) {
     return (v & (v - 1)) == 0;
 }
 
-static inline void hailo_set_bit(int nr, uint32_t* addr) {
-	uint32_t mask = BIT_MASK(nr);
-	uint32_t *p = addr + BIT_WORD(nr);
+static inline void hailo_set_bit(int nr, u32* addr) {
+	u32 mask = BIT_MASK(nr);
+	u32 *p = addr + BIT_WORD(nr);
 
 	*p  |= mask;
 }

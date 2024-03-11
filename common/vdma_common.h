@@ -11,6 +11,7 @@
 
 #include <linux/types.h>
 #include <linux/scatterlist.h>
+#include <linux/io.h>
 
 #define VDMA_DESCRIPTOR_LIST_ALIGN  (1 << 16)
 #define INVALID_VDMA_ADDRESS        (0)
@@ -21,15 +22,16 @@ extern "C"
 #endif
 
 struct hailo_vdma_descriptor {
-    uint32_t    PageSize_DescControl;
-    uint32_t    AddrL_rsvd_DataID;
-    uint32_t    AddrH;
-    uint32_t    RemainingPageSize_Status;
+    u32    PageSize_DescControl;
+    u32    AddrL_rsvd_DataID;
+    u32    AddrH;
+    u32    RemainingPageSize_Status;
 };
 
 struct hailo_vdma_descriptors_list {
     struct hailo_vdma_descriptor *desc_list;
-    uint32_t                      desc_count;  // Must be power of 2 if is_circular is set.
+    u32                      desc_count;  // Must be power of 2 if is_circular is set.
+    u16                      desc_page_size;
     bool                          is_circular;
 };
 
@@ -39,18 +41,92 @@ struct hailo_channel_interrupt_timestamp_list {
     struct hailo_channel_interrupt_timestamp timestamps[CHANNEL_IRQ_TIMESTAMPS_SIZE];
 };
 
+
+// For each buffers in transfer, the last descriptor will be programmed with
+// the residue size. In addition, if configured, the first descriptor (in
+// all transfer) may be programmed with interrupts.
+#define MAX_DIRTY_DESCRIPTORS_PER_TRANSFER      \
+    (HAILO_MAX_BUFFERS_PER_SINGLE_TRANSFER + 1)
+
+struct hailo_vdma_mapped_transfer_buffer {
+    struct sg_table *sg_table;
+    u32 size;
+    u32 offset;
+    void *opaque; // Drivers can set any opaque data here.
+};
+
+struct hailo_ongoing_transfer {
+    uint16_t last_desc;
+
+    u8 buffers_count;
+    struct hailo_vdma_mapped_transfer_buffer buffers[HAILO_MAX_BUFFERS_PER_SINGLE_TRANSFER];
+
+    // Contains all descriptors that were programmed with non-default values
+    // for the transfer (by non-default we mean - different size or different
+    // interrupts domain).
+    uint8_t dirty_descs_count;
+    uint16_t dirty_descs[MAX_DIRTY_DESCRIPTORS_PER_TRANSFER];
+
+    // If set, validate descriptors status on transfer completion.
+    bool is_debug;
+};
+
+struct hailo_ongoing_transfers_list {
+    unsigned long head;
+    unsigned long tail;
+    struct hailo_ongoing_transfer transfers[HAILO_VDMA_MAX_ONGOING_TRANSFERS];
+};
+
+struct hailo_vdma_channel_state {
+    // vdma channel counters. num_avail should be synchronized with the hw
+    // num_avail value. num_proc is the last num proc updated when the user
+    // reads interrupts.
+    u16 num_avail;
+    u16 num_proc;
+
+    // Mask of the num-avail/num-proc counters.
+    u32 desc_count_mask;
+};
+
 struct hailo_vdma_channel {
-    // direction of the channel. should be only from_device or to_device
-    enum hailo_dma_data_direction direction;
+    u8 index;
+
+    u8 __iomem *host_regs;
+    u8 __iomem *device_regs;
+
+    // Last descriptors list attached to the channel. When it changes,
+    // assumes that the channel got reset.
+    struct hailo_vdma_descriptors_list *last_desc_list;
+
+    struct hailo_vdma_channel_state state;
+    struct hailo_ongoing_transfers_list ongoing_transfers;
+
     bool timestamp_measure_enabled;
     struct hailo_channel_interrupt_timestamp_list timestamp_list;
 };
 
 struct hailo_vdma_engine {
-    struct hailo_resource channel_registers;
+    u8 index;
     u32 enabled_channels;
     u32 interrupted_channels;
     struct hailo_vdma_channel channels[MAX_VDMA_CHANNELS_PER_ENGINE];
+};
+
+struct hailo_vdma_hw_ops {
+    // Accepts some dma_addr_t mapped to the device and encodes it using
+    // hw specific encode. returns INVALID_VDMA_ADDRESS on failure.
+    u64 (*encode_desc_dma_address)(dma_addr_t dma_address, u8 channel_id);
+};
+
+struct hailo_vdma_hw {
+    struct hailo_vdma_hw_ops hw_ops;
+
+    // The data_id code of ddr addresses.
+    u8 ddr_data_id;
+
+    // Bitmask needed to set on each descriptor to enable interrupts (either host/device).
+    unsigned long host_interrupts_bitmask;
+    unsigned long device_interrupts_bitmask;
 };
 
 #define _for_each_element_array(array, size, element, index) \
@@ -60,26 +136,61 @@ struct hailo_vdma_engine {
     _for_each_element_array(engine->channels, MAX_VDMA_CHANNELS_PER_ENGINE,   \
         channel, channel_index)
 
-void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *descriptor, uint64_t dma_address, size_t page_size,
-    uint8_t data_id);
+void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *descriptor, u64 dma_address, size_t page_size,
+    u8 data_id);
 
-typedef uint64_t (*encode_desc_dma_address_t)(dma_addr_t dma_address, uint8_t channel_id);
-
+/**
+ * Program the given descriptors list to map the given buffer.
+ *
+ * @param vdma_hw vdma hw object
+ * @param desc_list descriptors list object to program
+ * @param starting_desc index of the first descriptor to program. If the list
+ *                      is circular, this function may wrap around the list.
+ * @param buffer buffer to program to the descriptors list.
+ * @param channel_index channel index of the channel attached.
+ *
+ * @return On success - the amount of descriptors programmed, negative value on error.
+ */
 int hailo_vdma_program_descriptors_list(
-    struct hailo_desc_list_bind_vdma_buffer_params *params,
+    struct hailo_vdma_hw *vdma_hw,
     struct hailo_vdma_descriptors_list *desc_list,
-    struct sg_table *buffer,
-    dma_addr_t mmio_dma_address,
-    uint32_t size,
-    encode_desc_dma_address_t address_encoder,
-    uint8_t data_id);
+    u32 starting_desc,
+    struct hailo_vdma_mapped_transfer_buffer *buffer,
+    u8 channel_index);
 
-int hailo_vdma_channel_read_register(struct hailo_vdma_channel_read_register_params *params,
-    struct hailo_resource *vdma_registers);
-int hailo_vdma_channel_write_register(struct hailo_vdma_channel_write_register_params *params,
-    struct hailo_resource *vdma_registers);
+/**
+ * Launch a transfer on some vdma channel. Includes:
+ *      1. Binding the transfer buffers to the descriptors list.
+ *      2. Program the descriptors list.
+ *      3. Increase num available
+ *
+ * @param vdma_hw vdma hw object
+ * @param channel vdma channel object.
+ * @param desc_list descriptors list object to program.
+ * @param starting_desc index of the first descriptor to program.
+ * @param buffers_count amount of transfer mapped buffers to program.
+ * @param buffers array of buffers to program to the descriptors list.
+ * @param should_bind whether to bind the buffer to the descriptors list.
+ * @param first_interrupts_domain - interrupts settings on first descriptor.
+ * @param last_desc_interrupts - interrupts settings on last descriptor.
+ * @param is_debug program descriptors for debug run, adds some overhead (for
+ *                 example, hw will write desc complete status).
+ *
+ * @return On success - the amount of descriptors programmed, negative value on error.
+ */
+int hailo_vdma_launch_transfer(
+    struct hailo_vdma_hw *vdma_hw,
+    struct hailo_vdma_channel *channel,
+    struct hailo_vdma_descriptors_list *desc_list,
+    u32 starting_desc,
+    u8 buffers_count,
+    struct hailo_vdma_mapped_transfer_buffer *buffers,
+    bool should_bind,
+    enum hailo_vdma_interrupts_domain first_interrupts_domain,
+    enum hailo_vdma_interrupts_domain last_desc_interrupts,
+    bool is_debug);
 
-void hailo_vdma_engine_init(struct hailo_vdma_engine *engine,
+void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
     const struct hailo_resource *channel_registers);
 
 // enable/disable channels interrupt (does not update interrupts mask because the
@@ -118,10 +229,13 @@ static inline u32 hailo_vdma_engine_read_interrupts(struct hailo_vdma_engine *en
     return irq_channels_bitmap;
 }
 
+typedef void(*transfer_done_cb_t)(struct hailo_ongoing_transfer *transfer, void *opaque);
+
 // Assuming irq_data->channels_count contains the amount of channels already
 // written (used for multiple engines).
 int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *irq_data,
-    struct hailo_vdma_engine *engine, u8 engine_index, u32 irq_channels_bitmap);
+    struct hailo_vdma_engine *engine, u32 irq_channels_bitmap,
+    transfer_done_cb_t transfer_done, void *transfer_done_opaque);
 
 #ifdef __cplusplus
 }

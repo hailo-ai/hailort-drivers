@@ -7,6 +7,7 @@
 #define PCIE_COMMON_FIRMWARE_HEADER_UTILS_H_
 
 #include "hailo_ioctl_common.h"
+#include <linux/types.h>
 
 #define FIRMWARE_HEADER_MAGIC_HAILO8 (0x1DD89DE0)
 #define FIRMWARE_HEADER_MAGIC_HAILO15 (0xE905DAAB)
@@ -27,12 +28,12 @@ typedef enum {
 } firmware_header_version_t;
 
 typedef struct {
-    uint32_t magic;
-    uint32_t header_version;
-    uint32_t firmware_major;
-    uint32_t firmware_minor;
-    uint32_t firmware_revision;
-    uint32_t code_size;
+    u32 magic;
+    u32 header_version;
+    u32 firmware_major;
+    u32 firmware_minor;
+    u32 firmware_revision;
+    u32 code_size;
 } firmware_header_t;
 
 
@@ -42,9 +43,9 @@ typedef struct {
 #endif /* _MSC_VER */
 
 typedef struct {
-    uint32_t key_size;
-    uint32_t content_size;
-    uint8_t certificates_data[0];
+    u32 key_size;
+    u32 content_size;
+    u8 certificates_data[0];
 } secure_boot_certificate_t;
 
 #ifdef _MSC_VER
@@ -56,10 +57,10 @@ typedef struct {
 #define MAXIMUM_FIRMWARE_CERT_CONTENT_SIZE (0x1000)
 
 int FW_VALIDATION__validate_fw_header(uintptr_t firmware_base_address,
-    size_t firmware_size, uint32_t max_code_size, uint32_t *outer_consumed_firmware_offset,
+    size_t firmware_size, u32 max_code_size, u32 *outer_consumed_firmware_offset,
     firmware_header_t **out_firmware_header, enum hailo_board_type board_type);
 
 int FW_VALIDATION__validate_cert_header(uintptr_t firmware_base_address,
-    size_t firmware_size, uint32_t *outer_consumed_firmware_offset, secure_boot_certificate_t **out_firmware_cert);
+    size_t firmware_size, u32 *outer_consumed_firmware_offset, secure_boot_certificate_t **out_firmware_cert);
 
 #endif

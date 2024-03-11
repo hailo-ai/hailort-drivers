@@ -17,11 +17,11 @@
 // See linux/mm.h
 #define MMIO_AND_NO_PAGES_VMA_MASK (VM_IO | VM_PFNMAP)
 
-static int map_mmio_address(void __user* user_address, uint32_t size, struct vm_area_struct *vma,
-    struct device *dev, enum dma_data_direction direction, dma_addr_t *mmio_dma_address);
-static int prepare_sg_table(struct sg_table *sg_table, void __user* user_address, uint32_t size,
+static int map_mmio_address(void __user* user_address, u32 size, struct vm_area_struct *vma,
+    struct sg_table *sgt);
+static int prepare_sg_table(struct sg_table *sg_table, void __user* user_address, u32 size,
     struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer);
-static void clear_sg_table(struct sg_table *sgt, bool put_pages);
+static void clear_sg_table(struct sg_table *sgt);
 
 struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     void __user *user_address, size_t size, enum dma_data_direction direction,
@@ -29,11 +29,9 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
 {
     int ret = -EINVAL;
     struct hailo_vdma_buffer *mapped_buffer = NULL;
-    // Either sgt will be a zero initialized struct and mmio_dma_address != INVALID_VDMA_ADDRESS
-    // or sgt will be mapped to dma and mmio_dma_address will be INVALID_VDMA_ADDRESS
-    dma_addr_t mmio_dma_address = INVALID_VDMA_ADDRESS;
     struct sg_table sgt = {0};
     struct vm_area_struct *vma = NULL;
+    bool is_mmio = false;
 
     mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
     if (NULL == mapped_buffer) {
@@ -61,11 +59,13 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             goto free_buffer_struct;
         }
 
-        ret = map_mmio_address(user_address, size, vma, dev, direction, &mmio_dma_address);
+        ret = map_mmio_address(user_address, size, vma, &sgt);
         if (ret < 0) {
             dev_err(dev, "failed to map mmio address %d\n", ret);
             goto free_buffer_struct;
         }
+
+        is_mmio = true;
     } else {
         // user_address is a standard 'struct page' backed memory address
         ret = prepare_sg_table(&sgt, user_address, size, low_mem_driver_allocated_buffer);
@@ -87,16 +87,12 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     mapped_buffer->size = size;
     mapped_buffer->data_direction = direction;
     mapped_buffer->sg_table = sgt;
-    mapped_buffer->low_mem_driver_allocated_buffer_handle = low_mem_driver_allocated_buffer ?
-        low_mem_driver_allocated_buffer->handle :
-        INVALID_DRIVER_HANDLE_VALUE;
-    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING)) {
-        mapped_buffer->mmio_dma_address = mmio_dma_address;
-    }
+    mapped_buffer->is_mmio = is_mmio;
+
     return mapped_buffer;
 
 clear_sg_table:
-    clear_sg_table(&sgt, (NULL == low_mem_driver_allocated_buffer));
+    clear_sg_table(&sgt);
 free_buffer_struct:
     kfree(mapped_buffer);
 cleanup:
@@ -107,13 +103,11 @@ static void unmap_buffer(struct kref *kref)
 {
     struct hailo_vdma_buffer *buf = container_of(kref, struct hailo_vdma_buffer, kref);
 
-    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && (INVALID_VDMA_ADDRESS != buf->mmio_dma_address)) {
-        // TODO: need dma_unmap_resource here? add it if we add dma_map_resource (HRT-12521)
-    } else {
-        const bool put_pages = ((INVALID_DRIVER_HANDLE_VALUE) == buf->low_mem_driver_allocated_buffer_handle);
+    if (!buf->is_mmio) {
         dma_unmap_sg(buf->device, buf->sg_table.sgl, buf->sg_table.orig_nents, buf->data_direction);
-        clear_sg_table(&buf->sg_table, put_pages);
     }
+
+    clear_sg_table(&buf->sg_table);
 }
 
 void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf)
@@ -124,6 +118,75 @@ void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf)
 void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf)
 {
     kref_put(&buf->kref, unmap_buffer);
+}
+
+static void vdma_sync_entire_buffer(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type)
+{
+    if (sync_type == HAILO_SYNC_FOR_CPU) {
+        dma_sync_sg_for_cpu(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
+            mapped_buffer->data_direction);
+    } else {
+        dma_sync_sg_for_device(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
+            mapped_buffer->data_direction);
+    }
+}
+
+typedef void (*dma_sync_single_callback)(struct device *, dma_addr_t, size_t, enum dma_data_direction);
+// Map sync_info->count bytes starting at sync_info->offset
+static void vdma_sync_buffer_interval(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_buffer *mapped_buffer,
+    size_t offset, size_t size, enum hailo_vdma_buffer_sync_type sync_type)
+{
+    size_t sync_start_offset = offset;
+    size_t sync_end_offset = offset + size;
+    dma_sync_single_callback dma_sync_single = (sync_type == HAILO_SYNC_FOR_CPU) ?
+        dma_sync_single_for_cpu :
+        dma_sync_single_for_device;
+    struct scatterlist* sg_entry = NULL;
+    size_t current_iter_offset = 0;
+    int i = 0;
+
+    for_each_sg(mapped_buffer->sg_table.sgl, sg_entry, mapped_buffer->sg_table.nents, i) {
+        // Check if the intervals: [current_iter_offset, sg_dma_len(sg_entry)] and [sync_start_offset, sync_end_offset]
+        // have any intersection. If offset isn't at the start of a sg_entry, we still want to sync it.
+        if (max(sync_start_offset, current_iter_offset) <= min(sync_end_offset, current_iter_offset + sg_dma_len(sg_entry))) {
+            dma_sync_single(controller->dev, sg_dma_address(sg_entry), sg_dma_len(sg_entry),
+                mapped_buffer->data_direction);
+        }
+
+        current_iter_offset += sg_dma_len(sg_entry);
+    }
+}
+
+void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
+    size_t offset, size_t size)
+{
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && mapped_buffer->is_mmio) {
+        // MMIO buffers don't need to be sync'd
+        return;
+    }
+
+    if ((offset == 0) && (size == mapped_buffer->size)) {
+        vdma_sync_entire_buffer(controller, mapped_buffer, sync_type);
+    } else {
+        vdma_sync_buffer_interval(controller, mapped_buffer, offset, size, sync_type);
+    }
+}
+
+// Similar to vdma_buffer_sync, allow circular sync of the buffer.
+void hailo_vdma_buffer_sync_cyclic(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
+    size_t offset, size_t size)
+{
+    size_t size_to_end = min(size, mapped_buffer->size - offset);
+
+    hailo_vdma_buffer_sync(controller, mapped_buffer, sync_type, offset, size_to_end);
+
+    if (size_to_end < size) {
+        hailo_vdma_buffer_sync(controller, mapped_buffer, sync_type, 0, size - size_to_end);
+    }
 }
 
 struct hailo_vdma_buffer* hailo_vdma_find_mapped_user_buffer(struct hailo_vdma_file_context *context,
@@ -149,8 +212,8 @@ void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *co
 }
 
 
-int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintptr_t desc_handle, bool is_circular,
-    struct hailo_descriptors_list_buffer *descriptors)
+int hailo_desc_list_create(struct device *dev, u32 descriptors_count, u16 desc_page_size,
+    uintptr_t desc_handle, bool is_circular, struct hailo_descriptors_list_buffer *descriptors)
 {
     size_t buffer_size = 0;
     const u64 align = VDMA_DESCRIPTOR_LIST_ALIGN; //First addr must be aligned on 64 KB  (from the VDMA registers documentation)
@@ -172,6 +235,7 @@ int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintp
 
     descriptors->desc_list.desc_list = descriptors->kernel_address;
     descriptors->desc_list.desc_count = descriptors_count;
+    descriptors->desc_list.desc_page_size = desc_page_size;
     descriptors->desc_list.is_circular = is_circular;
 
     return 0;
@@ -339,16 +403,17 @@ void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *con
 
 // Assumes the provided user_address belongs to the vma and that MMIO_AND_NO_PAGES_VMA_MASK bits are set under
 // vma->vm_flags. This is validated in hailo_vdma_buffer_map, and won't be checked here
-static int map_mmio_address(void __user* user_address, uint32_t size, struct vm_area_struct *vma,
-    struct device *dev, enum dma_data_direction direction, dma_addr_t *mmio_dma_address)
+static int map_mmio_address(void __user* user_address, u32 size, struct vm_area_struct *vma,
+    struct sg_table *sgt)
 {
     int ret = -EINVAL;
     unsigned long i = 0;
     unsigned long pfn = 0;
     unsigned long next_pfn = 0;
     phys_addr_t phys_addr = 0;
+    dma_addr_t mmio_dma_address = 0;
     const uintptr_t virt_addr = (uintptr_t)user_address;
-    const uint32_t vma_size = vma->vm_end - vma->vm_start + 1;
+    const u32 vma_size = vma->vm_end - vma->vm_start + 1;
     const uintptr_t num_pages = PFN_UP(virt_addr + size) - PFN_DOWN(virt_addr);
 
     // Check that the vma that was marked as MMIO_AND_NO_PAGES_VMA_MASK is big enough
@@ -379,15 +444,25 @@ static int map_mmio_address(void __user* user_address, uint32_t size, struct vm_
         pfn = next_pfn;
     }
 
-    // Finally - phys_addr to dma
+    // phys_addr to dma
     // TODO: need dma_map_resource here? doesn't work currently (we get dma_mapping_error on the returned dma addr)
     //       (HRT-12521)
-    *mmio_dma_address = (dma_addr_t)phys_addr;
+    mmio_dma_address = (dma_addr_t)phys_addr;
+
+    // Create a page-less scatterlist.
+    ret = sg_alloc_table(sgt, 1, GFP_KERNEL);
+    if (ret < 0) {
+        return ret;
+    }
+
+    sg_assign_page(sgt->sgl, NULL);
+    sg_dma_address(sgt->sgl) = mmio_dma_address;
+    sg_dma_len(sgt->sgl) = size;
 
     return 0;
 }
 
-static int prepare_sg_table(struct sg_table *sg_table, void __user *user_address, uint32_t size,
+static int prepare_sg_table(struct sg_table *sg_table, void __user *user_address, u32 size,
     struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer)
 {
     int ret = -EINVAL;
@@ -427,8 +502,10 @@ static int prepare_sg_table(struct sg_table *sg_table, void __user *user_address
             ret = -EINVAL;
             goto exit;
         }
+
         for (i = 0; i < npages; i++) {
             pages[i] = virt_to_page(low_mem_driver_allocated_buffer->pages_address[i]);
+            get_page(pages[i]);
         }
     }
 
@@ -454,14 +531,14 @@ exit:
     return ret;
 }
 
-static void clear_sg_table(struct sg_table *sgt, bool put_pages)
+static void clear_sg_table(struct sg_table *sgt)
 {
     struct sg_page_iter iter;
     struct page *page = NULL;
 
-    if (put_pages) {
-        for_each_sg_page(sgt->sgl, &iter, sgt->orig_nents, 0) {
-            page = sg_page_iter_page(&iter);
+    for_each_sg_page(sgt->sgl, &iter, sgt->orig_nents, 0) {
+        page = sg_page_iter_page(&iter);
+        if (page) {
             if (!PageReserved(page)) {
                 SetPageDirty(page);
             }
