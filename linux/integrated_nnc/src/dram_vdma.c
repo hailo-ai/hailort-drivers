@@ -29,9 +29,12 @@
 #define CHANNEL_ID_SHIFT                (57)
 
 #define DDR_AXI_DATA_ID                 (1)
+#define DRAM_DMA_HOST_INTERRUPTS_BITMASK      (1 << 4)
+#define DRAM_DMA_DEVICE_INTERRUPTS_BITMASK    (1 << 5)
+
 
 static void update_channel_interrupts(struct hailo_vdma_controller *controller,
-    size_t engine_index, uint32_t channels_bitmap)
+    size_t engine_index, u32 channels_bitmap)
 {
     struct hailo_board *board = (struct hailo_board*) dev_get_drvdata(controller->dev);
     struct hailo_resource *engine_registers = NULL;
@@ -41,50 +44,42 @@ static void update_channel_interrupts(struct hailo_vdma_controller *controller,
     hailo_resource_write32(engine_registers, VDMA_INTERRUPT_MASK_OFFSET, channels_bitmap);
 }
 
-static uint64_t encode_dma_address_base(dma_addr_t dma_address, uint8_t channel_id, uint8_t kind)
+static u64 encode_dma_address_base(dma_addr_t dma_address, u8 channel_id, u8 kind)
 {
-    uint64_t address = INVALID_VDMA_ADDRESS;
+    u64 address = INVALID_VDMA_ADDRESS;
     if (0 != (channel_id & ~CHANNEL_ID_MASK)) {
         return INVALID_VDMA_ADDRESS;
     }
 
-    address = (uint64_t)dma_address;
-    address |= ((uint64_t)kind) << DESCRIPTOR_KIND_SHIFT;
-    address |= ((uint64_t)channel_id) << CHANNEL_ID_SHIFT;
+    address = (u64)dma_address;
+    address |= ((u64)kind) << DESCRIPTOR_KIND_SHIFT;
+    address |= ((u64)channel_id) << CHANNEL_ID_SHIFT;
 
     return address;
 }
 
-static uint64_t encode_channel_dma_address(dma_addr_t dma_address, uint8_t channel_id)
+static u64 encode_desc_dma_address(dma_addr_t dma_address, u8 channel_id)
 {
-    if (0 != ((uint64_t)dma_address & ~DMA_CHANNEL_ADDRESS_MASK)) {
-        return INVALID_VDMA_ADDRESS;
-    }
+    const u8 zero_kind = 0;
 
-    return encode_dma_address_base(dma_address, channel_id, EXTERNAL_DESCRIPTOR_KIND);
-}
-
-static uint64_t encode_desc_dma_address(dma_addr_t dma_address, uint8_t channel_id)
-{
-    const uint8_t zero_kind = 0;
-
-    if (0 != ((uint64_t)dma_address & ~DMA_DESC_ADDRESS_MASK)) {
+    if (0 != ((u64)dma_address & ~DMA_DESC_ADDRESS_MASK)) {
         return INVALID_VDMA_ADDRESS;
     }
 
     return encode_dma_address_base(dma_address, channel_id, zero_kind);
 }
 
-static uint8_t get_dma_data_id(void)
-{
-    return DDR_AXI_DATA_ID;
-}
+static struct hailo_vdma_hw dram_vdma_hw = {
+    .hw_ops = {
+        .encode_desc_dma_address = encode_desc_dma_address
+    },
+    .ddr_data_id = DDR_AXI_DATA_ID,
+    .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
+    .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
+};
 
 static struct hailo_vdma_controller_ops core_vdma_controller_ops = {
     .update_channel_interrupts = update_channel_interrupts,
-    .encode_channel_dma_address = encode_channel_dma_address,
-    .encode_desc_dma_address = encode_desc_dma_address,
-    .get_dma_data_id = get_dma_data_id
 };
 
 static irqreturn_t engine_irqhandler(struct hailo_board *board, size_t engine_index)
@@ -236,7 +231,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
         i++;
     }
 
-    err = hailo_vdma_controller_init(&board->vdma, &board->pDev->dev,
+    err = hailo_vdma_controller_init(&board->vdma, &board->pDev->dev, &dram_vdma_hw,
         &core_vdma_controller_ops, channel_registers, engines_count);
     if (err < 0) {
         return err;

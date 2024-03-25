@@ -13,14 +13,14 @@
 
 int FW_VALIDATION__validate_fw_headers(
     struct hailo_board *board,
-    uintptr_t firmware_base_address, uint32_t firmware_size,
+    uintptr_t firmware_base_address, u32 firmware_size,
     firmware_header_t **out_firmware_header,
     secure_boot_certificate_t **out_firmware_cert)
 {
     firmware_header_t *firmware_header = NULL;
     secure_boot_certificate_t *firmware_cert = NULL;
     int err = -EINVAL;
-    uint32_t consumed_firmware_offset = 0;
+    u32 consumed_firmware_offset = 0;
 
     err = FW_VALIDATION__validate_fw_header(firmware_base_address, firmware_size, MAXIMUM_CORE_FIRMWARE_CODE_SIZE,
         &consumed_firmware_offset, &firmware_header, HAILO_BOARD_TYPE_HAILO15);

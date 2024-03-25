@@ -53,7 +53,7 @@ struct hailo_file_context {
 struct hailo_pcie_board {
     struct list_head board_list;
     struct pci_dev *pDev;
-    uint32_t board_index;
+    u32 board_index;
     atomic_t ref_count;
     struct list_head open_files_list;
     struct hailo_pcie_resources pcie_resources;
@@ -74,7 +74,7 @@ struct hailo_pcie_board {
 
 bool power_mode_enabled(void);
 
-struct hailo_pcie_board* hailo_pcie_get_board_index(uint32_t index);
+struct hailo_pcie_board* hailo_pcie_get_board_index(u32 index);
 void hailo_disable_interrupts(struct hailo_pcie_board *board);
 int hailo_enable_interrupts(struct hailo_pcie_board *board);
 

@@ -19,7 +19,7 @@
 */
 int FW_VALIDATION__validate_fw_headers(
     struct hailo_board *board,
-    uintptr_t firmware_base_address, uint32_t firmware_size,
+    uintptr_t firmware_base_address, u32 firmware_size,
     firmware_header_t **out_firmware_header,
     secure_boot_certificate_t **out_firmware_cert);
 

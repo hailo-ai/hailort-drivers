@@ -13,7 +13,7 @@
    so we have a consumed_firmware_offset that is updated _before_ accessing data at that offset
    of firmware_base_address */
 #define CONSUME_FIRMWARE(__size, __err) do {                                                    \
-        consumed_firmware_offset += (uint32_t) (__size);                                        \
+        consumed_firmware_offset += (u32) (__size);                                        \
         if ((firmware_size < (__size)) || (firmware_size < consumed_firmware_offset)) {         \
             err = __err;                                                                        \
             goto exit;                                                                          \
@@ -21,13 +21,13 @@
     } while(0)
 
 int FW_VALIDATION__validate_fw_header(uintptr_t firmware_base_address,
-    size_t firmware_size, uint32_t max_code_size, uint32_t *outer_consumed_firmware_offset,
+    size_t firmware_size, u32 max_code_size, u32 *outer_consumed_firmware_offset,
     firmware_header_t **out_firmware_header, enum hailo_board_type board_type)
 {
     int err = -EINVAL;
     firmware_header_t *firmware_header = NULL;
-    uint32_t consumed_firmware_offset = *outer_consumed_firmware_offset;
-    uint32_t expected_firmware_magic = 0;
+    u32 consumed_firmware_offset = *outer_consumed_firmware_offset;
+    u32 expected_firmware_magic = 0;
  
     firmware_header = (firmware_header_t *) (firmware_base_address + consumed_firmware_offset);
     CONSUME_FIRMWARE(sizeof(firmware_header_t), -EINVAL);
@@ -83,12 +83,12 @@ exit:
 }
 
 int FW_VALIDATION__validate_cert_header(uintptr_t firmware_base_address,
-    size_t firmware_size, uint32_t *outer_consumed_firmware_offset, secure_boot_certificate_t **out_firmware_cert)
+    size_t firmware_size, u32 *outer_consumed_firmware_offset, secure_boot_certificate_t **out_firmware_cert)
 {
 
     secure_boot_certificate_t *firmware_cert = NULL;
     int err = -EINVAL;
-    uint32_t consumed_firmware_offset = *outer_consumed_firmware_offset;
+    u32 consumed_firmware_offset = *outer_consumed_firmware_offset;
 
     firmware_cert = (secure_boot_certificate_t *) (firmware_base_address + consumed_firmware_offset);
     CONSUME_FIRMWARE(sizeof(secure_boot_certificate_t), -EINVAL);

@@ -11,7 +11,7 @@
 #include <linux/interrupt.h>
 #include <linux/sched.h>
 #include <linux/pagemap.h>
-
+#include <linux/firmware.h>
 #include <linux/kthread.h>
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 16, 0)
@@ -126,7 +126,7 @@ static int hailo_get_desc_page_size(struct pci_dev *pdev, u32 *out_page_size)
 }
 
 // should be called only from fops_open (once)
-struct hailo_pcie_board* hailo_pcie_get_board_index(uint32_t index)
+struct hailo_pcie_board* hailo_pcie_get_board_index(u32 index)
 {
     struct hailo_pcie_board *pBoard, *pRet = NULL;
 
@@ -246,7 +246,7 @@ static int hailo_pcie_disable_aspm(struct hailo_pcie_board *board, u16 state, bo
 
 static void hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
 {
-    uint32_t index = 0;
+    u32 index = 0;
     struct hailo_pcie_board *pCurrent, *pNext;
 
 
@@ -544,7 +544,7 @@ static void pcie_resources_release(struct pci_dev *pdev, struct hailo_pcie_resou
 }
 
 static void update_channel_interrupts(struct hailo_vdma_controller *controller,
-    size_t engine_index, uint32_t channels_bitmap)
+    size_t engine_index, u32 channels_bitmap)
 {
     struct hailo_pcie_board *board = (struct hailo_pcie_board*) dev_get_drvdata(controller->dev);
     if (engine_index >= board->vdma.vdma_engines_count) {
@@ -555,23 +555,8 @@ static void update_channel_interrupts(struct hailo_vdma_controller *controller,
     hailo_pcie_update_channel_interrupts_mask(&board->pcie_resources, channels_bitmap);
 }
 
-// On PCIe, just return the address
-static uint64_t encode_dma_address(dma_addr_t dma_address, uint8_t channel_id)
-{
-    (void)channel_id;
-    return (uint64_t)dma_address;
-}
-
-static uint8_t get_dma_data_id(void)
-{
-    return HAILO_PCIE_HOST_DMA_DATA_ID;
-}
-
 static struct hailo_vdma_controller_ops pcie_vdma_controller_ops = {
     .update_channel_interrupts = update_channel_interrupts,
-    .encode_channel_dma_address = encode_dma_address,
-    .encode_desc_dma_address = hailo_pcie_encode_dma_address,
-    .get_dma_data_id = get_dma_data_id,
 };
 
 
@@ -579,7 +564,7 @@ static int hailo_pcie_vdma_controller_init(struct hailo_vdma_controller *control
     struct device *dev, struct hailo_resource *vdma_registers)
 {
     const size_t engines_count = 1;
-    return hailo_vdma_controller_init(controller, dev,
+    return hailo_vdma_controller_init(controller, dev, &hailo_pcie_vdma_hw,
         &pcie_vdma_controller_ops, vdma_registers, engines_count);
 }
 

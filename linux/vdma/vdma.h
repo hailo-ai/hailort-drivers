@@ -36,18 +36,15 @@ struct hailo_vdma_buffer {
     struct device               *device;
 
     void __user                 *user_address;
-    uint32_t                    size;
+    u32                         size;
     enum dma_data_direction     data_direction;
     struct sg_table             sg_table;
-    // Can be INVALID_DRIVER_HANDLE_VALUE if the buffer is allocated by the user
-    uintptr_t                   low_mem_driver_allocated_buffer_handle;
-    // This address will be used if user_address represents memory mapped I/O and isn't backed by 'struct page' (only
-    // by pure pfn), as designated by a vma's flags being set to VM_IO and VM_PFNMAP respectively (see linux/mm.h).
-    // In this case, mmio_dma_address will be used instead of the sg_table above, since dma_sg_* functions require
-    // standard memory addresses backed by 'struct page'.
-    // For standard memory addresses (backed by 'struct page'), mmio_dma_address will be INVALID_VDMA_ADDRESS and
-    // sg_table will be used.
-    dma_addr_t                  mmio_dma_address;
+
+    // If this flag is set, the buffer pointed by sg_table is not backed by
+    // 'struct page' (only by pure pfn). On this case, accessing to the page,
+    // or calling APIs that access the page (e.g. dma_sync_sg_for_cpu) is not
+    // allowed.
+    bool                       is_mmio;
 };
 
 // Continuous buffer that holds a descriptor list.
@@ -56,7 +53,7 @@ struct hailo_descriptors_list_buffer {
     uintptr_t                          handle;
     void                               *kernel_address;
     dma_addr_t                         dma_address;
-    uint32_t                           buffer_size;
+    u32                           buffer_size;
     struct hailo_vdma_descriptors_list desc_list;
 };
 
@@ -78,13 +75,11 @@ struct hailo_vdma_continuous_buffer {
 struct hailo_vdma_controller;
 struct hailo_vdma_controller_ops {
     void (*update_channel_interrupts)(struct hailo_vdma_controller *controller, size_t engine_index,
-        uint32_t channels_bitmap);
-    uint64_t (*encode_channel_dma_address)(dma_addr_t dma_address, uint8_t channel_id);
-    uint64_t (*encode_desc_dma_address)(dma_addr_t dma_address, uint8_t channel_id);
-    uint8_t (*get_dma_data_id)(void);
+        u32 channels_bitmap);
 };
 
 struct hailo_vdma_controller {
+    struct hailo_vdma_hw *hw;
     struct hailo_vdma_controller_ops *ops;
     struct device *dev;
 
@@ -118,7 +113,8 @@ struct hailo_vdma_file_context {
 
 
 int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
-    struct device *dev, struct hailo_vdma_controller_ops *ops,
+    struct device *dev, struct hailo_vdma_hw *vdma_hw,
+    struct hailo_vdma_controller_ops *ops,
     struct hailo_resource *channel_registers_per_engine, size_t engines_count);
 
 void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *controller,

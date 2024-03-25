@@ -17,13 +17,20 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
 void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf);
 void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf);
 
+void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
+    size_t offset, size_t size);
+void hailo_vdma_buffer_sync_cyclic(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
+    size_t offset, size_t size);
+
 struct hailo_vdma_buffer* hailo_vdma_find_mapped_user_buffer(struct hailo_vdma_file_context *context,
     size_t buffer_handle);
 void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller);
 
-int hailo_desc_list_create(struct device *dev, uint32_t descriptors_count, uintptr_t desc_handle,
-    bool is_circular, struct hailo_descriptors_list_buffer *descriptors);
+int hailo_desc_list_create(struct device *dev, u32 descriptors_count, u16 desc_page_size,
+    uintptr_t desc_handle, bool is_circular, struct hailo_descriptors_list_buffer *descriptors);
 void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list_buffer *descriptors);
 struct hailo_descriptors_list_buffer* hailo_vdma_find_descriptors_buffer(struct hailo_vdma_file_context *context,
     uintptr_t desc_handle);
