@@ -15,8 +15,8 @@ long hailo_fw_control(struct hailo_board *board, unsigned long arg, bool *should
 {
     long err = 0;
     long completion_result = 0;
-    uint32_t request_size = 0;
-    uint32_t response_header_size = 0;
+    u32 request_size = 0;
+    u32 response_header_size = 0;
     struct hailo_fw_control *command = &board->fw_control.command;
     struct hailo_resource tx_control = board->fw_control.tx_shmem;
     struct hailo_resource rx_control = board->fw_control.rx_shmem;
