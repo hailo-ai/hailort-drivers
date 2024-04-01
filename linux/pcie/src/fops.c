@@ -26,6 +26,7 @@
 #include "utils/logs.h"
 #include "vdma/memory.h"
 #include "vdma/ioctl.h"
+#include "utils/compact.h"
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 4, 13, 0 )
@@ -90,8 +91,8 @@ static struct hailo_file_context *find_file_context(struct hailo_pcie_board *boa
 
 int hailo_pcie_fops_open(struct inode *inode, struct file *filp)
 {
-    uint32_t major = MAJOR(inode->i_rdev);
-    uint32_t minor = MINOR(inode->i_rdev);
+    u32 major = MAJOR(inode->i_rdev);
+    u32 minor = MINOR(inode->i_rdev);
     struct hailo_pcie_board *pBoard;
     int err = 0;
     pci_power_t previous_power_state = PCI_UNKNOWN;
@@ -212,8 +213,8 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
     struct hailo_pcie_board *pBoard = (struct hailo_pcie_board *)filp->private_data;
     struct hailo_file_context *context = NULL;
 
-    uint32_t major = MAJOR(inode->i_rdev);
-    uint32_t minor = MINOR(inode->i_rdev);
+    u32 major = MAJOR(inode->i_rdev);
+    u32 minor = MINOR(inode->i_rdev);
 
     if (pBoard) {
         hailo_info(pBoard, "(%d: %d-%d): fops_release\n", current->tgid, major, minor);

@@ -11,8 +11,8 @@
 #include <linux/bug.h>
 
 typedef struct {
-    uint32_t host_offset;
-    uint32_t chip_offset;
+    u32 host_offset;
+    u32 chip_offset;
 } FW_DEBUG_BUFFER_HEADER_t;
 
 #define DEBUG_BUFFER_DATA_SIZE (DEBUG_BUFFER_TOTAL_SIZE - sizeof(FW_DEBUG_BUFFER_HEADER_t))
@@ -96,7 +96,7 @@ long hailo_read_firmware_log(struct hailo_resource *fw_logger_resource, struct h
     /* Change current_offset to represent the new host offset. */
     read_offset += size_to_read;
     hailo_resource_write32(fw_logger_resource, offsetof(FW_DEBUG_BUFFER_HEADER_t, host_offset),
-        (uint32_t)(read_offset - sizeof(debug_buffer_header)));
+        (u32)(read_offset - sizeof(debug_buffer_header)));
     
     params->read_bytes = ready_to_read;
     return 0;
