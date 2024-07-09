@@ -5,7 +5,7 @@
 
 #include "driver_down_notification.h"
 #include "utils/logs.h"
-#include "integrated_nnc_utils.h"
+#include "utils/integrated_nnc_utils.h"
 
 #include <linux/uaccess.h>
 #include <asm/io.h>

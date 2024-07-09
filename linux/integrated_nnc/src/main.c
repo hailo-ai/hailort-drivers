@@ -12,7 +12,6 @@
 #include <linux/slab.h>
 #include <asm-generic/errno-base.h>
 
-#include "hailo_integrated_nnc_version.h"
 #include "board.h"
 #include "integrated_nnc_cpu.h"
 #include "file_operations.h"
@@ -30,12 +29,20 @@
 static ssize_t board_location_show(struct device *dev, struct device_attribute *_attr,
     char *buf)
 {
-    return sprintf(buf, "%s", "[integrated_nnc]");
+    return sprintf(buf, "%s", "[integrated]");
 }
 static DEVICE_ATTR_RO(board_location);
 
+static ssize_t accelerator_type_show(struct device *dev, struct device_attribute *_attr,
+    char *buf)
+{
+    return sprintf(buf, "%d", HAILO_ACCELERATOR_TYPE_NNC);
+}
+static DEVICE_ATTR_RO(accelerator_type);
+
 static struct attribute *hailo_dev_attrs[] = {
     &dev_attr_board_location.attr,
+    &dev_attr_accelerator_type.attr,
     NULL
 };
 
@@ -49,7 +56,7 @@ static int driver_probe(struct platform_device *pdev)
     struct hailo_board *board = NULL;
     int err = -EINVAL;
     dev_t dev = 0;
-    
+
     dev_notice(&pdev->dev, "Probing module. driver version %s\n", HAILO_DRV_VER);
 
     /* allocate board */

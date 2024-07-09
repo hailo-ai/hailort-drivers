@@ -32,6 +32,16 @@ TARGET_DIR:="$(BUILD_DIR)/release/$(ARCH)"
 DRIVER_NAME=hailo_pci.ko
 DRIVER_NAME_NO_EXT=hailo_pci
 
+VERSION_MAJOR=$(shell grep "\#define HAILO_DRV_VER_MAJOR" ../../common/hailo_ioctl_common.h | sed "s/\#define HAILO_DRV_VER_MAJOR //g")
+VERSION_MINOR=$(shell grep "\#define HAILO_DRV_VER_MINOR" ../../common/hailo_ioctl_common.h | sed "s/\#define HAILO_DRV_VER_MINOR //g")
+VERSION_RELEASE=$(shell grep "\#define HAILO_DRV_VER_REVISION" ../../common/hailo_ioctl_common.h | sed "s/\#define HAILO_DRV_VER_REVISION //g")
+DRIVER_VERSION=$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_RELEASE)
+is_driver_version_valid=$(shell echo $(DRIVER_VERSION) | grep '^[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+$$' > /dev/null; echo $$?)
+ifneq ($(is_driver_version_valid),0)
+    $(error "DRIVER_VERSION is invalid! Got $(DRIVER_VERSION)")
+endif
+
+
 ifeq ($(DEBUG), 1)
     GDB_FLAG="CONFIG_DEBUG_INFO=y CONFIG_FRAME_POINTER=y"
     TARGET_DIR:="$(BUILD_DIR)/debug/$(ARCH)"
@@ -40,16 +50,6 @@ endif
 # Internal use only. Compile driver in emulator mode.
 ifeq ($(EMULATOR), 1)
     USER_FLAGS="EMULATOR=1"
-endif
-
-VERSION_MAJOR=$(shell grep "\#define HAILO_DRV_VER_MAJOR" ../../common/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_MAJOR //g")
-VERSION_MINOR=$(shell grep "\#define HAILO_DRV_VER_MINOR" ../../common/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_MINOR //g")
-VERSION_RELEASE=$(shell grep "\#define HAILO_DRV_VER_REVISION" ../../common/hailo_pcie_version.h | sed "s/\#define HAILO_DRV_VER_REVISION //g")
-
-DRIVER_VERSION=$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_RELEASE)
-is_driver_version_valid=$(shell echo $(DRIVER_VERSION) | grep '^[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+$$' > /dev/null; echo $$?)
-ifneq ($(is_driver_version_valid),0)
-    $(error "DRIVER_VERSION is invalid! Got $(DRIVER_VERSION)")
 endif
 
 ifndef kernelver
@@ -61,9 +61,6 @@ KERNEL_DIR ?= $(MODULES)/build
 DEPMOD ?= depmod
 
 PWD  := $(shell pwd)
-
-PUBLIC_INC_DIR = $(BUILD_DIR)/include
-PUBLIC_INC_FILE = $(PUBLIC_INC_DIR)/hailo_pcie_ioctl.h
 
 default: help
 
@@ -79,7 +76,6 @@ help:
 	$(Q)echo "*                                                                             "
 	$(Q)echo "* target:                                                                     " 
 	$(Q)echo "*   all          Generate the ko file in $(BUILD_DIR)/[release|debug]/$(ARCH) "
-	$(Q)echo "*                copy the public include files in $(PUBLIC_INC_DIR)           "
 	$(Q)echo "*                                                                             "
 	$(Q)echo "*   clean        Delete the generated files                                   "
 	$(Q)echo "*                Delete $(BUILD_DIR) directory                                "
@@ -93,18 +89,12 @@ help:
 	$(Q)echo "*   help:        Display this help                                            "
 	$(Q)echo "******************************************************************************"
 
-all: $(PUBLIC_INC_FILE) $(TARGET_DIR)
+all: $(TARGET_DIR)
 	$(Q)$(MAKE)  -C $(KERNEL_DIR) M=$(PWD) $(GDB_FLAG) $(USER_FLAGS) modules
 	$(Q)cp $(DRIVER_NAME) $(TARGET_DIR)
 
 $(TARGET_DIR):
 	$(Q)mkdir -p $@
-
-$(PUBLIC_INC_DIR):
-	$(Q)mkdir -p $@
-
-$(PUBLIC_INC_FILE): $(PUBLIC_INC_DIR)
-	$(Q)cp -f $(PWD)/include/* $(PUBLIC_INC_DIR)/
 
 clean:
 	$(Q)$(MAKE) -C $(KERNEL_DIR) M=$(PWD) clean
