@@ -13,7 +13,7 @@
 #include "integrated_nnc_fw_validation.h"
 #include "integrated_nnc_cpu.h"
 #include "board.h"
-#include "integrated_nnc_utils.h"
+#include "utils/integrated_nnc_utils.h"
 #include "utils/logs.h"
 
 #define FW_PATH "hailo/hailo15_nnc_fw.bin"

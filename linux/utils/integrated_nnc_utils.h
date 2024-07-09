@@ -6,7 +6,8 @@
 #ifndef _INTEGRATED_NNC_UTILS_H_
 #define _INTEGRATED_NNC_UTILS_H_
 
-#include "board.h"
+#include <linux/platform_device.h>
+#include "hailo_resource.h"
 
 #define HAILO15_CORE_CONTROL_MAILBOX_INDEX (0)
 #define HAILO15_CORE_NOTIFICATION_MAILBOX_INDEX (1)
@@ -20,6 +21,10 @@ int hailo_ioremap_resource(struct platform_device *pdev, struct hailo_resource *
     const char *name);
 
 // TODO: HRT-8475 - change to name instead of index
-int hailo_ioremap_shmem(struct hailo_board *board, int index, struct hailo_resource *resource);
+int hailo_ioremap_shmem(struct platform_device *pdev, int index, struct hailo_resource *resource);
+
+int direct_memory_transfer(struct platform_device *pDev, struct hailo_memory_transfer_params *params);
+
+int hailo_get_resource_physical_addr(struct platform_device *pdev, const char *name, u64 *address);
 
 #endif /* _INTEGRATED_NNC_UTILS_H_ */

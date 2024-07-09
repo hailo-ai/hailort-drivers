@@ -5,7 +5,7 @@
 
 #include "fw_control.h"
 #include "utils/logs.h"
-#include "integrated_nnc_utils.h"
+#include "utils/integrated_nnc_utils.h"
 
 #include <linux/uaccess.h>
 #include <asm/io.h>
@@ -119,13 +119,13 @@ long fw_control_init(struct hailo_board *board)
         goto l_exit;
     }
 
-    err = hailo_ioremap_shmem(board, HAILO15_CORE_CONTROL_MAILBOX_TX_SHMEM_INDEX, &board->fw_control.tx_shmem);
+    err = hailo_ioremap_shmem(board->pDev, HAILO15_CORE_CONTROL_MAILBOX_TX_SHMEM_INDEX, &board->fw_control.tx_shmem);
     if (err < 0) {
         hailo_err(board, "Failed ioremap control tx shmem. err %ld\n", err);
         goto l_free_channel;
     }
 
-    err = hailo_ioremap_shmem(board, HAILO15_CORE_CONTROL_MAILBOX_RX_SHMEM_INDEX, &board->fw_control.rx_shmem);
+    err = hailo_ioremap_shmem(board->pDev, HAILO15_CORE_CONTROL_MAILBOX_RX_SHMEM_INDEX, &board->fw_control.rx_shmem);
     if (err < 0) {
         hailo_err(board, "Failed ioremap control rx shmem. err %ld\n", err);
         goto l_free_channel;

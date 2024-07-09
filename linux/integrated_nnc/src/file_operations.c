@@ -16,7 +16,6 @@
 #include <linux/version.h>
 
 #include "file_operations.h"
-#include "hailo_integrated_nnc_version.h"
 #include "board.h"
 #include "hailo_ioctl_common.h"
 #include "fw_control.h"
@@ -25,6 +24,7 @@
 #include "driver_down_notification.h"
 #include "utils/logs.h"
 #include "utils/compact.h"
+#include "utils/integrated_nnc_utils.h"
 #include "vdma/ioctl.h"
 #include "vdma/memory.h"
 
@@ -61,11 +61,21 @@ static int hailo_integrated_nnc_fops_open(struct inode *inode, struct file *filp
     hailo_vdma_file_context_init(&context->vdma_context);
     filp->private_data = context;
 
+    if (down_interruptible(&board->mutex)) {
+        hailo_err(board, "fops_open down_interruptible fail tgid:%d\n", current->tgid);
+        kfree(context);
+        return -ERESTARTSYS;
+    }
+
     err = hailo_add_notification_wait(board, filp);
     if (err < 0) {
         hailo_err(board, "Failed to add notification wait with err %d\n", err);
+        up(&board->mutex);
+        kfree(context);
         return err;
     }
+
+    up(&board->mutex);
 
     return 0;
 }
@@ -74,52 +84,26 @@ static int hailo_integrated_nnc_fops_release(struct inode *inode, struct file *f
 {
     struct hailo_board *board = inode_to_board(inode);
     struct hailo_file_context *context = filp->private_data;
-    int err = 0;
+    int ret = 0;
 
     hailo_info(board, "hailo_integrated_nnc_fops_release called.\n");
+
+    down(&board->mutex);
 
     hailo_clear_notification_wait_list(board, filp);
 
     if (filp == board->vdma.used_by_filp) {
-        err = hailo_driver_down_notification(board);
-        if (err < 0) {
-            hailo_err(board, "Failed sending FW shutdown event with err %d\n", err);
-            return err;
+        ret = hailo_driver_down_notification(board);
+        if (ret < 0) {
+            hailo_err(board, "Failed sending FW shutdown event with err %d\n", ret);
         }
     }
 
     hailo_vdma_file_context_finalize(&context->vdma_context, &board->vdma, filp);
+    up(&board->mutex);
+
     kfree(context);
-
-    return 0;
-}
-
-static int direct_memory_transfer(struct hailo_board *board,
-    struct hailo_memory_transfer_params *params)
-{
-    int err = -EINVAL;
-    void __iomem *mem = ioremap(params->address, params->count);
-    if (NULL == mem) {
-        hailo_err(board, "Failed ioremap %llu %zu\n", params->address, params->count);
-        return -ENOMEM;
-    }
-
-    switch (params->transfer_direction) {
-    case TRANSFER_READ:
-        memcpy_fromio(params->buffer, mem, params->count);
-        err = 0;
-        break;
-    case TRANSFER_WRITE:
-        memcpy_toio(mem, params->buffer, params->count);
-        err = 0;
-        break;
-    default:
-        hailo_err(board, "Invalid transfer direction %d\n", (int)params->transfer_direction);
-        err = -EINVAL;
-    }
-
-    iounmap(mem);
-    return err;
+    return ret;
 }
 
 static long hailo_memory_transfer_ioctl(struct hailo_board *board, unsigned long arg)
@@ -141,7 +125,7 @@ static long hailo_memory_transfer_ioctl(struct hailo_board *board, unsigned long
 
     switch (transfer->memory_type) {
     case HAILO_TRANSFER_DEVICE_DIRECT_MEMORY:
-        err = direct_memory_transfer(board, transfer);
+        err = direct_memory_transfer(board->pDev, transfer);
         break;
     case HAILO_TRANSFER_MEMORY_VDMA0:
         err = hailo_resource_transfer(&board->vdma_engines_resources[0].channel_registers, transfer);
@@ -177,28 +161,37 @@ static long hailo_memory_transfer_ioctl(struct hailo_board *board, unsigned long
     return err;
 }
 
-static long hailo_general_ioctl(struct hailo_file_context *context, struct hailo_board *board,
-    unsigned int cmd, unsigned long arg, struct file *filp, bool *should_up_board_mutex)
+static long hailo_general_ioctl(struct hailo_board *board, unsigned int cmd, unsigned long arg)
 {
     switch (cmd) {
     case HAILO_MEMORY_TRANSFER:
         return hailo_memory_transfer_ioctl(board, arg);
+    case HAILO_QUERY_DEVICE_PROPERTIES:
+        return hailo_query_device_properties(board, arg);
+    case HAILO_QUERY_DRIVER_INFO:
+        return hailo_query_driver_info(board, arg);
+    default:
+        hailo_err(board, "Invalid general ioctl code 0x%x (nr: %d)\n", cmd, _IOC_NR(cmd));
+        return -ENOTTY;
+    }
+}
+
+static long hailo_nnc_ioctl(struct hailo_board *board, unsigned int cmd, unsigned long arg,
+    struct file *filp, bool *should_up_board_mutex)
+{
+    switch (cmd) {
     case HAILO_FW_CONTROL:
         return hailo_fw_control(board, arg, should_up_board_mutex);
     case HAILO_READ_NOTIFICATION:
         return hailo_read_notification_ioctl(board, arg, filp, should_up_board_mutex);
     case HAILO_DISABLE_NOTIFICATION:
         return hailo_disable_notification_ioctl(board, filp);
-    case HAILO_QUERY_DEVICE_PROPERTIES:
-        return hailo_query_device_properties(board, arg);
-    case HAILO_QUERY_DRIVER_INFO:
-        return hailo_query_driver_info(board, arg);
-    case HAILO_READ_LOG:
-        return hailo_read_log_ioctl(board, arg);
     case HAILO_RESET_NN_CORE:
         return hailo_reset_nn_core_ioctl(board, arg);
+    case HAILO_READ_LOG:
+        return hailo_read_log_ioctl(board, arg);
     default:
-        hailo_err(board, "Invalid general ioctl code 0x%x (nr: %d)\n", cmd, _IOC_NR(cmd));
+        hailo_err(board, "Invalid nnc ioctl code 0x%x (nr: %d)\n", cmd, _IOC_NR(cmd));
         return -ENOTTY;
     }
 }
@@ -231,11 +224,14 @@ static long hailo_integrated_nnc_fops_unlockedioctl(struct file* filp, unsigned 
 
     switch (_IOC_TYPE(cmd)) {
     case HAILO_GENERAL_IOCTL_MAGIC:
-        err = hailo_general_ioctl(context, board, cmd, arg, filp, &should_up_board_mutex);
+        err = hailo_general_ioctl(board, cmd, arg);
         break;
     case HAILO_VDMA_IOCTL_MAGIC:
         err = hailo_vdma_ioctl(&context->vdma_context, &board->vdma, cmd, arg, filp, &board->mutex,
             &should_up_board_mutex);
+        break;
+    case HAILO_NNC_IOCTL_MAGIC:
+        err = hailo_nnc_ioctl(board, cmd, arg, filp, &should_up_board_mutex);
         break;
     default:
         hailo_err(board, "Invalid ioctl type %d\n", _IOC_TYPE(cmd));

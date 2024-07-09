@@ -11,7 +11,6 @@ BASE_INCLUDE_DIRECTORY=..
 obj-m := hailo_integrated_nnc.o
 
 hailo_integrated_nnc-objs += src/main.o
-hailo_integrated_nnc-objs += src/integrated_nnc_utils.o
 hailo_integrated_nnc-objs += src/dram_vdma.o
 hailo_integrated_nnc-objs += src/integrated_nnc_cpu.o
 hailo_integrated_nnc-objs += src/integrated_nnc_fw_validation.o
@@ -27,6 +26,7 @@ hailo_integrated_nnc-objs += $(COMMON_SRC_DIRECTORY)/vdma_common.o
 hailo_integrated_nnc-objs += $(COMMON_SRC_DIRECTORY)/hailo_resource.o
 
 hailo_integrated_nnc-objs += $(UTILS_SRC_DIRECTORY)/logs.o
+hailo_integrated_nnc-objs += $(UTILS_SRC_DIRECTORY)/integrated_nnc_utils.o
 
 hailo_integrated_nnc-objs += $(VDMA_SRC_DIRECTORY)/vdma.o
 hailo_integrated_nnc-objs += $(VDMA_SRC_DIRECTORY)/memory.o
@@ -36,7 +36,10 @@ ccflags-y      += -Werror
 ccflags-y      += -I$(src)/include
 ccflags-y      += -I$(src)/$(COMMON_SRC_DIRECTORY)
 ccflags-y      += -I$(src)/$(BASE_INCLUDE_DIRECTORY)
-# TODO: Support HAILO_SUPPORT_MMIO_DMA_MAPPING in windows and linux pcie drivers (HRT-12516, HRT-12517)
+
+ifeq ($(shell (test $(VERSION) -ge 6 && test $(PATCHLEVEL) -ge 9) && echo 1 || echo 0), 0)
+# MMIO_DMA_MAPPING is not supported on kernels above 6.9 (since follow_pfn was removed).
 ccflags-y      += -DHAILO_SUPPORT_MMIO_DMA_MAPPING
+endif
 
 clean-files := $(hailo_integrated_nnc-objs)

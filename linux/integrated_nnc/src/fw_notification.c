@@ -5,7 +5,7 @@
 
 #include "fw_notification.h"
 #include "utils/logs.h"
-#include "integrated_nnc_utils.h"
+#include "utils/integrated_nnc_utils.h"
 #include "utils/fw_common.h"
 #include "fw_operation.h"
 
@@ -57,7 +57,7 @@ long fw_notification_init(struct hailo_board *board)
         goto l_exit;
     }
 
-    err = hailo_ioremap_shmem(board, HAILO15_CORE_NOTIFICATION_MAILBOX_RX_SHMEM_INDEX,
+    err = hailo_ioremap_shmem(board->pDev, HAILO15_CORE_NOTIFICATION_MAILBOX_RX_SHMEM_INDEX,
         &board->fw_notification.rx_shmem);
     if (err < 0) {
         hailo_err(board, "Failed ioremap notification rx shmem. err %ld\n", err);

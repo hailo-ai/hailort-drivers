@@ -5,7 +5,7 @@
 
 #include "board.h"
 #include "dram_vdma.h"
-#include "integrated_nnc_utils.h"
+#include "utils/integrated_nnc_utils.h"
 #include "vdma/vdma.h"
 #include "utils/logs.h"
 
@@ -18,20 +18,7 @@
 #define VDMA_INTERRUPT_W1C_OFFSET       (0x998)
 #define VDMA_INTERRUPT_W1S_OFFSET       (0x99C)
 
-
-// Channel DMA address bits are 17:34
-#define DMA_CHANNEL_ADDRESS_MASK        (0x7ffff0000)
-// Desc DMA address bits are 4:34
-#define DMA_DESC_ADDRESS_MASK           (0x7fffffff0) 
-#define EXTERNAL_DESCRIPTOR_KIND        (2)
-#define DESCRIPTOR_KIND_SHIFT           (62)
-#define CHANNEL_ID_MASK                 (0xf)
-#define CHANNEL_ID_SHIFT                (57)
-
-#define DDR_AXI_DATA_ID                 (1)
-#define DRAM_DMA_HOST_INTERRUPTS_BITMASK      (1 << 4)
-#define DRAM_DMA_DEVICE_INTERRUPTS_BITMASK    (1 << 5)
-
+#define DRAM_DMA_SRC_CHANNELS_BITMASK   (0x0000FFFF)
 
 static void update_channel_interrupts(struct hailo_vdma_controller *controller,
     size_t engine_index, u32 channels_bitmap)
@@ -76,6 +63,7 @@ static struct hailo_vdma_hw dram_vdma_hw = {
     .ddr_data_id = DDR_AXI_DATA_ID,
     .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
     .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
+    .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK,
 };
 
 static struct hailo_vdma_controller_ops core_vdma_controller_ops = {
