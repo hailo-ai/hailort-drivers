@@ -161,6 +161,8 @@ void hailo_pcie_read_atr_table(struct hailo_resource *bridge_config, struct hail
 
 void hailo_soc_write_soc_connect(struct hailo_pcie_resources *resources);
 
+bool hailo_pcie_is_device_ready_for_boot(struct hailo_pcie_resources *resources);
+
 #ifdef __cplusplus
 }
 #endif
