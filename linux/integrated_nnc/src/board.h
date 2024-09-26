@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _BOARD_H_
@@ -13,6 +13,28 @@
 #include <linux/mailbox_client.h>
 #include "hailo_ioctl_common.h"
 #include "vdma/vdma.h"
+
+struct integrated_board_data {
+    enum hailo_board_type board_type;
+    u16 vdma_interrupt_mask_offset;
+    u16 vdma_interrupt_status_offset;
+    u16 vdma_interrupt_w1c_offset;
+    const char *fw_filename;
+};
+
+// TODO: HRT-14781: remove this enum when every integrated uses BKC that has memory region
+enum nnc_fw_shared_mem_type {
+    NNC_FW_SHARED_MEM_TYPE_MEMORY_REGION = 0,
+    NNC_FW_SHARED_MEM_TYPE_CONTINOUS_BUFFER = 1,
+    NNC_FW_SHARED_MEM_TYPE_NONE = 2,
+};
+
+struct nnc_fw_shared_mem_info {
+    enum nnc_fw_shared_mem_type type;
+    uintptr_t   dma_address;
+    void        *kernel_address;
+    size_t      size;
+};
 
 struct fw_control
 {
@@ -88,6 +110,10 @@ struct hailo_board
     struct hailo_vdma_engine_resources vdma_engines_resources[MAX_VDMA_ENGINES];
     // Store transfer params here to avoid stack/dynamic allocation.
     struct hailo_memory_transfer_params memory_transfer_params;
+    // TODO: HRT-14781: remove this when every integrated uses BKC that has memory region
+    struct hailo_vdma_continuous_buffer nnc_fw_shared_memory_continuous_buffer;
+    struct nnc_fw_shared_mem_info nnc_fw_shared_mem_info;
+    struct integrated_board_data *board_data;
 };
 
 #endif //_BOARD_H_

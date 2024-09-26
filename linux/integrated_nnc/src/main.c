@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2023 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/pagemap.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
@@ -22,9 +23,41 @@
 #include "dram_vdma.h"
 #include "utils/logs.h"
 #include "utils/compact.h"
+#include "vdma/memory.h"
 
 #define DRIVER_NAME "hailo_integrated_nnc"
 #define DEVICE_NODE_NAME "hailo_integrated_nnc"
+#define INTEGRATED_DEVICE_TREE_MEMORY_REGION_NAME "memory-region"
+
+#define CONTEXT_SWITCH_DEFS__START_M4_MAPPED_DDR_ADDRESS (0x80000000)
+#define CONTEXT_SWITCH_DEFS__END_M4_MAPPED_DDR_ADDRESS (0x90000000)
+// 16 MB
+#define CMA_FW_SHM_SIZE (0x1000000)
+
+// Enum that indexes different integrated board types - only used as indexing for the integrated_board_data_arr array
+enum integrated_board_type
+{
+    HAILO_INTEGRATED_BOARD_TYPE_HAILO15H = 0,
+    HAILO_INTEGRATED_BOARD_TYPE_HAILO15L = 1,
+};
+
+// TODO: HRT-14933 : chnage name to hailo15h in mercury
+static const struct integrated_board_data integrated_board_data_arr[] = {
+    [HAILO_INTEGRATED_BOARD_TYPE_HAILO15H] = {
+        .board_type = HAILO_BOARD_TYPE_HAILO15,
+        .vdma_interrupt_mask_offset     = 0x990,
+        .vdma_interrupt_status_offset   = 0x994,
+        .vdma_interrupt_w1c_offset      = 0x998,
+        .fw_filename                    = "hailo/hailo15_nnc_fw.bin",
+    },
+    [HAILO_INTEGRATED_BOARD_TYPE_HAILO15L] = {
+        .board_type = HAILO_BOARD_TYPE_PLUTO,
+        .vdma_interrupt_mask_offset     = 0xa00,
+        .vdma_interrupt_status_offset   = 0xa04,
+        .vdma_interrupt_w1c_offset      = 0xa08,
+        .fw_filename                    = "hailo/hailo15l_nnc_fw.bin",
+    },
+};
 
 static ssize_t board_location_show(struct device *dev, struct device_attribute *_attr,
     char *buf)
@@ -47,6 +80,138 @@ static struct attribute *hailo_dev_attrs[] = {
 };
 
 ATTRIBUTE_GROUPS(hailo_dev);
+
+static const struct of_device_id driver_match[] = {
+    {
+        // TODO: HRT-14133 : Fix compatible string when fixed in device tree
+        // (currently should always be hailo15h - add "hailo15h" when its added to device tree)
+        .compatible = "hailo,hailort",
+        .data = &integrated_board_data_arr[HAILO_INTEGRATED_BOARD_TYPE_HAILO15H],
+    },
+    {
+        .compatible = "hailo,integrated-nnc,hailo15l",
+        .data = &integrated_board_data_arr[HAILO_INTEGRATED_BOARD_TYPE_HAILO15L],
+    },
+    { }
+};
+MODULE_DEVICE_TABLE(of, driver_match);
+
+static bool verify_dma_addr(struct hailo_vdma_continuous_buffer *buffer)
+{
+    // verify that buffer starts and ends inside mapped range
+    if (buffer->dma_address < CONTEXT_SWITCH_DEFS__START_M4_MAPPED_DDR_ADDRESS ||
+        (buffer->dma_address + buffer->size >= CONTEXT_SWITCH_DEFS__END_M4_MAPPED_DDR_ADDRESS)) {
+        return false;
+    }
+    return true;
+}
+
+// TODO: HRT-8475 - change function hailo_ioremap_shmem to use name instead of index and then use function here
+// Function that searches for memory region in device tree for the nnc fw shared memory - if found uses memory from
+// the region
+static int hailo_allocate_nnc_fw_shm_from_device_tree_memory_region(struct device *dev, struct hailo_board *board)
+{
+    struct device_node *node = dev->of_node;
+    struct resource res;
+    void __iomem *mem_map_ptr;
+    int err = 0;
+
+    // Search for memory region node by name - if region not found print info log and fallback to regular
+    // continuous buffer allocation
+    struct device_node *memory_region_node = of_parse_phandle(node, INTEGRATED_DEVICE_TREE_MEMORY_REGION_NAME, 0);
+    if (!memory_region_node) {
+        hailo_dev_notice(dev, "Failed to find memory region node in device tree\n");
+        return -ENODEV;
+    }
+
+    err = of_address_to_resource(memory_region_node, 0, &res);
+    if (err) {
+        hailo_dev_err(dev, "Failed to get memory of memory region node\n");
+        of_node_put(memory_region_node);
+        return err;
+    }
+
+    // Decrement the refcount of the node
+    of_node_put(memory_region_node);
+
+    mem_map_ptr = devm_ioremap(dev, res.start, resource_size(&res));
+    if (!mem_map_ptr) {
+        hailo_dev_err(dev, "Failed ioremap memory region at start %llx, size %lld (please check device tree)\n",
+            res.start, resource_size(&res));
+        return -EINVAL;
+    }
+
+    board->nnc_fw_shared_mem_info.dma_address = (uintptr_t)res.start;
+    board->nnc_fw_shared_mem_info.kernel_address = mem_map_ptr;
+    board->nnc_fw_shared_mem_info.size = resource_size(&res);
+
+    return 0;
+}
+
+static int hailo_allocate_nnc_fw_shm_continuous_buffer(struct device *dev, struct hailo_board *board)
+{
+    size_t aligned_buffer_size = PAGE_ALIGN(CMA_FW_SHM_SIZE);
+
+    int err = hailo_vdma_continuous_buffer_alloc(dev, aligned_buffer_size, &board->nnc_fw_shared_memory_continuous_buffer);
+    if (err < 0) {
+        return err;
+    }
+
+    // In case of allocation in wrong region - release allocated memory, disable nnc_fw shared memory and return
+    if (!verify_dma_addr(&board->nnc_fw_shared_memory_continuous_buffer)) {
+        hailo_dev_notice(dev, "Successfully allocated continous buffer - but not in allowed region - nnc_fw shared memory will be disabled\n");
+        hailo_vdma_continuous_buffer_free(dev, &board->nnc_fw_shared_memory_continuous_buffer);
+        board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_NONE;
+        return 0;
+    }
+
+    board->nnc_fw_shared_mem_info.dma_address = board->nnc_fw_shared_memory_continuous_buffer.dma_address;
+    board->nnc_fw_shared_mem_info.kernel_address = board->nnc_fw_shared_memory_continuous_buffer.kernel_address;
+    board->nnc_fw_shared_mem_info.size = board->nnc_fw_shared_memory_continuous_buffer.size;
+    board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_CONTINOUS_BUFFER;
+
+    return 0;
+}
+
+// Function allocates memory for the nnc fw shared memory - first tries to allocate memory from device tree memory region
+// if not found - falls back to continuous buffer allocation and if this buffer is allocated in non allowed region - disables 
+// nnc fw shared memory
+static long hailo_vdma_allocate_nnc_fw_shm(struct device *dev, struct hailo_board *board)
+{
+    // Try first to allocate memory from device tree memory region
+    int err = hailo_allocate_nnc_fw_shm_from_device_tree_memory_region(dev, board);
+    if (-ENODEV == err) {
+        hailo_dev_notice(dev, "No memory region found in device tree, falling back to continuous buffer allocation\n");
+        err = hailo_allocate_nnc_fw_shm_continuous_buffer(dev, board);
+        if (err < 0) {
+            hailo_dev_err(dev, "Failed to allocate memory from continuous buffer pool\n");
+            board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_NONE;
+            return err;
+        }
+    } else if (0 != err) {
+        hailo_dev_err(dev, "Failed to allocate memory from device tree memory region err %d\n", err);
+        board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_NONE;
+        return err;
+    } else {
+        hailo_dev_notice(dev, "Allocated memory from device tree memory region starting physical address: 0x%lx, size: 0x%lx\n",
+            board->nnc_fw_shared_mem_info.dma_address, board->nnc_fw_shared_mem_info.size);
+        board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_MEMORY_REGION;
+    }
+
+    return 0;
+}
+
+static int hailo_set_integrated_board_data(struct platform_device *pdev, struct integrated_board_data **board_data)
+{
+    const struct of_device_id *match = of_match_device(driver_match, &pdev->dev);
+    if ((!match) || (!match->data)) {
+        dev_err(&pdev->dev, "Failed to get integrated board data\n");
+        return -EINVAL;
+    }
+
+    *board_data = (struct integrated_board_data*)match->data;
+    return 0;
+}
 
 static int driver_probe(struct platform_device *pdev)
 {
@@ -110,6 +275,12 @@ static int driver_probe(struct platform_device *pdev)
         goto l_driver_down_notification_release;
     }
 
+    err = hailo_set_integrated_board_data(pdev, &board->board_data);
+    if (err < 0) {
+        hailo_err(board, "Failed to get integrated board data\n");
+        goto l_driver_down_notification_release;
+    }
+
     if (hailo_load_firmware(board)) {
         /* error already logged */
         goto l_driver_down_notification_release;
@@ -159,8 +330,17 @@ static int driver_probe(struct platform_device *pdev)
     }
 
     platform_set_drvdata(pdev, board);
+
+    err = hailo_vdma_allocate_nnc_fw_shm(&pdev->dev, board);
+    if (err < 0) {
+        hailo_err(board, "Failed to allocate continous buffer pool M4 mapped memory region");
+        goto l_device_destroy;
+    }
+
     return 0;
 
+l_device_destroy:
+    device_destroy(class, dev);
 l_class:
     class_destroy(class);
 l_cdev:
@@ -177,16 +357,19 @@ l_exit:
     return err;
 }
 
-static int driver_remove(struct platform_device *pdev)
+static void driver_remove(struct platform_device *pdev)
 {
     struct hailo_board *board = NULL;
     dev_notice(&pdev->dev, "Exit module.\n");
     board = platform_get_drvdata(pdev);
 
     if (!board) {
-        return 0;
+        return;
     }
 
+    if (NNC_FW_SHARED_MEM_TYPE_CONTINOUS_BUFFER == board->nnc_fw_shared_mem_info.type) {
+        hailo_vdma_continuous_buffer_free(&pdev->dev, &board->nnc_fw_shared_memory_continuous_buffer);
+    }
     device_destroy(board->class, board->dev);
     class_destroy(board->class);
     cdev_del(&board->cdev);
@@ -194,22 +377,23 @@ static int driver_remove(struct platform_device *pdev)
     driver_down_notification_release(board);
     fw_notification_release(board);
     fw_control_release(board);
-    return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+static int driver_remove_old(struct platform_device *pdev){
 
-static const struct of_device_id driver_match[] = {
-    {
-        .compatible = "hailo,hailort"
-    },
-    { }
-};
-MODULE_DEVICE_TABLE(of, driver_match);
-
+	driver_remove(pdev);
+	return 0;
+}
+#endif
 
 static struct platform_driver hailort_core_driver = {
     .probe = driver_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
     .remove = driver_remove,
+#else
+    .remove = driver_remove_old,
+#endif
     .driver = {
         .name = "hailort-core-driver",
         .of_match_table = driver_match,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include "integrated_nnc_fw_validation.h"
@@ -15,15 +15,15 @@ int FW_VALIDATION__validate_fw_headers(
     struct hailo_board *board,
     uintptr_t firmware_base_address, u32 firmware_size,
     firmware_header_t **out_firmware_header,
-    secure_boot_certificate_t **out_firmware_cert)
+    secure_boot_certificate_header_t **out_firmware_cert)
 {
     firmware_header_t *firmware_header = NULL;
-    secure_boot_certificate_t *firmware_cert = NULL;
+    secure_boot_certificate_header_t *firmware_cert = NULL;
     int err = -EINVAL;
     u32 consumed_firmware_offset = 0;
 
     err = FW_VALIDATION__validate_fw_header(firmware_base_address, firmware_size, MAXIMUM_CORE_FIRMWARE_CODE_SIZE,
-        &consumed_firmware_offset, &firmware_header, HAILO_BOARD_TYPE_HAILO15);
+        &consumed_firmware_offset, &firmware_header, board->board_data->board_type);
     if (0 != err) {
         hailo_err(board, "Failed validating fw header");
         err = -EINVAL;
