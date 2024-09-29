@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _INTEGRATED_NNC_FW_VALIDATION_H_
@@ -21,6 +21,6 @@ int FW_VALIDATION__validate_fw_headers(
     struct hailo_board *board,
     uintptr_t firmware_base_address, u32 firmware_size,
     firmware_header_t **out_firmware_header,
-    secure_boot_certificate_t **out_firmware_cert);
+    secure_boot_certificate_header_t **out_firmware_cert);
 
 #endif //_INTEGRATED_NNC_FW_VALIDATION_H_

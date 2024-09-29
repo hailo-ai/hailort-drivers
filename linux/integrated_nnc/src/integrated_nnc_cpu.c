@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/delay.h>
@@ -15,8 +15,6 @@
 #include "board.h"
 #include "utils/integrated_nnc_utils.h"
 #include "utils/logs.h"
-
-#define FW_PATH "hailo/hailo15_nnc_fw.bin"
 
 static int hailo_write_core_firmware(struct hailo_board *board, firmware_header_t *fw_header)
 {
@@ -149,9 +147,10 @@ int hailo_load_firmware(struct hailo_board *board)
     int err = 0;
     firmware_header_t *firmware_header = NULL;
 
-    err = request_firmware_direct(&firmware, FW_PATH, &board->pDev->dev);
+    err = request_firmware_direct(&firmware, board->board_data->fw_filename, &board->pDev->dev);
     if (err < 0) {
-        hailo_warn(board, "Firmware file not found (/lib/firmware/%s), please upload the firmware manually\n", FW_PATH);
+        hailo_warn(board, "Firmware file not found (/lib/firmware/%s), please upload the firmware manually\n",
+            board->board_data->fw_filename);
         goto exit;
     }
 

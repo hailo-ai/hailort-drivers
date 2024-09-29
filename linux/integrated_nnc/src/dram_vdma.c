@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include "board.h"
@@ -13,11 +13,6 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
-#define VDMA_INTERRUPT_MASK_OFFSET      (0x990)
-#define VDMA_INTERRUPT_STATUS_OFFSET    (0x994)
-#define VDMA_INTERRUPT_W1C_OFFSET       (0x998)
-#define VDMA_INTERRUPT_W1S_OFFSET       (0x99C)
-
 #define DRAM_DMA_SRC_CHANNELS_BITMASK   (0x0000FFFF)
 
 static void update_channel_interrupts(struct hailo_vdma_controller *controller,
@@ -28,7 +23,7 @@ static void update_channel_interrupts(struct hailo_vdma_controller *controller,
 
     BUG_ON(engine_index >= board->vdma.vdma_engines_count);
     engine_registers = &board->vdma_engines_resources[engine_index].engine_registers;
-    hailo_resource_write32(engine_registers, VDMA_INTERRUPT_MASK_OFFSET, channels_bitmap);
+    hailo_resource_write32(engine_registers, board->board_data->vdma_interrupt_mask_offset, channels_bitmap);
 }
 
 static u64 encode_dma_address_base(dma_addr_t dma_address, u8 channel_id, u8 kind)
@@ -45,20 +40,23 @@ static u64 encode_dma_address_base(dma_addr_t dma_address, u8 channel_id, u8 kin
     return address;
 }
 
-static u64 encode_desc_dma_address(dma_addr_t dma_address, u8 channel_id)
+static u64 encode_desc_dma_address_range(dma_addr_t dma_address_start, dma_addr_t dma_address_end, u32 step, u8 channel_id)
 {
     const u8 zero_kind = 0;
 
-    if (0 != ((u64)dma_address & ~DMA_DESC_ADDRESS_MASK)) {
-        return INVALID_VDMA_ADDRESS;
+    // The end address doesn't have to be aligned to the step/mask, so we only check that it is not above the mask
+    if ((0 != ((u64)dma_address_start & ~DMA_DESC_ADDRESS_MASK)) ||
+        ((u64)dma_address_end > DMA_DESC_ADDRESS_MASK) ||
+        (0 != ((u64)step & ~DMA_DESC_ADDRESS_MASK))) {
+            return INVALID_VDMA_ADDRESS;
     }
 
-    return encode_dma_address_base(dma_address, channel_id, zero_kind);
+    return encode_dma_address_base(dma_address_start, channel_id, zero_kind);
 }
 
 static struct hailo_vdma_hw dram_vdma_hw = {
     .hw_ops = {
-        .encode_desc_dma_address = encode_desc_dma_address
+        .encode_desc_dma_address_range = encode_desc_dma_address_range,
     },
     .ddr_data_id = DDR_AXI_DATA_ID,
     .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
@@ -78,9 +76,9 @@ static irqreturn_t engine_irqhandler(struct hailo_board *board, size_t engine_in
         &board->vdma_engines_resources[engine_index].engine_registers;
 
     while (true) {
-        channels_bitmap = hailo_resource_read32(engine_registers, VDMA_INTERRUPT_STATUS_OFFSET);
+        channels_bitmap = hailo_resource_read32(engine_registers, board->board_data->vdma_interrupt_status_offset);
         hailo_dbg(board, "Got vDMA interupt %u for engine %zu", channels_bitmap, engine_index);
-        hailo_resource_write32(engine_registers, VDMA_INTERRUPT_W1C_OFFSET, channels_bitmap);
+        hailo_resource_write32(engine_registers, board->board_data->vdma_interrupt_w1c_offset, channels_bitmap);
 
         if (0 == channels_bitmap) {
             break;
@@ -203,7 +201,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
     hailo_notice(board, "initializing vDMA controller\n");
 
     engines_count = of_get_child_count(dev_node);
-    if (ARRAY_SIZE(board->vdma_engines_resources) != engines_count) {
+    if (ARRAY_SIZE(board->vdma_engines_resources) < engines_count) {
         hailo_err(board, "Invalid dma engines count %zu\n", engines_count);
         return -EINVAL;
     }

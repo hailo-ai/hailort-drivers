@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2022 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/err.h>
@@ -29,15 +29,16 @@
 #include "vdma/memory.h"
 
 
+struct hailo_file_context {
+    struct hailo_vdma_file_context vdma_context;
+    size_t offset_in_nnc_fw_shared_memory;
+};
+
 static long hailo_query_device_properties(struct hailo_board *board, unsigned long arg);
 static long hailo_query_driver_info(struct hailo_board *board, unsigned long arg);
 static long hailo_read_log_ioctl(struct hailo_board *board, unsigned long arg);
 static long hailo_reset_nn_core_ioctl(struct hailo_board *board, unsigned long arg);
-
-struct hailo_file_context {
-    struct hailo_vdma_file_context vdma_context;
-};
-
+static long hailo_write_action_list_ioctl(struct hailo_board *board, struct hailo_file_context *context, unsigned long arg);
 
 inline struct hailo_board* inode_to_board(struct inode *inode) {
     struct cdev *cdev = inode->i_cdev;
@@ -59,6 +60,7 @@ static int hailo_integrated_nnc_fops_open(struct inode *inode, struct file *filp
     }
 
     hailo_vdma_file_context_init(&context->vdma_context);
+    context->offset_in_nnc_fw_shared_memory = 0;
     filp->private_data = context;
 
     if (down_interruptible(&board->mutex)) {
@@ -190,6 +192,8 @@ static long hailo_nnc_ioctl(struct hailo_board *board, unsigned int cmd, unsigne
         return hailo_reset_nn_core_ioctl(board, arg);
     case HAILO_READ_LOG:
         return hailo_read_log_ioctl(board, arg);
+    case HAILO_WRITE_ACTION_LIST:
+        return hailo_write_action_list_ioctl(board, filp->private_data, arg);
     default:
         hailo_err(board, "Invalid nnc ioctl code 0x%x (nr: %d)\n", cmd, _IOC_NR(cmd));
         return -ENOTTY;
@@ -273,6 +277,7 @@ static long hailo_query_device_properties(struct hailo_board *board, unsigned lo
 {
     struct hailo_device_properties props = {
         .desc_max_page_size = 0x1000,
+        .board_type         = board->board_data->board_type,
         .allocation_mode    = HAILO_ALLOCATION_MODE_USERSPACE,
         .dma_type           = HAILO_DMA_TYPE_DRAM,
         .dma_engines_count  = board->vdma.vdma_engines_count,
@@ -333,6 +338,36 @@ static long hailo_read_log_ioctl(struct hailo_board *board, unsigned long arg)
 static long hailo_reset_nn_core_ioctl(struct hailo_board *board, unsigned long arg)
 {
     return reset_control_reset(board->nn_core_reset);
+}
+
+static long hailo_write_action_list_ioctl(struct hailo_board *board, struct hailo_file_context *context, unsigned long arg)
+{
+    struct hailo_write_action_list_params params;
+
+    if (copy_from_user(&params, (void __user*)arg, sizeof(params))) {
+        hailo_err(board, "HAILO_WRITE_ACTION_LIST, copy_from_user fail\n");
+        return -EINVAL;
+    }
+
+    if (context->offset_in_nnc_fw_shared_memory + params.size >= board->nnc_fw_shared_mem_info.size) {
+        hailo_err(board, "HAILO_WRITE_ACTION_LIST, buffer overflow\n");
+        return -EINVAL;
+    }
+
+    if (copy_from_user((board->nnc_fw_shared_mem_info.kernel_address + context->offset_in_nnc_fw_shared_memory), (void __user*)params.data, params.size)) {
+        hailo_err(board, "HAILO_WRITE_ACTION_LIST, copy_from_user fail\n");
+        return -EINVAL;
+    }
+
+    params.dma_address = board->nnc_fw_shared_mem_info.dma_address + context->offset_in_nnc_fw_shared_memory;
+    context->offset_in_nnc_fw_shared_memory += params.size;
+
+    if (copy_to_user((void __user*)arg, &params, sizeof(params))) {
+        hailo_err(board, "HAILO_WRITE_ACTION_LIST, copy_to_user fail\n");
+        return -EINVAL;
+    }
+
+    return 0;
 }
 
 struct file_operations hailo_integrated_nnc_fops =
