@@ -20,9 +20,11 @@ See [**hailo.ai developer zone - HailoRT changelog**](https://hailo.ai/developer
 
 Distributed under the [**GNU General Public License version 2 license**](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 
-## Contact
+## Support
 
-Contact information and support is available at [**hailo.ai**](https://hailo.ai/contact-us/).
+If you need support, please post your question on our [**Hailo community Forum**](https://community.hailo.ai/) for assistance.
+
+Contact information is available at [**hailo.ai**](https://hailo.ai/contact-us/).
 
 ## About Hailo
 
