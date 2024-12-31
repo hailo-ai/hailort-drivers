@@ -51,7 +51,7 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
         .fw_filename                    = "hailo/hailo15_nnc_fw.bin",
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO15L] = {
-        .board_type = HAILO_BOARD_TYPE_PLUTO,
+        .board_type = HAILO_BOARD_TYPE_HAILO15L,
         .vdma_interrupt_mask_offset     = 0xa00,
         .vdma_interrupt_status_offset   = 0xa04,
         .vdma_interrupt_w1c_offset      = 0xa08,
