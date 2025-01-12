@@ -171,7 +171,10 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             }
         }
 
-        if (is_dmabuf_vma(vma)) {
+        if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) &&
+           (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
+            is_mmio = true;
+        } else if (is_dmabuf_vma(vma)) {
             dev_dbg(dev, "Given vma is backed by dmabuf - creating fd and mapping as dmabuf\n");
             buffer_type = HAILO_DMA_DMABUF_BUFFER;
             ret = create_fd_from_vma(dev, vma);
@@ -186,9 +189,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     }
 
     // TODO: is MMIO DMA MAPPINGS STILL needed after dmabuf
-    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) &&
-            (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK)) && 
-            (HAILO_DMA_DMABUF_BUFFER != buffer_type)) {
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && is_mmio) {
         // user_address represents memory mapped I/O and isn't backed by 'struct page' (only by pure pfn)
         if (NULL != low_mem_driver_allocated_buffer) {
             // low_mem_driver_allocated_buffer are backed by regular 'struct page' addresses, just in low memory
@@ -202,9 +203,6 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             dev_err(dev, "failed to map mmio address %d\n", ret);
             goto free_buffer_struct;
         }
-
-        is_mmio = true;
-
     } else if (HAILO_DMA_DMABUF_BUFFER == buffer_type) {
         // Content user_address in case of dmabuf is fd - for now
         ret = hailo_map_dmabuf(dev, user_address, direction, &sgt, &dmabuf_info);
