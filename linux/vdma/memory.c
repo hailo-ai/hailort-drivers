@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #define pr_fmt(fmt) "hailo: " fmt
@@ -13,6 +13,7 @@
 #include <linux/scatterlist.h>
 #include <linux/sched.h>
 #include <linux/module.h>
+#include <linux/fdtable.h>
 
 // See linux/mm.h
 #define MMIO_AND_NO_PAGES_VMA_MASK (VM_IO | VM_PFNMAP)
@@ -37,6 +38,10 @@ static void clear_sg_table(struct sg_table *sgt);
 // Import DMA_BUF namespace for needed kernels
 MODULE_IMPORT_NS(DMA_NS_NAME);
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 220)
+#define close_fd(fd) __close_fd(current->files, fd)
+#endif // LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 220)
 
 static int hailo_map_dmabuf(struct device *dev, int dmabuf_fd, enum dma_data_direction direction, struct sg_table *sgt,
     struct hailo_dmabuf_info *dmabuf_info)
@@ -143,7 +148,7 @@ static int create_fd_from_vma(struct device *dev, struct vm_area_struct *vma) {
 }
 
 struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
-    uintptr_t user_address, size_t size, enum dma_data_direction direction,
+    uintptr_t addr_or_fd, size_t size, enum dma_data_direction direction,
     enum hailo_dma_buffer_type buffer_type, struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer)
 {
     int ret = -EINVAL;
@@ -152,7 +157,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     struct vm_area_struct *vma = NULL;
     bool is_mmio = false;
     struct hailo_dmabuf_info dmabuf_info = {0};
-    bool created_dmabuf_fd_from_vma = false;
+    uintptr_t dmabuf_from_pointer_addr = 0;
 
     mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
     if (NULL == mapped_buffer) {
@@ -162,19 +167,16 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     }
 
     if (HAILO_DMA_DMABUF_BUFFER != buffer_type) {
-        vma = find_vma(current->mm, user_address);
+        vma = find_vma(current->mm, addr_or_fd);
         if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING)) {
             if (NULL == vma) {
-                dev_err(dev, "no vma for virt_addr/size = 0x%08lx/0x%08zx\n", user_address, size);
+                dev_err(dev, "no vma for virt_addr/size = 0x%08lx/0x%08zx\n", addr_or_fd, size);
                 ret = -EFAULT;
                 goto cleanup;
             }
         }
 
-        if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) &&
-           (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
-            is_mmio = true;
-        } else if (is_dmabuf_vma(vma)) {
+        if (is_dmabuf_vma(vma)) {
             dev_dbg(dev, "Given vma is backed by dmabuf - creating fd and mapping as dmabuf\n");
             buffer_type = HAILO_DMA_DMABUF_BUFFER;
             ret = create_fd_from_vma(dev, vma);
@@ -182,14 +184,15 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
                 dev_err(dev, "Failed creating fd from vma in given dmabuf\n");
                 goto cleanup;
             }
-            // Override user address with fd to the dmabuf - like normal dmabuf flow
-            user_address = ret;
-            created_dmabuf_fd_from_vma = true;
+            // Save original dmabuf user address in dmabuf_from_pointer_addr and override addr_or_fd with fd
+            dmabuf_from_pointer_addr = addr_or_fd;
+            addr_or_fd = ret;
         }
     }
 
     // TODO: is MMIO DMA MAPPINGS STILL needed after dmabuf
-    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && is_mmio) {
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && (HAILO_DMA_DMABUF_BUFFER != buffer_type) &&
+        (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
         // user_address represents memory mapped I/O and isn't backed by 'struct page' (only by pure pfn)
         if (NULL != low_mem_driver_allocated_buffer) {
             // low_mem_driver_allocated_buffer are backed by regular 'struct page' addresses, just in low memory
@@ -198,26 +201,28 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             goto free_buffer_struct;
         }
 
-        ret = map_mmio_address(user_address, size, vma, &sgt);
+        ret = map_mmio_address(addr_or_fd, size, vma, &sgt);
         if (ret < 0) {
             dev_err(dev, "failed to map mmio address %d\n", ret);
             goto free_buffer_struct;
         }
+        is_mmio = true;
     } else if (HAILO_DMA_DMABUF_BUFFER == buffer_type) {
         // Content user_address in case of dmabuf is fd - for now
-        ret = hailo_map_dmabuf(dev, user_address, direction, &sgt, &dmabuf_info);
+        ret = hailo_map_dmabuf(dev, addr_or_fd, direction, &sgt, &dmabuf_info);
         if (ret < 0) {
             dev_err(dev, "Failed mapping dmabuf\n");
             goto cleanup;
         }
-        // If created dmabuf fd from vma need to decrement refcount and release fd
-        if (created_dmabuf_fd_from_vma) {
-            fput(vma->vm_file);
-            put_unused_fd(user_address);
+        // If created dmabuf fd from vma need to close fd we created
+        if (0 != dmabuf_from_pointer_addr) {
+            close_fd(addr_or_fd);
+            buffer_type = HAILO_DMA_USER_PTR_BUFFER;
+            addr_or_fd = dmabuf_from_pointer_addr;
         }
     } else {
         // user_address is a standard 'struct page' backed memory address
-        ret = prepare_sg_table(&sgt, user_address, size, low_mem_driver_allocated_buffer);
+        ret = prepare_sg_table(&sgt, addr_or_fd, size, low_mem_driver_allocated_buffer);
         if (ret < 0) {
             dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
             goto free_buffer_struct;
@@ -232,8 +237,9 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
 
     kref_init(&mapped_buffer->kref);
     mapped_buffer->device = dev;
-    mapped_buffer->user_address = user_address;
+    mapped_buffer->buffer_type = buffer_type;
     mapped_buffer->size = size;
+    mapped_buffer->addr_or_fd = addr_or_fd;
     mapped_buffer->data_direction = direction;
     mapped_buffer->sg_table = sgt;
     mapped_buffer->is_mmio = is_mmio;
@@ -332,21 +338,36 @@ void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
     }
 }
 
-// Similar to vdma_buffer_sync, allow circular sync of the buffer.
-void hailo_vdma_buffer_sync_cyclic(struct hailo_vdma_controller *controller,
-    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
-    size_t offset, size_t size)
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_fd(struct hailo_vdma_file_context *context,
+    uintptr_t fd, size_t size, enum dma_data_direction direction)
 {
-    size_t size_to_end = min(size, mapped_buffer->size - offset);
-
-    hailo_vdma_buffer_sync(controller, mapped_buffer, sync_type, offset, size_to_end);
-
-    if (size_to_end < size) {
-        hailo_vdma_buffer_sync(controller, mapped_buffer, sync_type, 0, size - size_to_end);
+    struct hailo_vdma_buffer *cur = NULL;
+    list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
+        if (cur->addr_or_fd == fd &&
+            cur->size >= size &&
+            cur->buffer_type == HAILO_DMA_DMABUF_BUFFER &&
+            DMA_DIRECTION_EQUALS(cur->data_direction, direction)) {
+            return cur;
+        }
     }
+    return NULL;
+}
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_address(struct hailo_vdma_file_context *context,
+    uintptr_t user_addres, size_t size, enum dma_data_direction direction)
+{
+    struct hailo_vdma_buffer *cur = NULL;
+    list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
+        if (cur->addr_or_fd <= user_addres &&
+            cur->addr_or_fd + cur->size >= user_addres + size &&
+            cur->buffer_type == HAILO_DMA_USER_PTR_BUFFER &&
+            DMA_DIRECTION_EQUALS(cur->data_direction, direction)) {
+            return cur;
+        }
+    }
+    return NULL;
 }
 
-struct hailo_vdma_buffer* hailo_vdma_find_mapped_user_buffer(struct hailo_vdma_file_context *context,
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_handle(struct hailo_vdma_file_context *context,
     size_t buffer_handle)
 {
     struct hailo_vdma_buffer *cur = NULL;
@@ -383,8 +404,10 @@ int hailo_desc_list_create(struct device *dev, u32 descriptors_count, u16 desc_p
     buffer_size = descriptors_count * sizeof(struct hailo_vdma_descriptor);
     buffer_size = ALIGN(buffer_size, align);
 
+    // Don't pass __GFP_ZERO since the buffer is used only in kernel, and is always initialized
+    // before starting dma transfer.
     descriptors->kernel_address = dma_alloc_coherent(dev, buffer_size,
-        &descriptors->dma_address, GFP_KERNEL | __GFP_ZERO);
+        &descriptors->dma_address, GFP_KERNEL);
     if (descriptors->kernel_address == NULL) {
         dev_err(dev, "Failed to allocate descriptors list, desc_count 0x%x, buffer_size 0x%zx, This failure means there is not a sufficient amount of CMA memory "
             "(contiguous physical memory), This usually is caused by lack of general system memory. Please check you have sufficient memory.\n",

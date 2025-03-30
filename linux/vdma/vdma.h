@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 /**
  * Hailo vdma engine definitions
@@ -29,6 +29,8 @@
 #define VDMA_CHANNEL_NUM_PROC_ADDRESS(vdma_registers, channel_index, direction) \
     ((u8*)((vdma_registers)->address) + VDMA_CHANNEL_NUM_PROC_OFFSET(channel_index, direction))
 
+#define DMA_DIRECTION_EQUALS(a, b) (a == DMA_BIDIRECTIONAL || b == DMA_BIDIRECTIONAL || a == b)
+
 
 // dmabuf is supported from linux kernel version 3.3
 #if LINUX_VERSION_CODE < KERNEL_VERSION( 3, 3, 0 )
@@ -53,9 +55,11 @@ struct hailo_vdma_buffer {
     struct kref                 kref;
     struct device               *device;
 
-    uintptr_t                   user_address;
+    enum hailo_dma_buffer_type  buffer_type;
     u32                         size;
+    uintptr_t                   addr_or_fd;
     enum dma_data_direction     data_direction;
+
     struct sg_table             sg_table;
 
     // If this flag is set, the buffer pointed by sg_table is not backed by
@@ -65,7 +69,7 @@ struct hailo_vdma_buffer {
     bool                        is_mmio;
 
     // Relevant paramaters that need to be saved in case of dmabuf - otherwise struct pointers will be NULL
-    struct hailo_dmabuf_info  dmabuf_info;
+    struct hailo_dmabuf_info    dmabuf_info;
 };
 
 // Continuous buffer that holds a descriptor list.

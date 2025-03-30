@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/version.h>
@@ -325,27 +325,30 @@ static int pcie_vdma_program_one_file_descriptors(struct device *dev, struct hai
     int device_desc = 0, host_desc = 0;
     enum hailo_vdma_interrupts_domain interrupts_domain = raise_int_on_completion ? HAILO_VDMA_INTERRUPTS_DOMAIN_HOST :
         HAILO_VDMA_INTERRUPTS_DOMAIN_NONE;
+    const u64 masked_channel_id_for_encode_addr = 0;
 
     hailo_dev_dbg(dev, "channel_index = %d, file_name = %s, file_address = 0x%x, transfer_buffer.offset = 0x%x,\
         size_to_program = 0x%x, starting_desc/desc_index = 0x%x\n", channel_index, filename, file_address,
         transfer_buffer.offset, transfer_buffer.size, boot_channel_state->desc_program_num);
 
     // program descriptors
-    device_desc = hailo_vdma_program_descriptors_in_chunk(&hailo_pcie_vdma_hw, file_address, transfer_buffer.size,
+    device_desc = hailo_vdma_program_descriptors_in_chunk(file_address, transfer_buffer.size,
         &boot_channel_state->device_descriptors_buffer.desc_list, boot_channel_state->desc_program_num,
-        (boot_channel_state->device_descriptors_buffer.desc_list.desc_count - 1), channel_index, HAILO_PCI_EP_HOST_DMA_DATA_ID);
+        (boot_channel_state->device_descriptors_buffer.desc_list.desc_count - 1),
+        HAILO_PCI_EP_HOST_DMA_DATA_ID, DEFAULT_STRIDE, masked_channel_id_for_encode_addr);
     if (device_desc < 0) {
         hailo_dev_err(dev, "Failed to program device descriptors, error = %u\n", device_desc);
         return device_desc;
     }
 
     host_desc = hailo_vdma_program_descriptors_list(&hailo_pcie_vdma_hw, &boot_channel_state->host_descriptors_buffer.desc_list,
-        boot_channel_state->desc_program_num, &transfer_buffer, true, channel_index, interrupts_domain, false);
+        boot_channel_state->desc_program_num, &transfer_buffer, true, channel_index, interrupts_domain, false,
+        DEFAULT_STRIDE);
     if (host_desc < 0) {
         hailo_dev_err(dev, "Failed to program host descriptors, error = %u\n", host_desc);
         return host_desc;
     }
-    
+
     // checks that same amount of decsriptors were programmed on device side and host side
     if (host_desc != device_desc) {
         hailo_dev_err(dev, "Host and device descriptors should be the same\n");
@@ -391,7 +394,7 @@ static int pcie_vdma_program_one_file(struct hailo_pcie_board *board, struct hai
         struct hailo_pcie_boot_dma_channel_state *channel = &boot_dma_state->channels[boot_dma_state->curr_channel_index];
         bool is_last_desc_chunk_of_curr_channel = false;
         bool rais_interrupt_on_last_chunk = false;
-        
+
         hailo_dbg(board, "desc_program_num = 0x%x, desc_page_size = 0x%x, on channel = %d\n",
             channel->desc_program_num, HAILO_PCI_OVER_VDMA_PAGE_SIZE, boot_dma_state->curr_channel_index);
 
@@ -406,7 +409,7 @@ static int pcie_vdma_program_one_file(struct hailo_pcie_board *board, struct hai
         desc_num_left = (MAX_SG_DESCS_COUNT - 1) - channel->desc_program_num;
 
         // prepare the transfer buffer to make sure all the fields are initialized
-        transfer_buffer.sg_table = &channel->sg_table; 
+        transfer_buffer.sg_table = &channel->sg_table;
         transfer_buffer.size = min(remaining_size, (desc_num_left * HAILO_PCI_OVER_VDMA_PAGE_SIZE));
         // no need to check for overflow since the variables are constant and always desc_program_num <= max u16 (65536)
         // & the buffer max size is 256 Mb << 4G (max u32)
@@ -443,7 +446,7 @@ static int pcie_vdma_program_one_file(struct hailo_pcie_board *board, struct hai
         data_offset += transfer_buffer.size;
         channel->desc_program_num += desc_programmed;
     }
-    
+
     hailo_notice(board, "File %s programed successfully\n", filename);
 
     release_firmware(firmware);
@@ -475,7 +478,7 @@ static long pcie_vdma_program_entire_batch(struct hailo_pcie_board *board, struc
     {
         filename = files_batch[file_index].filename;
         file_address = files_batch[file_index].address;
-        
+
         if (NULL == filename) {
             hailo_err(board, "The amount of files wasn't specified for stage %d\n", stage);
             break;
@@ -626,7 +629,7 @@ static void pcie_vdme_release_boot_resources(struct hailo_pcie_board *board, str
  * @param boot_dma_state - pointer to the boot dma state struct which includes all of the boot resources.
  * @param engine - pointer to the vDMA engine struct.
  * @return 0 on success, negative error code on failure. in case of failure descriptor lists are released,
- *  boot vDMA channels are stopped and memory is released. 
+ *  boot vDMA channels are stopped and memory is released.
  */
 static long pcie_vdme_allocate_boot_resources(u32 desc_page_size, struct hailo_pcie_board *board,
     struct hailo_pcie_boot_dma_state *boot_dma_state, struct hailo_vdma_engine *engine)
@@ -634,12 +637,12 @@ static long pcie_vdme_allocate_boot_resources(u32 desc_page_size, struct hailo_p
     long err = 0;
     uintptr_t device_handle = 0, host_handle = 0;
     u8 channel_index = 0;
-    
-    for (channel_index = 0; channel_index < HAILO_PCI_OVER_VDMA_NUM_CHANNELS; channel_index++) {    
+
+    for (channel_index = 0; channel_index < HAILO_PCI_OVER_VDMA_NUM_CHANNELS; channel_index++) {
         struct hailo_pcie_boot_dma_channel_state *channel = &boot_dma_state->channels[channel_index];
 
         // create 2 descriptors list - 1 for the host & 1 for the device for each channel
-        err = hailo_desc_list_create(&board->pDev->dev, MAX_SG_DESCS_COUNT, desc_page_size, host_handle, false, 
+        err = hailo_desc_list_create(&board->pDev->dev, MAX_SG_DESCS_COUNT, desc_page_size, host_handle, false,
             &channel->host_descriptors_buffer);
         if (err < 0) {
             hailo_err(board, "failed to allocate host descriptors list buffer\n");
@@ -653,22 +656,13 @@ static long pcie_vdme_allocate_boot_resources(u32 desc_page_size, struct hailo_p
             goto release_all_resources;
         }
 
-        // start vDMA channels - both sides with DDR at the host side (AKA ID 0)
-        err = hailo_vdma_start_channel(engine->channels[channel_index].host_regs,
+        // start vDMA channels - both sides with descriptors list at the host DDR (AKA ID 0)
+        hailo_vdma_start_channel(engine->channels[channel_index].host_regs,
             channel->host_descriptors_buffer.dma_address,
             channel->host_descriptors_buffer.desc_list.desc_count, board->vdma.hw->ddr_data_id);
-        if (err < 0) {
-            hailo_err(board, "Error starting host vdma channel\n");
-            goto release_all_resources;
-        }
-
-        err = hailo_vdma_start_channel(engine->channels[channel_index].device_regs,
+        hailo_vdma_start_channel(engine->channels[channel_index].device_regs,
             channel->device_descriptors_buffer.dma_address,
             channel->device_descriptors_buffer.desc_list.desc_count, board->vdma.hw->ddr_data_id);
-        if (err < 0) {
-            hailo_err(board, "Error starting device vdma channel\n");
-            goto release_all_resources;
-        }
 
         // initialize the buffer size per channel
         channel->buffer_size = (MAX_SG_DESCS_COUNT * desc_page_size);
@@ -786,7 +780,7 @@ static int load_soc_firmware(struct hailo_pcie_board *board, struct hailo_pcie_r
     }
 
     reinit_completion(fw_load_completion);
-    
+
     err = (int)pcie_write_firmware_batch_over_dma(board, second_stage, HAILO_PCI_OVER_VDMA_PAGE_SIZE);
     if (err < 0) {
         hailo_dev_err(dev, "Failed writing SOC SECOND_STAGE firmware files over vDMA. err %d\n", err);
@@ -806,6 +800,34 @@ static int load_soc_firmware(struct hailo_pcie_board *board, struct hailo_pcie_r
 
     return 0;
 }
+
+static int hailo_pcie_soft_reset(struct hailo_pcie_board *board)
+{
+    bool completion_result = false;
+    int err = 0;
+
+    hailo_pcie_write_firmware_soft_reset(&board->pcie_resources);
+
+    reinit_completion(&board->soft_reset.reset_completed);
+
+    // Wait for response
+    completion_result =
+        wait_for_firmware_completion(&board->soft_reset.reset_completed, msecs_to_jiffies(FIRMWARE_WAIT_TIMEOUT_MS));
+    if (completion_result == false) {
+        hailo_warn(board, "hailo reset firmware, timeout waiting for shutdown response (timeout_ms=%d)\n", FIRMWARE_WAIT_TIMEOUT_MS);
+        err = -ETIMEDOUT;
+        return err;
+    }
+
+    if (!hailo_pcie_wait_for_boot(&board->pcie_resources)) {
+        hailo_warn(board, "couldn't wait for bootloader\n");
+        return -ETIMEDOUT;
+    }
+
+    hailo_notice(board, "soft reset finished\n");
+    return err;
+}
+
 static int load_nnc_firmware(struct hailo_pcie_board *board)
 {
     u32 boot_status = 0;
@@ -814,7 +836,7 @@ static int load_nnc_firmware(struct hailo_pcie_board *board)
 
     if (hailo_pcie_is_firmware_loaded(&board->pcie_resources)) {
         if (support_soft_reset) {
-            err = hailo_pcie_soft_reset(&board->pcie_resources, &board->soft_reset.reset_completed); // send control, wait for done
+            err = hailo_pcie_soft_reset(board);
             if (err < 0) {
                 hailo_dev_err(dev, "Failed hailo pcie soft reset. err %d\n", err);
                 return 0;
@@ -845,30 +867,6 @@ static int load_nnc_firmware(struct hailo_pcie_board *board)
     return 0;
 }
 
-int hailo_pcie_soft_reset(struct hailo_pcie_resources *resources, struct completion *reset_completed)
-{
-    bool completion_result = false;
-    int err = 0;
-
-    hailo_pcie_write_firmware_soft_reset(resources);
-
-    reinit_completion(reset_completed);
-
-    // Wait for response
-    completion_result =
-        wait_for_firmware_completion(reset_completed, msecs_to_jiffies(FIRMWARE_WAIT_TIMEOUT_MS));
-    if (completion_result == false) {
-        pr_warn("hailo reset firmware, timeout waiting for shutdown response (timeout_ms=%d)\n", FIRMWARE_WAIT_TIMEOUT_MS);
-        err = -ETIMEDOUT;
-        return err;
-    }
-
-    msleep(TIME_UNTIL_REACH_BOOTLOADER);
-    pr_notice("hailo_driver_down finished\n");
-
-    return err;
-}
-
 static int load_firmware(struct hailo_pcie_board *board)
 {
     switch (board->pcie_resources.accelerator_type) {
@@ -882,24 +880,6 @@ static int load_firmware(struct hailo_pcie_board *board)
     }
 }
 
-static int enable_boot_interrupts(struct hailo_pcie_board *board)
-{
-    int err = hailo_enable_interrupts(board);
-    if (err < 0) {
-        hailo_err(board, "Failed enabling interrupts %d\n", err);
-        return err;
-    }
-
-    board->fw_boot.is_in_boot = true;
-    return 0;
-}
-
-static void disable_boot_interrupts(struct hailo_pcie_board *board)
-{
-    board->fw_boot.is_in_boot = false;
-    hailo_disable_interrupts(board);
-}
-
 static int hailo_activate_board(struct hailo_pcie_board *board)
 {
     int err = 0;
@@ -907,22 +887,36 @@ static int hailo_activate_board(struct hailo_pcie_board *board)
 
     (void)hailo_pcie_disable_aspm(board, PCIE_LINK_STATE_L0S, false);
 
-    err = enable_boot_interrupts(board);
+    err = hailo_enable_interrupts(board);
     if (err < 0) {
+        hailo_err(board, "Failed enabling interrupts %d\n", err);
         return err;
     }
+
+    // Set is_in_boot for fimware loading for interrupt handler
+    board->fw_boot.is_in_boot = true;
 
     start_time = ktime_get();
     err = load_firmware(board);
     end_time = ktime_get();
     hailo_notice(board, "FW loaded, took %lld ms\n", ktime_to_ms(ktime_sub(end_time, start_time)));
-    disable_boot_interrupts(board);
+
+    board->fw_boot.is_in_boot = false;
 
     if (err < 0) {
         hailo_err(board, "Firmware load failed\n");
+        hailo_disable_interrupts(board);
         return err;
     }
 
+    if (HAILO_ACCELERATOR_TYPE_SOC == board->pcie_resources.accelerator_type) {
+        err = hailo_soc_get_driver_info(board);
+        if (err < 0) {
+            hailo_err(board, "hailo_soc_get_driver_info has failed with err %d\n", err);
+        }
+    }
+
+    hailo_disable_interrupts(board);
     if (power_mode_enabled()) {
         // Setting the device to low power state, until the user opens the device
         hailo_info(board, "Power change state  to PCI_D3hot\n");
@@ -1452,6 +1446,7 @@ static struct pci_device_id hailo_pcie_id_table[] =
     {PCI_DEVICE_DATA(HAILO, HAILO8, HAILO_BOARD_TYPE_HAILO8)},
     {PCI_DEVICE_DATA(HAILO, HAILO10H, HAILO_BOARD_TYPE_HAILO10H)},
     {PCI_DEVICE_DATA(HAILO, HAILO15L, HAILO_BOARD_TYPE_HAILO15L)},
+    {PCI_DEVICE_DATA(HAILO, MARS, HAILO_BOARD_TYPE_MARS)},
     {0,0,0,0,0,0,0 },
 };
 
@@ -1473,6 +1468,7 @@ static struct pci_driver hailo_pci_driver =
     remove:		 hailo_pcie_remove,
     driver: {
         pm: &hailo_pcie_pm_ops,
+        probe_type: PROBE_PREFER_ASYNCHRONOUS,
     },
     err_handler: &hailo_pcie_err_handlers,
 };

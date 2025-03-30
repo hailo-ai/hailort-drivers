@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_PCI_PCIE_H_
@@ -60,6 +60,7 @@ struct hailo_pcie_nnc {
 
 struct hailo_pcie_soc {
     struct completion control_resp_ready;
+    bool driver_compatible;
 };
 
 // Context for each open file handle
@@ -125,7 +126,5 @@ bool power_mode_enabled(void);
 struct hailo_pcie_board* hailo_pcie_get_board_index(u32 index);
 void hailo_disable_interrupts(struct hailo_pcie_board *board);
 int hailo_enable_interrupts(struct hailo_pcie_board *board);
-int  hailo_pcie_soft_reset(struct hailo_pcie_resources *resources, struct completion *reset_completed);
-
 #endif /* _HAILO_PCI_PCIE_H_ */
 

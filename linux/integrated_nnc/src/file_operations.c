@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/err.h>
@@ -77,6 +77,18 @@ static int hailo_integrated_nnc_fops_open(struct inode *inode, struct file *filp
         return err;
     }
 
+    // increment ref count for integrated nnc cpu
+    // deassert nn core only upon the first open
+    if(atomic_inc_return(&board->integrated_nnc_cpu.ref_count) == 1) {
+        err = reset_control_deassert(board->nn_core_reset);
+        if (err < 0) {
+            hailo_err(board, "Failed deasserting nn_core_reset, err %d\n", err);
+            up(&board->mutex);
+            kfree(context);
+            return err;
+        }
+    }
+
     up(&board->mutex);
 
     return 0;
@@ -102,6 +114,16 @@ static int hailo_integrated_nnc_fops_release(struct inode *inode, struct file *f
     }
 
     hailo_vdma_file_context_finalize(&context->vdma_context, &board->vdma, filp);
+
+    // decrement ref count for integrated nnc cpu, assert reset if ref count is 0
+    if (atomic_dec_and_test(&board->integrated_nnc_cpu.ref_count)) {
+        ret = reset_control_assert(board->nn_core_reset);
+
+        if (ret < 0) {
+            hailo_err(board, "Failed asserting nn_core_reset, err %d\n", ret);
+        }
+	}
+
     up(&board->mutex);
 
     kfree(context);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/delay.h>
@@ -137,6 +137,9 @@ int hailo_integrated_nnc_cpu_struct_init(struct hailo_board *board)
     board->integrated_nnc_cpu.fw_header = fw_header;
     board->integrated_nnc_cpu.fw_code = fw_code;
     board->integrated_nnc_cpu.fw_isr_vector = fw_isr_vector;
+
+    /* Init nnc cpu usage ref count */
+    atomic_set(&board->integrated_nnc_cpu.ref_count, 0);
 
     return 0;
 }

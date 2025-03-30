@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/err.h>
@@ -39,23 +39,88 @@ enum integrated_board_type
 {
     HAILO_INTEGRATED_BOARD_TYPE_HAILO15H = 0,
     HAILO_INTEGRATED_BOARD_TYPE_HAILO15L = 1,
+    HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2 = 2,
+};
+
+static const struct vdma_interrupt_data hailo15h_interrupts_data[] = {
+    [IRQ_TYPE_INPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_INPUT,
+    },
+    [IRQ_TYPE_OUTPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_OUTPUT,
+    },
+    [IRQ_TYPE_BOTH] = {
+        .vdma_interrupt_mask_offset = 0x990,
+        .vdma_interrupt_status_offset = 0x994,
+        .vdma_interrupt_w1c_offset = 0x998,
+        .irq_type = IRQ_TYPE_BOTH,
+    }
+};
+
+static const struct vdma_interrupt_data hailo15l_interrupts_data[] = {
+    [IRQ_TYPE_INPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_INPUT,
+    },
+    [IRQ_TYPE_OUTPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_OUTPUT,
+    },
+    [IRQ_TYPE_BOTH] = {
+        .vdma_interrupt_mask_offset = 0xa00,
+        .vdma_interrupt_status_offset = 0xa04,
+        .vdma_interrupt_w1c_offset = 0xa08,
+        .irq_type = IRQ_TYPE_BOTH,
+    }
+};
+
+static const struct vdma_interrupt_data hailo10h2_interrupts_data[] = {
+    [IRQ_TYPE_INPUT] = {
+        .vdma_interrupt_mask_offset = 0xc50,
+        .vdma_interrupt_status_offset = 0xc54,
+        .vdma_interrupt_w1c_offset = 0xc58,
+        .irq_type = IRQ_TYPE_INPUT,
+    },
+    [IRQ_TYPE_OUTPUT] = {
+        .vdma_interrupt_mask_offset = 0xc60,
+        .vdma_interrupt_status_offset = 0xc64,
+        .vdma_interrupt_w1c_offset = 0xc68,
+        .irq_type = IRQ_TYPE_OUTPUT,
+    },
+    [IRQ_TYPE_BOTH] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0xc00,
+        .irq_type = IRQ_TYPE_BOTH,
+    }
 };
 
 // TODO: HRT-14933 : chnage name to hailo15h in mercury
 static const struct integrated_board_data integrated_board_data_arr[] = {
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO15H] = {
         .board_type = HAILO_BOARD_TYPE_HAILO15,
-        .vdma_interrupt_mask_offset     = 0x990,
-        .vdma_interrupt_status_offset   = 0x994,
-        .vdma_interrupt_w1c_offset      = 0x998,
-        .fw_filename                    = "hailo/hailo15_nnc_fw.bin",
+        .vdma_interrupts_data = hailo15h_interrupts_data,
+        .fw_filename          = "hailo/hailo15_nnc_fw.bin",
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO15L] = {
         .board_type = HAILO_BOARD_TYPE_HAILO15L,
-        .vdma_interrupt_mask_offset     = 0xa00,
-        .vdma_interrupt_status_offset   = 0xa04,
-        .vdma_interrupt_w1c_offset      = 0xa08,
-        .fw_filename                    = "hailo/hailo15l_nnc_fw.bin",
+        .vdma_interrupts_data = hailo15l_interrupts_data,
+        .fw_filename          = "hailo/hailo15l_nnc_fw.bin",
+    },
+    [HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2] = {
+        .board_type = HAILO_BOARD_TYPE_MARS,
+        .vdma_interrupts_data = hailo10h2_interrupts_data,
+        .fw_filename          = "hailo/mars_nnc_fw.bin",
     },
 };
 
@@ -91,6 +156,10 @@ static const struct of_device_id driver_match[] = {
     {
         .compatible = "hailo,integrated-nnc,hailo15l",
         .data = &integrated_board_data_arr[HAILO_INTEGRATED_BOARD_TYPE_HAILO15L],
+    },
+    {
+        .compatible = "hailo,integrated-nnc,hailo10h2",
+        .data = &integrated_board_data_arr[HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2],
     },
     { }
 };
@@ -174,7 +243,7 @@ static int hailo_allocate_nnc_fw_shm_continuous_buffer(struct device *dev, struc
 }
 
 // Function allocates memory for the nnc fw shared memory - first tries to allocate memory from device tree memory region
-// if not found - falls back to continuous buffer allocation and if this buffer is allocated in non allowed region - disables 
+// if not found - falls back to continuous buffer allocation and if this buffer is allocated in non allowed region - disables
 // nnc fw shared memory
 static long hailo_vdma_allocate_nnc_fw_shm(struct device *dev, struct hailo_board *board)
 {

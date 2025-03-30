@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_COMMON_VDMA_COMMON_H_
@@ -24,6 +24,8 @@
 #define CHANNEL_NUM_PROC_OFFSET     (0x4)
 #define CHANNEL_ERROR_OFFSET        (0x8)
 #define CHANNEL_DEST_REGS_OFFSET    (0x10)
+
+#define DEFAULT_STRIDE              (0)
 
 #ifdef __cplusplus
 extern "C"
@@ -128,10 +130,7 @@ struct hailo_vdma_engine {
 };
 
 struct hailo_vdma_hw_ops {
-    // Accepts start, end and step of an address range (of type  dma_addr_t).
-    // Returns the encoded base address or INVALID_VDMA_ADDRESS if the range/step is invalid.
-    // All addresses in the range of [returned_addr, returned_addr + step, returned_addr + 2*step, ..., dma_address_end) are valid.
-    u64 (*encode_desc_dma_address_range)(dma_addr_t dma_address_start, dma_addr_t dma_address_end, u32 step, u8 channel_id);
+    u64 (*get_masked_channel_id)(u8 channel_id);
 };
 
 struct hailo_vdma_hw {
@@ -155,6 +154,16 @@ struct hailo_vdma_hw {
     _for_each_element_array((engine)->channels, MAX_VDMA_CHANNELS_PER_ENGINE,   \
         channel, channel_index)
 
+int hailo_vdma_program_descriptors_in_chunk(
+    dma_addr_t chunk_addr,
+    unsigned int chunk_size,
+    struct hailo_vdma_descriptors_list *desc_list,
+    u32 desc_index,
+    u32 max_desc_index,
+    u8 data_id,
+    u32 stride,
+    u64 masked_channel_id);
+
 /**
  * Program the given descriptors list to map the given buffer.
  *
@@ -168,6 +177,8 @@ struct hailo_vdma_hw {
  * @param channel_index channel index of the channel attached.
  * @param last_desc_interrupts - interrupts settings on last descriptor.
  * @param is_debug program descriptors for debug run.
+ * @param stride stride of the buffer - affects the real descriptor program size.
+ *               If the stride is 0 (default), the stride is calculated as the desc_page_size.
  *
  * @return On success - the amount of descriptors programmed, negative value on error.
  */
@@ -179,17 +190,41 @@ int hailo_vdma_program_descriptors_list(
     bool should_bind,
     u8 channel_index,
     enum hailo_vdma_interrupts_domain last_desc_interrupts,
-    bool is_debug);
+    bool is_debug,
+    u32 stride);
 
-int hailo_vdma_program_descriptors_in_chunk(
+/**
+ * Program the given descriptors list to map a given buffer in a batch pattern.
+ *
+ * @param vdma_hw vdma hw object
+ * @param desc_list descriptors list object to program
+ * @param starting_desc index of the first descriptor to program. If the list
+ *                     is circular, this function may wrap around the list.
+ * @param base_buffer buffer to program to the descriptors list.
+ * @param buffer_offset offset in the buffer to start the program from.
+ * @param transfer_size size of each transfer in the batch to program.
+ * @param batch_size amount of transfers to program.
+ * @param should_bind If false, assumes the buffer was already bound to the desc list.
+ *                    Used for optimization.
+ * @param channel_index channel index of the channel attached.
+ * @param last_desc_interrupts - interrupts settings on last descriptor of each transfer.
+ * @param is_debug program descriptors for debug run.
+ * @param stride stride of the buffer - affects the real descriptor program size.
+ *               If the stride is 0 (default), the stride is calculated as the desc_page_size.
+ */
+int hailo_vdma_program_descriptors_list_batch(
     struct hailo_vdma_hw *vdma_hw,
-    dma_addr_t chunk_addr,
-    unsigned int chunk_size,
     struct hailo_vdma_descriptors_list *desc_list,
-    u32 desc_index,
-    u32 max_desc_index,
+    u32 starting_desc,
+    struct sg_table *base_buffer,
+    u32 buffer_offset,
+    u32 transfer_size,
+    u32 batch_size,
+    bool should_bind,
     u8 channel_index,
-    u8 data_id);
+    enum hailo_vdma_interrupts_domain last_desc_interrupts,
+    bool is_debug,
+    u32 stride);
 
 void hailo_vdma_set_num_avail(u8 __iomem *regs, u16 num_avail);
 
@@ -272,8 +307,7 @@ int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *ir
     struct hailo_vdma_engine *engine, u32 irq_channels_bitmap,
     transfer_done_cb_t transfer_done, void *transfer_done_opaque);
 
-int hailo_vdma_start_channel(u8 __iomem *regs, uint64_t desc_dma_address, uint32_t desc_count, uint8_t data_id);
-
+void hailo_vdma_start_channel(u8 __iomem *regs, uint64_t desc_dma_address, uint32_t desc_count, uint8_t data_id);
 void hailo_vdma_stop_channel(u8 __iomem *regs);
 
 bool hailo_check_channel_index(u8 channel_index, u32 src_channels_bitmask, bool is_input_channel);

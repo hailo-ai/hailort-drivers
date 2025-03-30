@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef PCIE_COMMON_FIRMWARE_HEADER_UTILS_H_
@@ -12,6 +12,7 @@
 #define FIRMWARE_HEADER_MAGIC_HAILO8    (0x1DD89DE0)
 #define FIRMWARE_HEADER_MAGIC_HAILO15   (0xE905DAAB)
 #define FIRMWARE_HEADER_MAGIC_HAILO15L  (0xF94739AB)
+#define FIRMWARE_HEADER_MAGIC_MARS      (0xF94739AB)
 
 typedef enum {
     FIRMWARE_HEADER_VERSION_INITIAL = 0,

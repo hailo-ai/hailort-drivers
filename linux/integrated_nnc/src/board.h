@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _BOARD_H_
@@ -14,11 +14,27 @@
 #include "hailo_ioctl_common.h"
 #include "vdma/vdma.h"
 
-struct integrated_board_data {
-    enum hailo_board_type board_type;
+enum irq_type {
+    IRQ_TYPE_INPUT = 0,
+    IRQ_TYPE_OUTPUT = 1,
+    IRQ_TYPE_BOTH = 2,
+    MAX_IRQ_TYPE = 3
+};
+
+struct vdma_interrupt_data
+{
     u16 vdma_interrupt_mask_offset;
     u16 vdma_interrupt_status_offset;
     u16 vdma_interrupt_w1c_offset;
+    enum irq_type irq_type;
+};
+
+// Support up to 2 IRQs for MARS compatability
+#define MAX_INTERRUPTS_PER_ENGINE (2)
+
+struct integrated_board_data {
+    enum hailo_board_type board_type;
+    const struct vdma_interrupt_data *vdma_interrupts_data;
     const char *fw_filename;
 };
 
@@ -81,11 +97,20 @@ struct hailo_integrated_nnc_cpu {
     struct hailo_resource fw_header;
     struct hailo_resource fw_code;
     struct hailo_resource fw_isr_vector;
+
+    // nnc cpu reference count
+    atomic_t ref_count;
+};
+
+struct irq_info {
+    int irq;
+    enum irq_type type;
+    int engine_index;
+    struct device *dev;
 };
 
 struct hailo_vdma_engine_resources
 {
-    int irq;
     struct hailo_resource channel_registers;
     struct hailo_resource engine_registers;
 };
@@ -114,6 +139,7 @@ struct hailo_board
     struct hailo_vdma_continuous_buffer nnc_fw_shared_memory_continuous_buffer;
     struct nnc_fw_shared_mem_info nnc_fw_shared_mem_info;
     struct integrated_board_data *board_data;
+    struct irq_info irqs_info[MAX_VDMA_ENGINES][MAX_INTERRUPTS_PER_ENGINE];
 };
 
 #endif //_BOARD_H_

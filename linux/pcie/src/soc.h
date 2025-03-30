@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_PCI_SOC_IOCTL_H_
@@ -22,5 +22,7 @@ int hailo_soc_file_context_init(struct hailo_pcie_board *board, struct hailo_fil
 void hailo_soc_file_context_finalize(struct hailo_pcie_board *board, struct hailo_file_context *context);
 
 int hailo_soc_driver_down(struct hailo_pcie_board *board);
+int hailo_soc_get_driver_info(struct hailo_pcie_board *board);
+long hailo_soc_power_off_ioctl(struct hailo_pcie_board *board, unsigned long arg);
 
 #endif // _HAILO_PCI_SOC_IOCTL_H_
