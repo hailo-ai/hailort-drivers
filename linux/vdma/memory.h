@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 /**
  * vDMA memory utility (including allocation and mappings)
@@ -22,11 +22,12 @@ void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf);
 void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
     struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
     size_t offset, size_t size);
-void hailo_vdma_buffer_sync_cyclic(struct hailo_vdma_controller *controller,
-    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
-    size_t offset, size_t size);
 
-struct hailo_vdma_buffer* hailo_vdma_find_mapped_user_buffer(struct hailo_vdma_file_context *context,
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_fd(struct hailo_vdma_file_context *context,
+    uintptr_t fd, size_t total_size, enum dma_data_direction direction);
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_address(struct hailo_vdma_file_context *context,
+    uintptr_t user_addres, size_t size, enum dma_data_direction direction);
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_handle(struct hailo_vdma_file_context *context,
     size_t buffer_handle);
 void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller);

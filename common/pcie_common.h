@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_COMMON_PCIE_COMMON_H_
@@ -17,11 +17,6 @@
 #include <linux/types.h>
 #include <linux/firmware.h>
 
-
-#define BCS_ISTATUS_HOST_SW_IRQ_MASK         (0xFF000000)
-#define BCS_ISTATUS_HOST_SW_IRQ_SHIFT        (24)
-#define BCS_ISTATUS_HOST_VDMA_SRC_IRQ_MASK   (0x000000FF)
-#define BCS_ISTATUS_HOST_VDMA_DEST_IRQ_MASK  (0x0000FF00)
 
 #define PCIE_HAILO8_BOARD_CFG_MAX_SIZE          (0x500)
 #define PCIE_HAILO8_FW_CFG_MAX_SIZE             (0x500)
@@ -46,6 +41,7 @@
 #define PCI_DEVICE_ID_HAILO_HAILO8    0x2864
 #define PCI_DEVICE_ID_HAILO_HAILO10H  0x45C4
 #define PCI_DEVICE_ID_HAILO_HAILO15L  0x43a2
+#define PCI_DEVICE_ID_HAILO_MARS      0x26a2
 
 typedef u64 hailo_ptr_t;
 
@@ -133,14 +129,15 @@ enum hailo_bar_index {
 extern "C" {
 #endif
 
+#define TIME_COUNT_FOR_BOOTLOADER_MS (1)
 
 #ifndef HAILO_EMULATOR
-#define TIME_UNTIL_REACH_BOOTLOADER (10)
+#define COUNT_UNTIL_REACH_BOOTLOADER (10)
 #define PCI_EP_WAIT_TIMEOUT_MS   (40000)
 #define FIRMWARE_WAIT_TIMEOUT_MS (5000)
 #else /* ifndef HAILO_EMULATOR */
+#define COUNT_UNTIL_REACH_BOOTLOADER (10000)
 // PCI EP timeout is defined to 50000000 because on Emulator the boot time + linux init time can be very long (4+ hours)
-#define TIME_UNTIL_REACH_BOOTLOADER (10000)
 #define PCI_EP_WAIT_TIMEOUT_MS   (50000000)
 #define FIRMWARE_WAIT_TIMEOUT_MS (5000000)
 #endif /* ifndef HAILO_EMULATOR */
@@ -179,12 +176,13 @@ u32 hailo_get_boot_status(struct hailo_pcie_resources *resources);
 int hailo_pcie_configure_atr_table(struct hailo_resource *bridge_config, u64 trsl_addr, u32 atr_index);
 void hailo_pcie_read_atr_table(struct hailo_resource *bridge_config, struct hailo_atr_config *atr, u32 atr_index);
 
-u64 hailo_pcie_encode_desc_dma_address_range(dma_addr_t dma_address_start, dma_addr_t dma_address_end, u32 step, u8 channel_id);
+u64 hailo_pcie_encode_desc_get_masked_channel_id(u8 channel_id);
 
 void hailo_pcie_soc_write_request(struct hailo_pcie_resources *resources,
     const struct hailo_pcie_soc_request *request);
 void hailo_pcie_soc_read_response(struct hailo_pcie_resources *resources,
     struct hailo_pcie_soc_response *response);
+bool hailo_pcie_wait_for_boot(struct hailo_pcie_resources *resources);
 
 #ifdef __cplusplus
 }

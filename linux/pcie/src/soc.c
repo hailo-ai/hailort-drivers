@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 /**
  * A Hailo PCIe NNC device is a device contains a full SoC over PCIe. The SoC contains NNC (neural network core) and
@@ -25,16 +25,24 @@
 void hailo_soc_init(struct hailo_pcie_soc *soc)
 {
     init_completion(&soc->control_resp_ready);
+    soc->driver_compatible = true;
 }
 
 long hailo_soc_ioctl(struct hailo_pcie_board *board, struct hailo_file_context *context,
     struct hailo_vdma_controller *controller, unsigned int cmd, unsigned long arg)
 {
+    if (!board->soc.driver_compatible) {
+        hailo_err(board, "driver_compatible is false\n");
+        return -EINVAL;
+    }
+
     switch (cmd) {
     case HAILO_SOC_CONNECT:
         return hailo_soc_connect_ioctl(board, context, controller, arg);
     case HAILO_SOC_CLOSE:
         return hailo_soc_close_ioctl(board, controller, context, arg);
+    case HAILO_SOC_POWER_OFF:
+        return hailo_soc_power_off_ioctl(board, arg);
     default:
         hailo_err(board, "Invalid pcie EP ioctl code 0x%x (nr: %d)\n", cmd, _IOC_NR(cmd));
         return -ENOTTY;
@@ -78,6 +86,34 @@ static int soc_control(struct hailo_pcie_board *board,
 
     return 0;
 }
+
+int hailo_soc_get_driver_info(struct hailo_pcie_board *board)
+{
+    struct hailo_pcie_soc_request request = (struct hailo_pcie_soc_request) {
+        .control_code = HAILO_PCIE_SOC_CONTROL_CODE_QUERY_DRIVER_INFO,
+    };
+
+    struct hailo_pcie_soc_response response = {0};
+    int err;
+
+    err = soc_control(board, &request, &response);
+    if (err < 0) {
+        return err;
+    }
+
+    if ((response.driver_info.driver_major != HAILO_DRV_VER_MAJOR) || 
+        (response.driver_info.driver_minor != HAILO_DRV_VER_MINOR) ||
+        (response.driver_info.driver_revision != HAILO_DRV_VER_REVISION)) {
+        hailo_err(board, "Mismatch Driver version pcie driver %u:%u:%u pci_ep driver %u:%u:%u\n",
+            HAILO_DRV_VER_MAJOR, HAILO_DRV_VER_MINOR, HAILO_DRV_VER_REVISION,
+            response.driver_info.driver_major, response.driver_info.driver_minor, response.driver_info.driver_revision);
+        board->soc.driver_compatible = false;
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 
 long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_context *context,
     struct hailo_vdma_controller *controller, unsigned long arg)
@@ -137,30 +173,16 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
         return -EINVAL;
     }
 
-    // configure and start input channel
-    // DMA Direction is only to get channel index - so 
-    err = hailo_vdma_start_channel(input_channel->host_regs, input_descriptors_buffer->dma_address, input_descriptors_buffer->desc_list.desc_count,
+    // configure and start channels
+    hailo_vdma_start_channel(input_channel->host_regs,
+        input_descriptors_buffer->dma_address, input_descriptors_buffer->desc_list.desc_count,
         board->vdma.hw->ddr_data_id);
-    if (err < 0) {
-        hailo_dev_err(&board->pDev->dev, "Error starting vdma input channel index %u\n", params.input_channel_index);
-        return -EINVAL;
-    }
+    hailo_vdma_start_channel(output_channel->host_regs,
+        output_descriptors_buffer->dma_address, output_descriptors_buffer->desc_list.desc_count,
+        board->vdma.hw->ddr_data_id);
 
     // Store the input channels state in bitmap (open)
     hailo_set_bit(params.input_channel_index, &context->soc_used_channels_bitmap);
-    
-    // configure and start output channel
-    // DMA Direction is only to get channel index - so 
-    err = hailo_vdma_start_channel(output_channel->host_regs, output_descriptors_buffer->dma_address, output_descriptors_buffer->desc_list.desc_count,
-        board->vdma.hw->ddr_data_id);
-    if (err < 0) {
-        hailo_dev_err(&board->pDev->dev, "Error starting vdma output channel index %u\n", params.output_channel_index);
-        // Close input channel
-        hailo_vdma_stop_channel(input_channel->host_regs);
-        return -EINVAL;
-    }
-
-    // Store the output channels state in bitmap (open)
     hailo_set_bit(params.output_channel_index, &context->soc_used_channels_bitmap);
 
     if (copy_to_user((void *)arg, &params, sizeof(params))) {
@@ -241,4 +263,17 @@ void hailo_soc_file_context_finalize(struct hailo_pcie_board *board, struct hail
 int hailo_soc_driver_down(struct hailo_pcie_board *board)
 {
     return close_channels(board, 0xFFFFFFFF);
+}
+
+long hailo_soc_power_off_ioctl(struct hailo_pcie_board *board, unsigned long arg)
+{
+    int err = 0;
+    struct hailo_pcie_soc_request request = (struct hailo_pcie_soc_request) {
+        .control_code = HAILO_PCIE_SOC_CONTROL_POWER_OFF,
+    };
+    struct hailo_pcie_soc_response response = {0};
+
+    err = soc_control(board, &request, &response);
+
+    return err;
 }

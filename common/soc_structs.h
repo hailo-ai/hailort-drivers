@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 /**
  * Contains definitions for pcie soc to pcie ep communication
@@ -33,9 +33,11 @@ struct hailo_pcie_soc_close_response {
 
 enum hailo_pcie_soc_control_code {
     // Start from big initial value to ensure the right code was used (using 0
-    // as initiale may cause confusion if the code was not set correctly).
+    // as initial may cause confusion if the code was not set correctly).
     HAILO_PCIE_SOC_CONTROL_CODE_CONNECT = 0x100,
     HAILO_PCIE_SOC_CONTROL_CODE_CLOSE,
+    HAILO_PCIE_SOC_CONTROL_CODE_QUERY_DRIVER_INFO,
+    HAILO_PCIE_SOC_CONTROL_POWER_OFF,
     HAILO_PCIE_SOC_CONTROL_CODE_INVALID,
 };
 
@@ -55,12 +57,19 @@ struct hailo_pcie_soc_request {
     };
 };
 
+struct hailo_pcie_soc_driver_version {
+    u32 driver_major;
+    u32 driver_minor;
+    u32 driver_revision;
+};
+
 struct hailo_pcie_soc_response {
     u32 control_code;
     s32 status;
     union {
         struct hailo_pcie_soc_connect_response connect;
         struct hailo_pcie_soc_close_response close;
+        struct hailo_pcie_soc_driver_version driver_info;
         u8 pad[HAILO_PCIE_SOC_MAX_RESPONSE_SIZE_BYTES];
     };
 };

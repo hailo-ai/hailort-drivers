@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include "fw_validation.h"
@@ -43,6 +43,9 @@ int FW_VALIDATION__validate_fw_header(uintptr_t firmware_base_address,
         break;
     case HAILO_BOARD_TYPE_HAILO15L:
         expected_firmware_magic = FIRMWARE_HEADER_MAGIC_HAILO15L;
+        break;
+    case HAILO_BOARD_TYPE_MARS:
+        expected_firmware_magic = FIRMWARE_HEADER_MAGIC_MARS;
         break;
     default:
         err = -EINVAL;

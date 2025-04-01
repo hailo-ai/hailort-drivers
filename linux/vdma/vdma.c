@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2024 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #define pr_fmt(fmt) "hailo: " fmt
@@ -152,7 +152,7 @@ void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
     }
 }
 
-void hailo_vdma_wakeup_interrupts(struct hailo_vdma_controller *controller, struct hailo_vdma_engine *engine, 
+void hailo_vdma_wakeup_interrupts(struct hailo_vdma_controller *controller, struct hailo_vdma_engine *engine,
     u32 channels_bitmap)
 {
     unsigned long irq_saved_flags = 0;

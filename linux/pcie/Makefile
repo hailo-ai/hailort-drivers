@@ -89,7 +89,13 @@ help:
 	$(Q)echo "*   help:        Display this help                                            "
 	$(Q)echo "******************************************************************************"
 
-all: $(TARGET_DIR)
+print-versions:
+	$(Q)kernelver="$(make -s -C $(KERNEL_DIR) kernelversion || echo \"unknown\")"
+	$(Q)echo "******************************************************************************"
+	$(Q)echo "Kernel version: $(kernelver)"
+	$(Q)echo "******************************************************************************"
+
+all: $(TARGET_DIR) print-versions
 	$(Q)$(MAKE)  -C $(KERNEL_DIR) M=$(PWD) $(GDB_FLAG) $(USER_FLAGS) modules
 	$(Q)cp $(DRIVER_NAME) $(TARGET_DIR)
 
