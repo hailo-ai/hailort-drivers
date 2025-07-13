@@ -14,11 +14,39 @@
 #include <linux/of_irq.h>
 #include <linux/of_reserved_mem.h>
 
-#define DRAM_DMA_SRC_CHANNELS_BITMASK   (0x0000FFFF)
 #define INVALID_MASK_OFFSET             (0x00)
+#define MARS_RX_CHANNELS_COUNT          (24)
+// All the extended are relevant for mars
+#define EXTENDED_INPUT_CHANNELS_BITMAP      (0x00FFFFFF)
+#define EXTENDED_OUTPUT_VDMA_CHANNELS_BITMAP (0x000000FFFF000000)
+#define EXTENDED_OUTPUT_CHANNELS_BITMAP (0x000000000000FFFF)
+
+// This adjust will only affect H12(MARS)
+// TODO: channels_bitmap should be u64 and bitmasks should change accordingly
+static void channel_bitmap_adjust(u64 *channels_bitmap, enum irq_type type, bool convert_vdma_channel_to_shmifo_id)
+{
+    switch (type) {
+    case IRQ_TYPE_INPUT:
+        // Handling only 24 channels for input (0-23)
+        *channels_bitmap = *channels_bitmap & EXTENDED_INPUT_CHANNELS_BITMAP;
+        break;
+    case IRQ_TYPE_OUTPUT:
+        if (convert_vdma_channel_to_shmifo_id) {
+            // Move higher 16-bit, channels (23-39), to the lower 16 bits (0-15), clearing the higher part
+            *channels_bitmap = (*channels_bitmap & EXTENDED_OUTPUT_VDMA_CHANNELS_BITMAP) >> MARS_RX_CHANNELS_COUNT;
+        } else {
+            // Move lower 16-bit, channels (0-16), to start from input channels offset (24)
+            *channels_bitmap = (*channels_bitmap & EXTENDED_OUTPUT_CHANNELS_BITMAP) << MARS_RX_CHANNELS_COUNT;
+        }
+        break;
+    case IRQ_TYPE_BOTH:
+    default:
+        break;
+    }
+}
 
 static void update_channel_interrupts(struct hailo_vdma_controller *controller,
-    size_t engine_index, u32 channels_bitmap)
+    size_t engine_index, u64 channels_bitmap)
 {
     struct hailo_board *board = (struct hailo_board*) dev_get_drvdata(controller->dev);
     struct hailo_resource *engine_registers = NULL;
@@ -29,52 +57,23 @@ static void update_channel_interrupts(struct hailo_vdma_controller *controller,
         // Updating only on interrupts with valid mask offset
         if (INVALID_MASK_OFFSET != board->board_data->vdma_interrupts_data[type_idx].vdma_interrupt_mask_offset) {
             engine_registers = &board->vdma_engines_resources[engine_index].engine_registers;
+            if (IRQ_TYPE_OUTPUT == type_idx) {
+                channel_bitmap_adjust(&channels_bitmap, type_idx, true);
+            }
             hailo_resource_write32(engine_registers,
                 board->board_data->vdma_interrupts_data[type_idx].vdma_interrupt_mask_offset, channels_bitmap);
         }
     }
 }
 
-static inline u64 get_masked_channel_id(u8 channel_id)
-{
-    return ((u64)(channel_id & CHANNEL_ID_MASK) << CHANNEL_ID_SHIFT);
-}
-
-static struct hailo_vdma_hw dram_vdma_hw = {
-    .hw_ops = {
-        .get_masked_channel_id = get_masked_channel_id,
-    },
-    .ddr_data_id = DDR_AXI_DATA_ID,
-    .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
-    .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-    .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK,
-};
-
 static struct hailo_vdma_controller_ops core_vdma_controller_ops = {
     .update_channel_interrupts = update_channel_interrupts,
 };
 
-// TODO - HRT-16572: Remove after implementing the correct channel types handling
-static void channel_bitmap_adjust(u32 *channels_bitmap, enum irq_type type)
-{
-    switch (type) {
-    case IRQ_TYPE_INPUT:
-        // Handling only 16 channels for input (0-15)
-        *channels_bitmap = *channels_bitmap & 0x0000FFFF;
-        break;
-    case IRQ_TYPE_OUTPUT:
-        // Move lower 16-bit, channels (0-15), to the upper 16 bits (16-31), clearing the lower part
-        *channels_bitmap = (*channels_bitmap & 0x0000FFFF) << 16;
-        break;
-    case IRQ_TYPE_BOTH:
-    default:
-        break;
-    }
-}
 
 static irqreturn_t engine_irqhandler(struct hailo_board *board, size_t engine_index, enum irq_type irq_type)
 {
-    u32 channels_bitmap = 0;
+    u64 channels_bitmap = 0;
     irqreturn_t return_value = IRQ_NONE;
     struct hailo_resource *engine_registers =
         &board->vdma_engines_resources[engine_index].engine_registers;
@@ -82,10 +81,10 @@ static irqreturn_t engine_irqhandler(struct hailo_board *board, size_t engine_in
     while (true) {
         channels_bitmap = hailo_resource_read32(engine_registers,
             board->board_data->vdma_interrupts_data[irq_type].vdma_interrupt_status_offset);
-        hailo_dbg(board, "Got vDMA interupt %u for engine %zu", channels_bitmap, engine_index);
+        hailo_dbg(board, "Got vDMA interupt %llu for engine %zu", channels_bitmap, engine_index);
         hailo_resource_write32(engine_registers,
             board->board_data->vdma_interrupts_data[irq_type].vdma_interrupt_w1c_offset, channels_bitmap);
-        channel_bitmap_adjust(&channels_bitmap, irq_type);
+        channel_bitmap_adjust(&channels_bitmap, irq_type, false);
 
         if (0 == channels_bitmap) {
             break;
@@ -101,13 +100,14 @@ static irqreturn_t engine_irqhandler(struct hailo_board *board, size_t engine_in
 static irqreturn_t vdma_irqhandler(int irq, void *p)
 {
     struct irq_info *irq_info = (struct irq_info *)p;
-    struct hailo_board *board = dev_get_drvdata((struct device *)irq_info->dev);
+    struct hailo_board *board = NULL;
 
     if (irq != irq_info->irq) {
         hailo_err(board, "Invalid irq %d\n", irq);
         return IRQ_NONE;
     }
 
+    board = dev_get_drvdata((struct device *)irq_info->dev);
     return engine_irqhandler(board, irq_info->engine_index, irq_info->type);
 }
 
@@ -206,8 +206,7 @@ static int setup_engine_irq(struct device *dev, struct device_node *vdma_node,
 }
 
 static int init_engine(struct device *dev, struct device_node *vdma_node,
-    struct hailo_vdma_engine_resources *engine_resources,
-    struct irq_info *irqs_info, int engine_index)
+    struct hailo_vdma_engine_resources *engine_resources, struct irq_info *irqs_info, int engine_index)
 {
     int err = -EINVAL;
     struct hailo_resource channel_regs;
@@ -278,7 +277,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
         engine_idx++;
     }
 
-    err = hailo_vdma_controller_init(&board->vdma, &board->pDev->dev, &dram_vdma_hw,
+    err = hailo_vdma_controller_init(&board->vdma, &board->pDev->dev, &board->board_data->vdma_hw,
         &core_vdma_controller_ops, channel_registers, engines_count);
     if (err < 0) {
         return err;

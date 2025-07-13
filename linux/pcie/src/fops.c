@@ -58,14 +58,16 @@ static struct hailo_file_context *create_file_context(struct hailo_pcie_board *b
     }
 
     context->filp = filp;
-    hailo_vdma_file_context_init(&context->vdma_context);
+    hailo_vdma_file_context_init(&context->vdma_context, &board->vdma);
     list_add(&context->open_files_list, &board->open_files_list);
     context->is_valid = true;
     return context;
 }
 
-static void release_file_context(struct hailo_file_context *context)
+static void release_file_context(struct hailo_file_context *context, struct hailo_vdma_controller *controller,
+    struct file *filp)
 {
+    hailo_vdma_file_context_finalize(&context->vdma_context, controller, filp);
     context->is_valid = false;
     list_del(&context->open_files_list);
     kfree(context);
@@ -169,7 +171,7 @@ l_revert_power_state:
         }
     }
 l_free_context:
-    release_file_context(context);
+    release_file_context(context, &pBoard->vdma, filp);
 l_release_mutex:
     up(&pBoard->mutex);
 l_decrease_ref_count:
@@ -210,8 +212,7 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
             hailo_soc_file_context_finalize(board, context);
         }
 
-        hailo_vdma_file_context_finalize(&context->vdma_context, &board->vdma, filp);
-        release_file_context(context);
+        release_file_context(context, &board->vdma, filp);
 
         if (atomic_dec_and_test(&board->ref_count)) {
             // Disable interrupts
@@ -336,9 +337,8 @@ static void soc_irq_handler(struct hailo_pcie_board *board, struct hailo_pcie_in
 
     if (irq_source->sw_interrupts & HAILO_PCIE_SOC_CLOSE_IRQ) {
         hailo_info(board, "soc_irq_handler - HAILO_PCIE_SOC_CLOSE_IRQ\n");
-        // always use bitmap=0xFFFFFFFF - it is ok to wake all interrupts since each handler will check if the stream was aborted or not. 
-        hailo_vdma_wakeup_interrupts(&board->vdma, &board->vdma.vdma_engines[DEFAULT_VDMA_ENGINE_INDEX],
-            0xFFFFFFFF);
+        // always use bitmap=0xFFFFFFFF - it is ok to wake all interrupts since each handler will check if the stream was aborted or not.
+        hailo_vdma_wakeup_interrupts(&board->vdma, DEFAULT_VDMA_ENGINE_INDEX, 0xFFFFFFFF);
     }
 }
 

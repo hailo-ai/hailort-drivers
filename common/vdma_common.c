@@ -146,9 +146,10 @@ static inline void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *d
     descriptor->RemainingPageSize_Status = 0;
 }
 
-static inline u8 get_channel_id(u8 channel_index)
+static inline u64 get_masked_channel_id(u8 channel_index, struct hailo_vdma_hw *vdma_hw)
 {
-    return (channel_index < MAX_VDMA_CHANNELS_PER_ENGINE) ? (channel_index & 0xF) : INVALID_VDMA_CHANNEL;
+    u8 channel_id = (channel_index < MAX_VDMA_CHANNELS_PER_ENGINE) ? (channel_index & 0xF) : INVALID_VDMA_CHANNEL;
+    return ((u64)channel_id & vdma_hw->hw_ops.channel_id_mask) << vdma_hw->hw_ops.channel_id_shift;
 }
 
 int hailo_vdma_program_descriptors_in_chunk(
@@ -241,7 +242,7 @@ static int bind_and_program_descriptors_list(
     size_t buffer_current_offset = 0;
     dma_addr_t chunk_start_addr = 0;
     u32 program_size = buffer->size;
-    u64 masked_channel_id = vdma_hw->hw_ops.get_masked_channel_id(get_channel_id(channel_index));
+    u64 masked_channel_id = get_masked_channel_id(channel_index, vdma_hw);
 
     if ((buffer->offset % desc_list->desc_page_size != 0) ||
         (starting_desc >= desc_list->desc_count)) {
@@ -307,6 +308,7 @@ static int bind_and_program_descriptors_list(
 
     if (program_size != 0) {
         // We didn't program all the buffer.
+        pr_err("Didn't program all the buffer. program_size=%u\n", program_size);
         return -EFAULT;
     }
 
@@ -381,6 +383,7 @@ int hailo_vdma_program_descriptors_list_batch(
         desc_programmed = hailo_vdma_program_descriptors_list(vdma_hw, desc_list, starting_desc,
             &transfer, should_bind, channel_index, desc_interrupts, is_debug, stride);
         if (desc_programmed < 0) {
+            pr_err("Failed to program descriptors list\n");
             return desc_programmed;
         }
 
@@ -468,6 +471,7 @@ int hailo_vdma_launch_transfer(
 
     ret = validate_channel_state(channel);
     if (ret < 0) {
+        pr_err("Channel %d state validation failed\n", channel->index);
         return ret;
     }
 
@@ -573,28 +577,27 @@ static void channel_state_init(struct hailo_vdma_channel_state *state)
     state->desc_count_mask = U32_MAX;
 }
 
-static u8 __iomem *get_channel_regs(u8 __iomem *regs_base, u8 channel_index, bool is_host_side, u32 src_channels_bitmask)
+static u8 __iomem *get_channel_regs(u8 __iomem *regs_base, u8 channel_index, bool is_host_side, u64 src_channels_bitmask)
 {
     // Check if getting host side regs or device side
     u8 __iomem *channel_regs_base = regs_base + CHANNEL_BASE_OFFSET(channel_index);
     if (is_host_side) {
-        return hailo_test_bit(channel_index, &src_channels_bitmask) ? channel_regs_base :
+        return hailo_test_bit_64(channel_index, &src_channels_bitmask) ? channel_regs_base :
             (channel_regs_base + CHANNEL_DEST_REGS_OFFSET);
     } else {
-        return hailo_test_bit(channel_index, &src_channels_bitmask) ? (channel_regs_base + CHANNEL_DEST_REGS_OFFSET) :
+        return hailo_test_bit_64(channel_index, &src_channels_bitmask) ? (channel_regs_base + CHANNEL_DEST_REGS_OFFSET) :
             channel_regs_base;
     }
 }
 
 void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
-    const struct hailo_resource *channel_registers, u32 src_channels_bitmask)
+    const struct hailo_resource *channel_registers, u64 src_channels_bitmask)
 {
     u8 channel_index = 0;
     struct hailo_vdma_channel *channel;
 
     engine->index = engine_index;
     engine->enabled_channels = 0x0;
-    engine->interrupted_channels = 0x0;
 
     for_each_vdma_channel(engine, channel, channel_index) {
         u8 __iomem *regs_base = (u8 __iomem *)channel_registers->address;
@@ -619,14 +622,14 @@ void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
  * @param bitmap - channels bitmap to enable.
  * @param measure_timestamp - if set, allow interrupts timestamp measure.
  */
-void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u32 bitmap,
+void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bitmap,
     bool measure_timestamp)
 {
     struct hailo_vdma_channel *channel = NULL;
     u8 channel_index = 0;
 
     for_each_vdma_channel(engine, channel, channel_index) {
-        if (hailo_test_bit(channel_index, &bitmap)) {
+        if (hailo_test_bit_64(channel_index, &bitmap)) {
             channel->timestamp_measure_enabled = measure_timestamp;
             channel->timestamp_list.head = channel->timestamp_list.tail = 0;
         }
@@ -642,7 +645,7 @@ void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u32 bit
  * @param bitmap - channels bitmap to enable.
  * @param measure_timestamp - if set, allow interrupts timestamp measure.
  */
-void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u32 bitmap)
+void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u64 bitmap)
 {
     struct hailo_vdma_channel *channel = NULL;
     u8 channel_index = 0;
@@ -650,7 +653,7 @@ void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u32 bi
     engine->enabled_channels &= ~bitmap;
 
     for_each_vdma_channel(engine, channel, channel_index) {
-        if (hailo_test_bit(channel_index, &bitmap)) {
+        if (hailo_test_bit_64(channel_index, &bitmap)) {
             channel_state_init(&channel->state);
 
             while (ONGOING_TRANSFERS_CIRC_CNT(channel->ongoing_transfers) > 0) {
@@ -670,13 +673,13 @@ void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u32 bi
     }
 }
 
-void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u32 bitmap)
+void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u64 bitmap)
 {
     struct hailo_vdma_channel *channel = NULL;
     u8 channel_index = 0;
 
     for_each_vdma_channel(engine, channel, channel_index) {
-        if (unlikely(hailo_test_bit(channel_index, &bitmap) &&
+        if (unlikely(hailo_test_bit_64(channel_index, &bitmap) &&
                 channel->timestamp_measure_enabled)) {
             hailo_vdma_push_timestamp(channel);
         }
@@ -689,22 +692,13 @@ int hailo_vdma_engine_read_timestamps(struct hailo_vdma_engine *engine,
     struct hailo_vdma_channel *channel = NULL;
 
     if (params->channel_index >= MAX_VDMA_CHANNELS_PER_ENGINE) {
+        pr_err("Failed to read timestamps, invalid channel index %u\n", params->channel_index);
         return -EINVAL;
     }
 
     channel = &engine->channels[params->channel_index];
     hailo_vdma_pop_timestamps_to_response(channel, params);
     return 0;
-}
-
-void hailo_vdma_engine_clear_channel_interrupts(struct hailo_vdma_engine *engine, u32 bitmap)
-{
-    engine->interrupted_channels &= ~bitmap;
-}
-
-void hailo_vdma_engine_set_channel_interrupts(struct hailo_vdma_engine *engine, u32 bitmap)
-{
-    engine->interrupted_channels |= bitmap;
 }
 
 static bool is_desc_between(u16 begin, u16 end, u16 desc)
@@ -741,8 +735,7 @@ static u64 ioread64_safe(u8 *addr)
 }
 
 static void fill_channel_irq_data(struct hailo_vdma_interrupts_channel_data *irq_data,
-    struct hailo_vdma_engine *engine, struct hailo_vdma_channel *channel,
-    transfer_done_cb_t transfer_done, void *transfer_done_opaque)
+    struct hailo_vdma_engine *engine, struct hailo_vdma_channel *channel, void *transfer_done_opaque)
 {
     u8 transfers_completed = 0;
     bool validation_success = true;
@@ -806,13 +799,12 @@ static void fill_channel_irq_data(struct hailo_vdma_interrupts_channel_data *irq
 }
 
 int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *irq_data,
-    struct hailo_vdma_engine *engine, u32 irq_channels_bitmap,
-    transfer_done_cb_t transfer_done, void *transfer_done_opaque)
+    struct hailo_vdma_engine *engine, u64 irq_channels_bitmap, void *transfer_done_opaque)
 {
     while (irq_channels_bitmap) {
         u8 channel_index = (u8)__builtin_ctzl(irq_channels_bitmap);
         struct hailo_vdma_channel *channel = &engine->channels[channel_index];
-        irq_channels_bitmap &= ~(1 << channel_index);
+        irq_channels_bitmap &= ~(1ULL << channel_index);
 
         if (unlikely(channel->last_desc_list == NULL)) {
             // Channel not active or no transfer, skipping.
@@ -820,11 +812,11 @@ int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *ir
         }
 
         if (unlikely(irq_data->channels_count >= ARRAY_SIZE(irq_data->irq_data))) {
+            pr_err("Too many channels with interrupts\n");
             return -EINVAL;
         }
 
-        fill_channel_irq_data(&irq_data->irq_data[irq_data->channels_count],
-            engine, channel, transfer_done, transfer_done_opaque);
+        fill_channel_irq_data(&irq_data->irq_data[irq_data->channels_count], engine, channel, transfer_done_opaque);
         irq_data->channels_count++;
     }
 
@@ -832,7 +824,7 @@ int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *ir
 }
 
 // For all these functions - best way to optimize might be to not call the function when need to pause and then abort,
-// Rather read value once and maybe save 
+// Rather read value once and maybe save
 // This function reads and writes the register - should try to make more optimized in future
 static void start_vdma_control_register(u8 __iomem *host_regs)
 {
@@ -887,7 +879,7 @@ void hailo_vdma_start_channel(u8 __iomem *regs, uint64_t desc_dma_address, uint3
     dma_address_h = (uint32_t)(desc_dma_address >> 32);
     iowrite32(dma_address_h, regs + VDMA_CHANNEL__ADDRESS_H_OFFSET);
 
-    desc_depth_data_id = (uint32_t)(desc_depth << VDMA_CHANNEL_DESC_DEPTH_SHIFT) | 
+    desc_depth_data_id = (uint32_t)(desc_depth << VDMA_CHANNEL_DESC_DEPTH_SHIFT) |
         (data_id << VDMA_CHANNEL_DATA_ID_SHIFT);
     iowrite32(desc_depth_data_id, regs);
 
@@ -896,7 +888,7 @@ void hailo_vdma_start_channel(u8 __iomem *regs, uint64_t desc_dma_address, uint3
 
 static bool hailo_vdma_channel_is_idle(u8 __iomem *host_regs, size_t host_side_max_desc_count)
 {
-    // Num processed and ongoing are next to each other in the memory. 
+    // Num processed and ongoing are next to each other in the memory.
     // Reading them both in order to save BAR reads.
     u32 host_side_num_processed_ongoing = ioread32(host_regs + CHANNEL_NUM_PROC_OFFSET);
     u16 host_side_num_processed = (host_side_num_processed_ongoing & VDMA_CHANNEL_NUM_PROCESSED_MASK);
@@ -955,8 +947,8 @@ void hailo_vdma_stop_channel(u8 __iomem *regs)
     hailo_vdma_channel_abort(regs);
 }
 
-bool hailo_check_channel_index(u8 channel_index, u32 src_channels_bitmask, bool is_input_channel)
+bool hailo_check_channel_index(u8 channel_index, u64 src_channels_bitmask, bool is_input_channel)
 {
-    return is_input_channel ? hailo_test_bit(channel_index, &src_channels_bitmask) :
-        (!hailo_test_bit(channel_index, &src_channels_bitmask));
+    // return true if the bit state matches what we want for this channel type
+    return (hailo_test_bit_64(channel_index, &src_channels_bitmask) == is_input_channel);
 }

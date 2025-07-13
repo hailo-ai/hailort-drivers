@@ -43,18 +43,8 @@ enum integrated_board_type
 };
 
 static const struct vdma_interrupt_data hailo15h_interrupts_data[] = {
-    [IRQ_TYPE_INPUT] = {
-        .vdma_interrupt_mask_offset = 0x00,
-        .vdma_interrupt_status_offset = 0x00,
-        .vdma_interrupt_w1c_offset = 0x00,
-        .irq_type = IRQ_TYPE_INPUT,
-    },
-    [IRQ_TYPE_OUTPUT] = {
-        .vdma_interrupt_mask_offset = 0x00,
-        .vdma_interrupt_status_offset = 0x00,
-        .vdma_interrupt_w1c_offset = 0x00,
-        .irq_type = IRQ_TYPE_OUTPUT,
-    },
+    [IRQ_TYPE_INPUT] = {0},
+    [IRQ_TYPE_OUTPUT] = {0},
     [IRQ_TYPE_BOTH] = {
         .vdma_interrupt_mask_offset = 0x990,
         .vdma_interrupt_status_offset = 0x994,
@@ -64,18 +54,8 @@ static const struct vdma_interrupt_data hailo15h_interrupts_data[] = {
 };
 
 static const struct vdma_interrupt_data hailo15l_interrupts_data[] = {
-    [IRQ_TYPE_INPUT] = {
-        .vdma_interrupt_mask_offset = 0x00,
-        .vdma_interrupt_status_offset = 0x00,
-        .vdma_interrupt_w1c_offset = 0x00,
-        .irq_type = IRQ_TYPE_INPUT,
-    },
-    [IRQ_TYPE_OUTPUT] = {
-        .vdma_interrupt_mask_offset = 0x00,
-        .vdma_interrupt_status_offset = 0x00,
-        .vdma_interrupt_w1c_offset = 0x00,
-        .irq_type = IRQ_TYPE_OUTPUT,
-    },
+    [IRQ_TYPE_INPUT] = {0},
+    [IRQ_TYPE_OUTPUT] = {0},
     [IRQ_TYPE_BOTH] = {
         .vdma_interrupt_mask_offset = 0xa00,
         .vdma_interrupt_status_offset = 0xa04,
@@ -86,23 +66,18 @@ static const struct vdma_interrupt_data hailo15l_interrupts_data[] = {
 
 static const struct vdma_interrupt_data hailo10h2_interrupts_data[] = {
     [IRQ_TYPE_INPUT] = {
-        .vdma_interrupt_mask_offset = 0xc50,
-        .vdma_interrupt_status_offset = 0xc54,
-        .vdma_interrupt_w1c_offset = 0xc58,
+        .vdma_interrupt_mask_offset = 0xda0,
+        .vdma_interrupt_status_offset = 0xda4,
+        .vdma_interrupt_w1c_offset = 0xda8,
         .irq_type = IRQ_TYPE_INPUT,
     },
     [IRQ_TYPE_OUTPUT] = {
-        .vdma_interrupt_mask_offset = 0xc60,
-        .vdma_interrupt_status_offset = 0xc64,
-        .vdma_interrupt_w1c_offset = 0xc68,
+        .vdma_interrupt_mask_offset = 0xdb0,
+        .vdma_interrupt_status_offset = 0xdb4,
+        .vdma_interrupt_w1c_offset = 0xdb8,
         .irq_type = IRQ_TYPE_OUTPUT,
     },
-    [IRQ_TYPE_BOTH] = {
-        .vdma_interrupt_mask_offset = 0x00,
-        .vdma_interrupt_status_offset = 0x00,
-        .vdma_interrupt_w1c_offset = 0xc00,
-        .irq_type = IRQ_TYPE_BOTH,
-    }
+    [IRQ_TYPE_BOTH] = {0}
 };
 
 // TODO: HRT-14933 : chnage name to hailo15h in mercury
@@ -111,16 +86,50 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
         .board_type = HAILO_BOARD_TYPE_HAILO15,
         .vdma_interrupts_data = hailo15h_interrupts_data,
         .fw_filename          = "hailo/hailo15_nnc_fw.bin",
+        // TODO: HRT-17117 : Remove vdma_hw duplications between board types
+        .vdma_hw =
+        {
+            .hw_ops = {
+                .channel_id_mask = CHANNEL_ID_MASK,
+                .channel_id_shift = CHANNEL_ID_SHIFT,
+            },
+            .ddr_data_id = DDR_AXI_DATA_ID,
+            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
+            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
+            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
+        }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO15L] = {
         .board_type = HAILO_BOARD_TYPE_HAILO15L,
         .vdma_interrupts_data = hailo15l_interrupts_data,
         .fw_filename          = "hailo/hailo15l_nnc_fw.bin",
+        .vdma_hw =
+        {
+            .hw_ops = {
+                .channel_id_mask = CHANNEL_ID_MASK,
+                .channel_id_shift = CHANNEL_ID_SHIFT,
+            },
+            .ddr_data_id = DDR_AXI_DATA_ID,
+            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
+            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
+            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
+        }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2] = {
         .board_type = HAILO_BOARD_TYPE_MARS,
         .vdma_interrupts_data = hailo10h2_interrupts_data,
         .fw_filename          = "hailo/mars_nnc_fw.bin",
+        .vdma_hw =
+        {
+            .hw_ops = {
+                .channel_id_mask = CHANNEL_ID_MASK,
+                .channel_id_shift = CHANNEL_ID_SHIFT,
+            },
+            .ddr_data_id = DDR_AXI_DATA_ID,
+            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
+            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
+            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H2,
+        }
     },
 };
 

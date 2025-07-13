@@ -13,7 +13,6 @@
 #include <linux/scatterlist.h>
 #include <linux/sched.h>
 #include <linux/module.h>
-#include <linux/fdtable.h>
 
 // See linux/mm.h
 #define MMIO_AND_NO_PAGES_VMA_MASK (VM_IO | VM_PFNMAP)
@@ -157,7 +156,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     struct vm_area_struct *vma = NULL;
     bool is_mmio = false;
     struct hailo_dmabuf_info dmabuf_info = {0};
-    uintptr_t dmabuf_from_pointer_addr = 0;
+    bool created_dmabuf_fd_from_vma = false;
 
     mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
     if (NULL == mapped_buffer) {
@@ -178,7 +177,10 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             }
         }
 
-        if (is_dmabuf_vma(vma)) {
+        if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) &&
+           (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
+            is_mmio = true;
+        } else if (is_dmabuf_vma(vma)) {
             dev_dbg(dev, "Given vma is backed by dmabuf - creating fd and mapping as dmabuf\n");
             buffer_type = HAILO_DMA_DMABUF_BUFFER;
             ret = create_fd_from_vma(dev, vma);
@@ -186,15 +188,14 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
                 dev_err(dev, "Failed creating fd from vma in given dmabuf\n");
                 goto cleanup;
             }
-            // Save original dmabuf user address in dmabuf_from_pointer_addr and override addr_or_fd with fd
-            dmabuf_from_pointer_addr = addr_or_fd;
+            // Override user address with fd to the dmabuf - like normal dmabuf flow
             addr_or_fd = ret;
+            created_dmabuf_fd_from_vma = true;
         }
     }
 
     // TODO: is MMIO DMA MAPPINGS STILL needed after dmabuf
-    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && (HAILO_DMA_DMABUF_BUFFER != buffer_type) &&
-        (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && is_mmio) {
         // user_address represents memory mapped I/O and isn't backed by 'struct page' (only by pure pfn)
         if (NULL != low_mem_driver_allocated_buffer) {
             // low_mem_driver_allocated_buffer are backed by regular 'struct page' addresses, just in low memory
@@ -208,7 +209,6 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             dev_err(dev, "failed to map mmio address %d\n", ret);
             goto free_buffer_struct;
         }
-        is_mmio = true;
     } else if (HAILO_DMA_DMABUF_BUFFER == buffer_type) {
         // Content user_address in case of dmabuf is fd - for now
         ret = hailo_map_dmabuf(dev, addr_or_fd, direction, &sgt, &dmabuf_info);
@@ -216,14 +216,19 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             dev_err(dev, "Failed mapping dmabuf\n");
             goto cleanup;
         }
-        // If created dmabuf fd from vma need to close fd we created
-        if (0 != dmabuf_from_pointer_addr) {
-            close_fd(addr_or_fd);
-            buffer_type = HAILO_DMA_USER_PTR_BUFFER;
-            addr_or_fd = dmabuf_from_pointer_addr;
+        // If created dmabuf fd from vma need to decrement refcount and release fd
+        if (created_dmabuf_fd_from_vma) {
+            fput(vma->vm_file);
+            put_unused_fd(addr_or_fd);
         }
     } else {
         // user_address is a standard 'struct page' backed memory address
+
+        // Align buffer to PAGE_SIZE before map.
+        size += addr_or_fd % PAGE_SIZE;
+        addr_or_fd = ALIGN_DOWN(addr_or_fd, PAGE_SIZE);
+        size = ALIGN(size, PAGE_SIZE);
+
         ret = prepare_sg_table(&sgt, addr_or_fd, size, low_mem_driver_allocated_buffer);
         if (ret < 0) {
             dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
@@ -260,6 +265,12 @@ cleanup:
 static void unmap_buffer(struct kref *kref)
 {
     struct hailo_vdma_buffer *buf = container_of(kref, struct hailo_vdma_buffer, kref);
+    hailo_vdma_buffer_destroy(buf);
+}
+
+void hailo_vdma_buffer_destroy(struct hailo_vdma_buffer *buf)
+{
+    list_del(&buf->mapped_user_buffer_list);
 
     // If dmabuf - unmap and detatch dmabuf
     if (NULL != buf->dmabuf_info.dmabuf) {
@@ -271,6 +282,7 @@ static void unmap_buffer(struct kref *kref)
 
         clear_sg_table(&buf->sg_table);
     }
+
     kfree(buf);
 }
 
@@ -327,7 +339,7 @@ void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
     struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
     size_t offset, size_t size)
 {
-    if ((IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && mapped_buffer->is_mmio) || 
+    if ((IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && mapped_buffer->is_mmio) ||
         (NULL != mapped_buffer->dmabuf_info.dmabuf)) {
         // MMIO buffers and dmabufs don't need to be sync'd
         return;
@@ -386,8 +398,7 @@ void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *co
 {
     struct hailo_vdma_buffer *cur = NULL, *next = NULL;
     list_for_each_entry_safe(cur, next, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
-        list_del(&cur->mapped_user_buffer_list);
-        hailo_vdma_buffer_put(cur);
+        hailo_vdma_buffer_destroy(cur);
     }
 }
 

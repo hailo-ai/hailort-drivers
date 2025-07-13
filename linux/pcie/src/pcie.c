@@ -49,7 +49,7 @@ static int force_desc_page_size = 0;
 static bool g_is_power_mode_enabled = true;
 static int force_allocation_from_driver = HAILO_NO_FORCE_BUFFER;
 static bool force_hailo10h_legacy_mode = false;
-static bool force_boot_linux_from_eemc = false;
+static bool force_legacy_boot = false;
 static bool support_soft_reset = true;
 
 #define DEVICE_NODE_NAME "hailo"
@@ -479,11 +479,6 @@ static long pcie_vdma_program_entire_batch(struct hailo_pcie_board *board, struc
         filename = files_batch[file_index].filename;
         file_address = files_batch[file_index].address;
 
-        if (NULL == filename) {
-            hailo_err(board, "The amount of files wasn't specified for stage %d\n", stage);
-            break;
-        }
-
         err = pcie_vdma_program_one_file(board, boot_dma_state, file_address, filename,
             (file_index == (amount_of_files - 1)));
         if (err < 0) {
@@ -697,8 +692,9 @@ release_all_resources:
  * @param desc_page_size - the size of the descriptor page.
  * @return 0 on success, negative error code on failure. in any case all resurces are released.
  */
-static long pcie_write_firmware_batch_over_dma(struct hailo_pcie_board *board, u32 stage, u32 desc_page_size)
+static long pcie_write_firmware_batch_over_dma(struct hailo_pcie_board *board, u32 stage)
 {
+    u32 desc_page_size = HAILO_PCI_OVER_VDMA_PAGE_SIZE;
     long err = 0;
     struct hailo_vdma_engine *engine = &board->vdma.vdma_engines[PCI_VDMA_ENGINE_INDEX];
     u8 channel_index = 0;
@@ -749,12 +745,60 @@ release_all:
     return err;
 }
 
-static int load_soc_firmware(struct hailo_pcie_board *board, struct hailo_pcie_resources *resources,
-    struct device *dev, struct completion *fw_load_completion)
-{
-    u32 boot_status = 0;
+#define STRATEGY_PCIE_BARS (0)
+#define STRATEGY_DMA       (1)
+
+/**
+ * write_firmware_and_wait_completion() - Write firmware to device and wait
+ * for completion indicating write done.
+ * @hailo_pcie_board: Board to boot.
+ * @stage:            Boot stage (FIRST_STAGE, SECOND_STAGE, ...).
+ * @strategy:         Firmware write strategy. Can be over PCIE
+ *                    or DMA, see above.
+ *
+ * Important: Assumes board->fw_boot.fw_loaded_completion and
+ * board->fw_boot.vdma_boot_completion have already been initialized.
+ */
+static int write_firmware_and_wait_completion(struct hailo_pcie_board *board, u32 stage, u32 strategy) {
+    struct hailo_pcie_resources *resources = &board->pcie_resources;
+    struct device *dev = &board->pDev->dev;
+    struct completion *fw_load_completion = &board->fw_boot.fw_loaded_completion;
+    u32 boot_status;
     int err = 0;
-    u32 second_stage = force_boot_linux_from_eemc ? SECOND_STAGE_LINUX_IN_EMMC : SECOND_STAGE;
+
+    if (STRATEGY_PCIE_BARS == strategy) {
+        err = hailo_pcie_write_firmware_batch(dev, resources, stage);
+        if (err < 0) {
+            hailo_dev_err(dev, "Failed writing firmware files over PCIe bars. err %d\n", err);
+            return err;
+        }
+    } else if (STRATEGY_DMA == strategy) {
+        err = (int)pcie_write_firmware_batch_over_dma(board, stage);
+        if (err < 0) {
+            hailo_dev_err(dev, "Failed writing firmware files over vDMA. err %d\n", err);
+            return err;
+        }
+    } else {
+        hailo_dev_err(dev, "Invalid firmware write strategy");
+        return -EINVAL;
+    }
+
+    if (!wait_for_firmware_completion(fw_load_completion, hailo_pcie_get_loading_stage_info(resources->board_type, stage)->timeout)) {
+        boot_status = hailo_get_boot_status(resources);
+        hailo_dev_err(dev, "Timeout waiting for firmware file, boot status %u\n", boot_status);
+        return -ETIMEDOUT;
+    }
+
+    reinit_completion(fw_load_completion);
+
+    return 0;
+}
+
+static int load_soc_firmware(struct hailo_pcie_board *board)
+{
+    struct hailo_pcie_resources *resources = &board->pcie_resources;
+    struct device *dev = &board->pDev->dev;
+    int err = 0;
 
     if (hailo_pcie_is_firmware_loaded(resources)) {
         hailo_dev_warn(dev, "SOC Firmware batch was already loaded\n");
@@ -764,40 +808,76 @@ static int load_soc_firmware(struct hailo_pcie_board *board, struct hailo_pcie_r
     // configure the EP registers for the DMA transaction
     hailo_pcie_configure_ep_registers_for_dma_transaction(resources);
 
-    init_completion(fw_load_completion);
+    init_completion(&board->fw_boot.fw_loaded_completion);
     init_completion(&board->fw_boot.vdma_boot_completion);
 
-    err = hailo_pcie_write_firmware_batch(dev, resources, FIRST_STAGE);
+    // Send certificate and SCU code.
+    err = write_firmware_and_wait_completion(board, FIRST_STAGE, STRATEGY_PCIE_BARS);
     if (err < 0) {
-        hailo_dev_err(dev, "Failed writing SOC FIRST_STAGE firmware files. err %d\n", err);
+        hailo_dev_err(dev, "Failed writing SOC firmware on stage 1\n");
         return err;
     }
 
-    if (!wait_for_firmware_completion(fw_load_completion, hailo_pcie_get_loading_stage_info(resources->board_type, FIRST_STAGE)->timeout)) {
-        boot_status = hailo_get_boot_status(resources);
-        hailo_dev_err(dev, "Timeout waiting for SOC FIRST_STAGE firmware file, boot status %u\n", boot_status);
-        return -ETIMEDOUT;
+    // Read SKU-ID. SCU is responsible for writing SKU-ID to correct address.
+    hailo_read_sku_id(resources);
+    if (HAILO_SKU_ID_DEFAULT == resources->sku_id) {
+        hailo_notice(board, "Board SKU-ID is default");
+    } else {
+        hailo_notice(board, "Board SKU-ID is: %d", resources->sku_id);
     }
 
-    reinit_completion(fw_load_completion);
-
-    err = (int)pcie_write_firmware_batch_over_dma(board, second_stage, HAILO_PCI_OVER_VDMA_PAGE_SIZE);
+    // Send .dtb file over PCIe bars. Filename is resolved based on SKU-ID from stage 1.
+    err = write_firmware_and_wait_completion(board, SECOND_STAGE, STRATEGY_PCIE_BARS);
     if (err < 0) {
-        hailo_dev_err(dev, "Failed writing SOC SECOND_STAGE firmware files over vDMA. err %d\n", err);
+        hailo_dev_err(dev, "Failed writing SOC firmware on stage 2\n");
         return err;
     }
 
-    if (!wait_for_firmware_completion(fw_load_completion, hailo_pcie_get_loading_stage_info(resources->board_type, SECOND_STAGE)->timeout)) {
-        boot_status = hailo_get_boot_status(resources);
-        hailo_dev_err(dev, "Timeout waiting for SOC SECOND_STAGE firmware file, boot status %u\n", boot_status);
-        return -ETIMEDOUT;
+    // Boot linux. Remaining files sent over DMA.
+    err = write_firmware_and_wait_completion(board, THIRD_STAGE, STRATEGY_DMA);
+    if (err < 0) {
+        hailo_dev_err(dev, "Failed writing SOC firmware on stage 3\n");
+        return err;
     }
-
-    reinit_completion(fw_load_completion);
-    reinit_completion(&board->fw_boot.vdma_boot_completion);
 
     hailo_dev_notice(dev, "SOC Firmware Batch loaded successfully\n");
+    return 0;
+}
 
+static int load_soc_firmware_legacy(struct hailo_pcie_board *board)
+{
+    struct hailo_pcie_resources *resources = &board->pcie_resources;
+    struct device *dev = &board->pDev->dev;
+    int err = 0;
+
+    hailo_dev_notice(dev, "Using SOC Firmware legacy-boot\n");
+
+    if (hailo_pcie_is_firmware_loaded(resources)) {
+        hailo_dev_warn(dev, "SOC Firmware batch was already loaded\n");
+        return 0;
+    }
+
+    // configure the EP registers for the DMA transaction
+    hailo_pcie_configure_ep_registers_for_dma_transaction(resources);
+
+    init_completion(&board->fw_boot.fw_loaded_completion);
+    init_completion(&board->fw_boot.vdma_boot_completion);
+
+    // Send certificate, SCU code and .dtb file.
+    err = write_firmware_and_wait_completion(board, FIRST_STAGE, STRATEGY_PCIE_BARS);
+    if (err < 0) {
+        hailo_dev_err(dev, "Failed writing SOC firmware on stage 1\n");
+        return err;
+    }
+
+    // Boot linux. Remaining files sent over DMA.
+    err = write_firmware_and_wait_completion(board, SECOND_STAGE, STRATEGY_DMA);
+    if (err < 0) {
+        hailo_dev_err(dev, "Failed writing SOC firmware on stage 2\n");
+        return err;
+    }
+
+    hailo_dev_notice(dev, "SOC Firmware Batch loaded successfully\n");
     return 0;
 }
 
@@ -830,7 +910,6 @@ static int hailo_pcie_soft_reset(struct hailo_pcie_board *board)
 
 static int load_nnc_firmware(struct hailo_pcie_board *board)
 {
-    u32 boot_status = 0;
     int err = 0;
     struct device *dev = &board->pDev->dev;
 
@@ -850,20 +929,13 @@ static int load_nnc_firmware(struct hailo_pcie_board *board)
 
     init_completion(&board->fw_boot.fw_loaded_completion);
 
-    err = hailo_pcie_write_firmware_batch(dev, &board->pcie_resources, FIRST_STAGE);
+    err = write_firmware_and_wait_completion(board, FIRST_STAGE, STRATEGY_PCIE_BARS);
     if (err < 0) {
-        hailo_dev_err(dev, "Failed writing NNC firmware files. err %d\n", err);
+        hailo_dev_err(dev, "Failed loading NNC firmware\n");
         return err;
     }
 
-    if (!wait_for_firmware_completion(&board->fw_boot.fw_loaded_completion, hailo_pcie_get_loading_stage_info(board->pcie_resources.board_type, FIRST_STAGE)->timeout)) {
-        boot_status = hailo_get_boot_status(&board->pcie_resources);
-        hailo_dev_err(dev, "Timeout waiting for NNC firmware file, boot status %u\n", boot_status);
-        return -ETIMEDOUT;
-    }
-
     hailo_dev_notice(dev, "NNC Firmware loaded successfully\n");
-
     return 0;
 }
 
@@ -871,7 +943,7 @@ static int load_firmware(struct hailo_pcie_board *board)
 {
     switch (board->pcie_resources.accelerator_type) {
     case HAILO_ACCELERATOR_TYPE_SOC:
-        return load_soc_firmware(board, &board->pcie_resources, &board->pDev->dev, &board->fw_boot.fw_loaded_completion);
+        return LEGACY_BOOT(board->pcie_resources.board_type) ? load_soc_firmware_legacy(board) : load_soc_firmware(board);
     case HAILO_ACCELERATOR_TYPE_NNC:
         return load_nnc_firmware(board);
     default:
@@ -1033,14 +1105,22 @@ static int pcie_resources_init(struct pci_dev *pdev, struct hailo_pcie_resources
         goto failure_release_vdma_regs;
     }
 
-
-    if (HAILO_BOARD_TYPE_HAILO10H == board_type){
+    if (HAILO_BOARD_TYPE_HAILO10H == board_type) {
         if (true == force_hailo10h_legacy_mode) {
-            board_type = HAILO_BOARD_TYPE_HAILO10H_LEGACY;
+            board_type = HAILO_BOARD_TYPE_HAILO15H_ACCELERATOR_MODE;
+        }
+        if (true == force_legacy_boot) {
+            board_type = HAILO_BOARD_TYPE_HAILO10H_LEGACY_BOOT;
         }
     }
 
+    if (HAILO_BOARD_TYPE_MARS == board_type && force_legacy_boot) {
+        board_type = HAILO_BOARD_TYPE_MARS_LEGACY_BOOT;
+    }
+
     resources->board_type = board_type;
+
+    resources->sku_id = 0;
 
     err = hailo_set_device_type(resources);
     if (err < 0) {
@@ -1076,15 +1156,16 @@ static void pcie_resources_release(struct pci_dev *pdev, struct hailo_pcie_resou
 }
 
 static void update_channel_interrupts(struct hailo_vdma_controller *controller,
-    size_t engine_index, u32 channels_bitmap)
+    size_t engine_index, u64 channels_bitmap)
 {
+    u32 channels_bitmap_red = channels_bitmap & 0xFFFFFFFF;
     struct hailo_pcie_board *board = (struct hailo_pcie_board*) dev_get_drvdata(controller->dev);
     if (engine_index >= board->vdma.vdma_engines_count) {
         hailo_err(board, "Invalid engine index %zu", engine_index);
         return;
     }
 
-    hailo_pcie_update_channel_interrupts_mask(&board->pcie_resources, channels_bitmap);
+    hailo_pcie_update_channel_interrupts_mask(&board->pcie_resources, channels_bitmap_red);
 }
 
 static struct hailo_vdma_controller_ops pcie_vdma_controller_ops = {
@@ -1546,8 +1627,8 @@ MODULE_PARM_DESC(force_desc_page_size, "Determines the maximum DMA descriptor pa
 module_param(force_hailo10h_legacy_mode, bool, S_IRUGO);
 MODULE_PARM_DESC(force_hailo10h_legacy_mode, "Forces work with Hailo10h in legacy mode(relevant for emulators)");
 
-module_param(force_boot_linux_from_eemc, bool, S_IRUGO);
-MODULE_PARM_DESC(force_boot_linux_from_eemc, "Boot the linux image from eemc (Requires special Image)");
+module_param(force_legacy_boot, bool, S_IRUGO);
+MODULE_PARM_DESC(force_legacy_boot, "Force boot in 2-stage legacy mode");
 
 module_param(support_soft_reset, bool, S_IRUGO);
 MODULE_PARM_DESC(support_soft_reset, "enables driver reload to reload a new firmware as well");
@@ -1556,4 +1637,3 @@ MODULE_AUTHOR("Hailo Technologies Ltd.");
 MODULE_DESCRIPTION("Hailo PCIe driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(HAILO_DRV_VER);
-

@@ -36,6 +36,7 @@ struct integrated_board_data {
     enum hailo_board_type board_type;
     const struct vdma_interrupt_data *vdma_interrupts_data;
     const char *fw_filename;
+    struct hailo_vdma_hw vdma_hw;
 };
 
 // TODO: HRT-14781: remove this enum when every integrated uses BKC that has memory region
