@@ -16,12 +16,6 @@
 
 #include <linux/uaccess.h>
 
-#ifndef HAILO_EMULATOR
-#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS (1000)
-#else
-#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS (1000000)
-#endif /* ifndef HAILO_EMULATOR */
-
 void hailo_soc_init(struct hailo_pcie_soc *soc)
 {
     init_completion(&soc->control_resp_ready);
@@ -202,7 +196,7 @@ static int close_channels(struct hailo_pcie_board *board, u32 channels_bitmap)
     u8 channel_index = 0;
 
     hailo_info(board, "Closing channels bitmap 0x%x\n", channels_bitmap);
-    for_each_vdma_channel(engine, channel, channel_index) {
+    for_each_pcie_vdma_channel(engine, channel, channel_index) {
         if (hailo_test_bit(channel_index, &channels_bitmap)) {
             hailo_vdma_stop_channel(channel->host_regs);
         }
@@ -217,7 +211,7 @@ static int close_channels(struct hailo_pcie_board *board, u32 channels_bitmap)
     return soc_control(board, &request, &response);
 }
 
-long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_controller *controller, 
+long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_controller *controller,
     struct hailo_file_context *context, unsigned long arg)
 {
     struct hailo_soc_close_params params;

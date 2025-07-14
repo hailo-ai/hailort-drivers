@@ -30,6 +30,7 @@
 #define HAILO_PCIE_DMA_ENGINES_COUNT (1)
 #define PCI_VDMA_ENGINE_INDEX        (0)
 
+#define FW_FILENAME_MAX_LEN (128)
 #define MAX_FILES_PER_STAGE (4)
 
 #define HAILO_PCIE_HOST_DMA_DATA_ID    (0)
@@ -43,6 +44,11 @@
 #define PCI_DEVICE_ID_HAILO_HAILO15L  0x43a2
 #define PCI_DEVICE_ID_HAILO_MARS      0x26a2
 
+// On PCIe, masked_channel_id is always 0
+#define PCIE_CHANNEL_ID_MASK (0)
+#define PCIE_CHANNEL_ID_SHIFT (0)
+#define HAILO_SKU_ID_DEFAULT (0xffffffff)
+
 typedef u64 hailo_ptr_t;
 
 struct hailo_pcie_resources {
@@ -51,6 +57,7 @@ struct hailo_pcie_resources {
     struct hailo_resource fw_access;            // BAR4
     enum hailo_board_type board_type;
     enum hailo_accelerator_type accelerator_type;
+    u32 sku_id;
 };
 
 struct hailo_atr_config {
@@ -64,7 +71,7 @@ struct hailo_atr_config {
 enum loading_stages {
     FIRST_STAGE = 0,
     SECOND_STAGE = 1,
-    SECOND_STAGE_LINUX_IN_EMMC = 2,
+    THIRD_STAGE = 2,
     MAX_LOADING_STAGES = 3
 };
 
@@ -90,12 +97,13 @@ struct hailo_pcie_interrupt_source {
 };
 
 struct hailo_file_batch {
-    const char *filename;
+    char filename[FW_FILENAME_MAX_LEN];
     u32 address;
     size_t max_size;
     bool is_mandatory;
     bool has_header;
     bool has_core;
+    bool is_dynamic_filename;
 };
 
 struct hailo_pcie_loading_stage {
@@ -170,13 +178,14 @@ void hailo_pcie_configure_ep_registers_for_dma_transaction(struct hailo_pcie_res
 void hailo_trigger_firmware_boot(struct hailo_pcie_resources *resources, u32 stage);
 
 int hailo_set_device_type(struct hailo_pcie_resources *resources);
+void hailo_read_sku_id(struct hailo_pcie_resources *resources);
+
+void hailo_resolve_dtb_filename(char *filename, u32 sku_id);
 
 u32 hailo_get_boot_status(struct hailo_pcie_resources *resources);
 
 int hailo_pcie_configure_atr_table(struct hailo_resource *bridge_config, u64 trsl_addr, u32 atr_index);
 void hailo_pcie_read_atr_table(struct hailo_resource *bridge_config, struct hailo_atr_config *atr, u32 atr_index);
-
-u64 hailo_pcie_encode_desc_get_masked_channel_id(u8 channel_id);
 
 void hailo_pcie_soc_write_request(struct hailo_pcie_resources *resources,
     const struct hailo_pcie_soc_request *request);

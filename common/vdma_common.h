@@ -27,6 +27,20 @@
 
 #define DEFAULT_STRIDE              (0)
 
+#ifndef HAILO_EMULATOR
+#ifdef WINDOWS
+#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS          (10000)
+#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS    (2000)
+#else
+#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS          (1000)
+#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS    (200)
+#endif
+#else
+#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS          (1000000)
+#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS    (1000)
+#endif /* ifndef HAILO_EMULATOR */
+#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MS           (PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS - PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS)
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -124,13 +138,13 @@ struct hailo_vdma_channel {
 
 struct hailo_vdma_engine {
     u8 index;
-    u32 enabled_channels;
-    u32 interrupted_channels;
+    u64 enabled_channels;
     struct hailo_vdma_channel channels[MAX_VDMA_CHANNELS_PER_ENGINE];
 };
 
 struct hailo_vdma_hw_ops {
-    u64 (*get_masked_channel_id)(u8 channel_id);
+    u64 channel_id_mask;
+    u8 channel_id_shift;
 };
 
 struct hailo_vdma_hw {
@@ -143,8 +157,9 @@ struct hailo_vdma_hw {
     unsigned long host_interrupts_bitmask;
     unsigned long device_interrupts_bitmask;
 
-    // Bitmask for each vdma hw, which channels are src side by index (on pcie/dram - 0x0000FFFF, pci ep - 0xFFFF0000)
-    u32 src_channels_bitmask;
+    // Bitmask for each vdma hw, which channels are src side by index (on pcie - 0x0..0000FFFF, pci ep - 0x0..FFFF0000)
+    // dram[h10h/15x] - 0x0..0000FFFF, dram[h10h2] - 0x0..00FFFFFF
+    u64 src_channels_bitmask;
 };
 
 #define _for_each_element_array(array, size, element, index) \
@@ -152,6 +167,11 @@ struct hailo_vdma_hw {
 
 #define for_each_vdma_channel(engine, channel, channel_index) \
     _for_each_element_array((engine)->channels, MAX_VDMA_CHANNELS_PER_ENGINE,   \
+        channel, channel_index)
+
+#define MAX_PCIE_VDMA_CHANNELS_PER_ENGINE (32)
+#define for_each_pcie_vdma_channel(engine, channel, channel_index) \
+    _for_each_element_array((engine)->channels, MAX_PCIE_VDMA_CHANNELS_PER_ENGINE,   \
         channel, channel_index)
 
 int hailo_vdma_program_descriptors_in_chunk(
@@ -263,54 +283,30 @@ int hailo_vdma_launch_transfer(
     bool is_debug);
 
 void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
-    const struct hailo_resource *channel_registers, u32 src_channels_bitmask);
+    const struct hailo_resource *channel_registers, u64 src_channels_bitmask);
 
-void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u32 bitmap,
+void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bitmap,
     bool measure_timestamp);
 
-void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u32 bitmap);
+void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u64 bitmap);
 
-void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u32 bitmap);
+void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u64 bitmap);
 int hailo_vdma_engine_read_timestamps(struct hailo_vdma_engine *engine,
     struct hailo_vdma_interrupts_read_timestamp_params *params);
-
-static inline bool hailo_vdma_engine_got_interrupt(struct hailo_vdma_engine *engine,
-    u32 channels_bitmap)
-{
-    // Reading interrupts without lock is ok (needed only for writes)
-    const bool any_interrupt = (0 != (channels_bitmap & engine->interrupted_channels));
-    const bool any_disabled = (channels_bitmap != (channels_bitmap & engine->enabled_channels));
-    return (any_disabled || any_interrupt);
-}
-
-// Set/Clear/Read channels interrupts, must called under some lock (driver specific)
-void hailo_vdma_engine_clear_channel_interrupts(struct hailo_vdma_engine *engine, u32 bitmap);
-void hailo_vdma_engine_set_channel_interrupts(struct hailo_vdma_engine *engine, u32 bitmap);
-
-static inline u32 hailo_vdma_engine_read_interrupts(struct hailo_vdma_engine *engine,
-    u32 requested_bitmap)
-{
-    // Interrupts only for channels that are requested and enabled.
-    u32 irq_channels_bitmap = requested_bitmap &
-                          engine->enabled_channels &
-                          engine->interrupted_channels;
-    engine->interrupted_channels &= ~irq_channels_bitmap;
-
-    return irq_channels_bitmap;
-}
 
 typedef void(*transfer_done_cb_t)(struct hailo_ongoing_transfer *transfer, void *opaque);
 
 // Assuming irq_data->channels_count contains the amount of channels already
 // written (used for multiple engines).
 int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *irq_data,
-    struct hailo_vdma_engine *engine, u32 irq_channels_bitmap,
-    transfer_done_cb_t transfer_done, void *transfer_done_opaque);
+    struct hailo_vdma_engine *engine, u64 irq_channels_bitmap, void *transfer_done_opaque);
+
+void transfer_done(struct hailo_ongoing_transfer *transfer, void *opaque);
 
 void hailo_vdma_start_channel(u8 __iomem *regs, uint64_t desc_dma_address, uint32_t desc_count, uint8_t data_id);
 void hailo_vdma_stop_channel(u8 __iomem *regs);
 
-bool hailo_check_channel_index(u8 channel_index, u32 src_channels_bitmask, bool is_input_channel);
+bool hailo_check_channel_index(u8 channel_index, u64 src_channels_bitmask, bool is_input_channel);
 
 #ifdef __cplusplus
 }

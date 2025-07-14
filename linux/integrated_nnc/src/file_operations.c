@@ -45,6 +45,13 @@ inline struct hailo_board* inode_to_board(struct inode *inode) {
     return container_of(cdev, struct hailo_board, cdev);
 }
 
+static void release_file_context(struct hailo_file_context *context, struct hailo_vdma_controller *controller,
+    struct file *filp)
+{
+    hailo_vdma_file_context_finalize(&context->vdma_context, controller, filp);
+    kfree(context);
+}
+
 static int hailo_integrated_nnc_fops_open(struct inode *inode, struct file *filp)
 {
     struct hailo_board *board = inode_to_board(inode);
@@ -59,13 +66,13 @@ static int hailo_integrated_nnc_fops_open(struct inode *inode, struct file *filp
         return -ENOMEM;
     }
 
-    hailo_vdma_file_context_init(&context->vdma_context);
+    hailo_vdma_file_context_init(&context->vdma_context, &board->vdma);
     context->offset_in_nnc_fw_shared_memory = 0;
     filp->private_data = context;
 
     if (down_interruptible(&board->mutex)) {
         hailo_err(board, "fops_open down_interruptible fail tgid:%d\n", current->tgid);
-        kfree(context);
+        release_file_context(context, &board->vdma, filp);
         return -ERESTARTSYS;
     }
 
@@ -73,7 +80,7 @@ static int hailo_integrated_nnc_fops_open(struct inode *inode, struct file *filp
     if (err < 0) {
         hailo_err(board, "Failed to add notification wait with err %d\n", err);
         up(&board->mutex);
-        kfree(context);
+        release_file_context(context, &board->vdma, filp);
         return err;
     }
 
@@ -84,7 +91,7 @@ static int hailo_integrated_nnc_fops_open(struct inode *inode, struct file *filp
         if (err < 0) {
             hailo_err(board, "Failed deasserting nn_core_reset, err %d\n", err);
             up(&board->mutex);
-            kfree(context);
+            release_file_context(context, &board->vdma, filp);
             return err;
         }
     }
@@ -113,7 +120,7 @@ static int hailo_integrated_nnc_fops_release(struct inode *inode, struct file *f
         }
     }
 
-    hailo_vdma_file_context_finalize(&context->vdma_context, &board->vdma, filp);
+    release_file_context(context, &board->vdma, filp);
 
     // decrement ref count for integrated nnc cpu, assert reset if ref count is 0
     if (atomic_dec_and_test(&board->integrated_nnc_cpu.ref_count)) {
@@ -126,7 +133,6 @@ static int hailo_integrated_nnc_fops_release(struct inode *inode, struct file *f
 
     up(&board->mutex);
 
-    kfree(context);
     return ret;
 }
 
