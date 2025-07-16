@@ -23,6 +23,7 @@ function unpack_fw(){
 function main(){
     create_fw_dir
     download_fw
+    unpack_fw
 }
 
 main
