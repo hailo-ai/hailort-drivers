@@ -5,25 +5,25 @@ VDMA_SRC_DIRECTORY=../vdma
 UTILS_SRC_DIRECTORY=../utils
 BASE_INCLUDE_DIRECTORY=..
 
-obj-m := hailo_pci.o
+obj-m := hailo1x_pci.o
 
-hailo_pci-objs += src/pcie.o
-hailo_pci-objs += src/fops.o
-hailo_pci-objs += src/sysfs.o
-hailo_pci-objs += src/nnc.o
-hailo_pci-objs += src/soc.o
+hailo1x_pci-objs += src/pcie.o
+hailo1x_pci-objs += src/fops.o
+hailo1x_pci-objs += src/sysfs.o
+hailo1x_pci-objs += src/nnc.o
+hailo1x_pci-objs += src/soc.o
 
-hailo_pci-objs += $(COMMON_SRC_DIRECTORY)/fw_validation.o
-hailo_pci-objs += $(COMMON_SRC_DIRECTORY)/fw_operation.o
-hailo_pci-objs += $(COMMON_SRC_DIRECTORY)/pcie_common.o
-hailo_pci-objs += $(COMMON_SRC_DIRECTORY)/vdma_common.o
-hailo_pci-objs += $(COMMON_SRC_DIRECTORY)/hailo_resource.o
+hailo1x_pci-objs += $(COMMON_SRC_DIRECTORY)/fw_validation.o
+hailo1x_pci-objs += $(COMMON_SRC_DIRECTORY)/fw_operation.o
+hailo1x_pci-objs += $(COMMON_SRC_DIRECTORY)/pcie_common.o
+hailo1x_pci-objs += $(COMMON_SRC_DIRECTORY)/vdma_common.o
+hailo1x_pci-objs += $(COMMON_SRC_DIRECTORY)/hailo_resource.o
 
-hailo_pci-objs += $(UTILS_SRC_DIRECTORY)/logs.o
+hailo1x_pci-objs += $(UTILS_SRC_DIRECTORY)/logs.o
 
-hailo_pci-objs += $(VDMA_SRC_DIRECTORY)/vdma.o
-hailo_pci-objs += $(VDMA_SRC_DIRECTORY)/memory.o
-hailo_pci-objs += $(VDMA_SRC_DIRECTORY)/ioctl.o
+hailo1x_pci-objs += $(VDMA_SRC_DIRECTORY)/vdma.o
+hailo1x_pci-objs += $(VDMA_SRC_DIRECTORY)/memory.o
+hailo1x_pci-objs += $(VDMA_SRC_DIRECTORY)/ioctl.o
 
 ccflags-y      += -Werror
 ccflags-y      += -I$(src)/include

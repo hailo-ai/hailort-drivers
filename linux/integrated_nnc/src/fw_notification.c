@@ -47,7 +47,7 @@ long fw_notification_init(struct hailo_board *board)
     const size_t minimum_size = sizeof(board->fw_notification.notification.buffer_len) +
         sizeof(board->fw_notification.notification.buffer);
 
-    cl->dev = &board->pDev->dev;
+    cl->dev = &board->pdev->dev;
     cl->rx_callback = notification_rx_callback;
 
     chan = mbox_request_channel(cl, HAILO15_CORE_NOTIFICATION_MAILBOX_INDEX);
@@ -57,7 +57,7 @@ long fw_notification_init(struct hailo_board *board)
         goto l_exit;
     }
 
-    err = hailo_ioremap_shmem(board->pDev, HAILO15_CORE_NOTIFICATION_MAILBOX_RX_SHMEM_INDEX,
+    err = hailo_ioremap_shmem(board->pdev, HAILO15_CORE_NOTIFICATION_MAILBOX_RX_SHMEM_INDEX,
         &board->fw_notification.rx_shmem);
     if (err < 0) {
         hailo_err(board, "Failed ioremap notification rx shmem. err %ld\n", err);

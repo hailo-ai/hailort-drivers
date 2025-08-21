@@ -69,7 +69,7 @@ long driver_down_notification_init(struct hailo_board *board)
     struct mbox_chan *chan = NULL;
     struct mbox_client *cl = &board->driver_down_notification.mbox_client;
 
-    cl->dev = &board->pDev->dev;
+    cl->dev = &board->pdev->dev;
     cl->tx_block = true;
     cl->rx_callback = driver_down_rx_callback;
 

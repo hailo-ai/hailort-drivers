@@ -19,7 +19,7 @@ MAX_DEBUG=7
 
 DEBUG=$MIN_DEBUG
 
-MODULE="hailo_pci.ko"
+MODULE="hailo1x_pci.ko"
 
 while getopts "hdp" arg; do
     case $arg in

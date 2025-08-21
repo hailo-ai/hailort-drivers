@@ -85,13 +85,6 @@ struct hailo_descriptors_list_buffer {
     struct hailo_vdma_descriptors_list desc_list;
 };
 
-struct hailo_vdma_low_memory_buffer {
-    struct list_head                    vdma_low_memory_buffer_list;
-    uintptr_t                           handle;
-    size_t                              pages_count;
-    void                                **pages_address;
-};
-
 struct hailo_vdma_continuous_buffer {
     struct list_head    continuous_buffer_list;
     uintptr_t           handle;
@@ -123,10 +116,6 @@ struct hailo_vdma_controller {
     struct hailo_vdma_interrupts_read_timestamp_params read_interrupt_timestamps_params;
 };
 
-#define for_each_vdma_engine(controller, engine, engine_index)                          \
-    _for_each_element_array(controller->vdma_engines, controller->vdma_engines_count,   \
-        engine, engine_index)
-
 struct hailo_vdma_context_channels {
     u64                enabled_bitmap[MAX_VDMA_ENGINES];
     u64                interrupted_bitmap[MAX_VDMA_ENGINES];
@@ -136,6 +125,7 @@ struct hailo_vdma_context_channels {
 
 struct hailo_vdma_file_context {
     struct list_head file_context_list;
+    bool             is_valid;
 
     atomic_t         last_vdma_user_buffer_handle;
     struct list_head mapped_user_buffer_list;
@@ -144,9 +134,8 @@ struct hailo_vdma_file_context {
     // there will be no collisions between the two
     atomic_t         last_vdma_handle;
     struct list_head descriptors_buffer_list;
-    struct list_head vdma_low_memory_buffer_list;
     struct list_head continuous_buffer_list;
-    
+
     struct hailo_vdma_context_channels channels;
 };
 
@@ -178,6 +167,10 @@ void hailo_vdma_wakeup_interrupts(struct hailo_vdma_controller *controller, u8 e
 void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller, size_t engine_index,
     u64 channels_bitmap);
 
+void hailo_vdma_disable_channels_per_engine(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_file_context *context,
+    u8 engine_index, u64 channels_bitmap);
+
 // TODO: reduce params count
 long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned int cmd, unsigned long arg, struct file *filp, struct semaphore *mutex, bool *should_up_board_mutex);
@@ -186,6 +179,5 @@ int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_c
     struct vm_area_struct *vma, uintptr_t vdma_handle);
 
 enum dma_data_direction get_dma_direction(enum hailo_dma_data_direction hailo_direction);
-void hailo_vdma_disable_vdma_channels(struct hailo_vdma_controller *controller, const bool should_close_channels);
 
 #endif /* _HAILO_VDMA_VDMA_H_ */

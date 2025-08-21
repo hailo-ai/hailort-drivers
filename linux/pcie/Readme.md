@@ -8,10 +8,10 @@ kernel, in order to cross compile, the user needs to set the KERNEL_DIR environm
  Run the command `sudo make install` or `sudo make uninstall`
 
 ## Load the driver
-Run the command `sudo modprobe hailo_pci` or `sudo modprobe -r hailo_pci`
+Run the command `sudo modprobe hailo1x_pci` or `sudo modprobe -r hailo1x_pci`
 
 ## Set driver parameters
 There are two options:
-- Copy the `hailo_pci.conf` file to `/etc/modprobe.d` and edit the desired parameters.
+- Copy the `hailo1x_pci.conf` file to `/etc/modprobe.d` and edit the desired parameters.
 - Pass the desired parameter in modprobe, for example:
-  `sudo modprobe hailo_pci no_power_mode=Y`
+  `sudo modprobe hailo1x_pci no_power_mode=Y`

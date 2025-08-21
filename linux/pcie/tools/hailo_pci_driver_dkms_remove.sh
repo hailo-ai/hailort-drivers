@@ -16,7 +16,7 @@ usage () {
     exit 1
 }
 
-DRIVER_NAME="hailo_pci"
+DRIVER_NAME="hailo1x_pci"
 DRIVER_VERSION=""
 KERNEL_VERSION=`uname -r`
 SHOULD_REMOVE_SOURCE=""

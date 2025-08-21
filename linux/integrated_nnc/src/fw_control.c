@@ -108,7 +108,7 @@ long fw_control_init(struct hailo_board *board)
     const size_t minimum_size = sizeof(board->fw_control.command.expected_md5) + sizeof(board->fw_control.command.buffer_len) 
         + sizeof(board->fw_control.command.buffer);
 
-    cl->dev = &board->pDev->dev;
+    cl->dev = &board->pdev->dev;
     cl->tx_block = true;
     cl->rx_callback = rx_callback;
 
@@ -119,13 +119,13 @@ long fw_control_init(struct hailo_board *board)
         goto l_exit;
     }
 
-    err = hailo_ioremap_shmem(board->pDev, HAILO15_CORE_CONTROL_MAILBOX_TX_SHMEM_INDEX, &board->fw_control.tx_shmem);
+    err = hailo_ioremap_shmem(board->pdev, HAILO15_CORE_CONTROL_MAILBOX_TX_SHMEM_INDEX, &board->fw_control.tx_shmem);
     if (err < 0) {
         hailo_err(board, "Failed ioremap control tx shmem. err %ld\n", err);
         goto l_free_channel;
     }
 
-    err = hailo_ioremap_shmem(board->pDev, HAILO15_CORE_CONTROL_MAILBOX_RX_SHMEM_INDEX, &board->fw_control.rx_shmem);
+    err = hailo_ioremap_shmem(board->pdev, HAILO15_CORE_CONTROL_MAILBOX_RX_SHMEM_INDEX, &board->fw_control.rx_shmem);
     if (err < 0) {
         hailo_err(board, "Failed ioremap control rx shmem. err %ld\n", err);
         goto l_free_channel;
