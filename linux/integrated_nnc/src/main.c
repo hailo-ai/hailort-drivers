@@ -34,6 +34,8 @@
 // 16 MB
 #define CMA_FW_SHM_SIZE (0x1000000)
 
+#define MAX_VDMA_CHANNELS_PER_ENGINE_H15 (32)
+
 // Enum that indexes different integrated board types - only used as indexing for the integrated_board_data_arr array
 enum integrated_board_type
 {
@@ -89,14 +91,13 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
         // TODO: HRT-17117 : Remove vdma_hw duplications between board types
         .vdma_hw =
         {
-            .hw_ops = {
-                .channel_id_mask = CHANNEL_ID_MASK,
-                .channel_id_shift = CHANNEL_ID_SHIFT,
-            },
+            .channel_id_mask = H15X_CHANNEL_ID_MASK,
+            .channel_id_shift = CHANNEL_ID_SHIFT,
             .ddr_data_id = DDR_AXI_DATA_ID,
             .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
             .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
             .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
+            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE_H15,
         }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO15L] = {
@@ -105,14 +106,13 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
         .fw_filename          = "hailo/hailo15l_nnc_fw.bin",
         .vdma_hw =
         {
-            .hw_ops = {
-                .channel_id_mask = CHANNEL_ID_MASK,
-                .channel_id_shift = CHANNEL_ID_SHIFT,
-            },
+            .channel_id_mask = H15X_CHANNEL_ID_MASK,
+            .channel_id_shift = CHANNEL_ID_SHIFT,
             .ddr_data_id = DDR_AXI_DATA_ID,
             .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
             .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
             .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
+            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE_H15,
         }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2] = {
@@ -121,14 +121,13 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
         .fw_filename          = "hailo/mars_nnc_fw.bin",
         .vdma_hw =
         {
-            .hw_ops = {
-                .channel_id_mask = CHANNEL_ID_MASK,
-                .channel_id_shift = CHANNEL_ID_SHIFT,
-            },
+            .channel_id_mask = MARS_CHANNEL_ID_MASK,
+            .channel_id_shift = CHANNEL_ID_SHIFT,
             .ddr_data_id = DDR_AXI_DATA_ID,
             .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
             .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
             .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H2,
+            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE,
         }
     },
 };
@@ -310,7 +309,7 @@ static int driver_probe(struct platform_device *pdev)
     }
 
     sema_init(&board->mutex, 1);
-    board->pDev = pdev;
+    board->pdev = pdev;
 
     err = hailo_integrated_nnc_cpu_struct_init(board);
     if (err < 0) {
@@ -399,7 +398,7 @@ static int driver_probe(struct platform_device *pdev)
     board->class = class;
 
     /* Creating device */
-    device = device_create_with_groups(class, NULL, dev, NULL, hailo_dev_groups,
+    device = device_create_with_groups(class, &pdev->dev, dev, NULL, hailo_dev_groups,
         DEVICE_NODE_NAME);
     if (IS_ERR(device)) {
         err = PTR_ERR(device);

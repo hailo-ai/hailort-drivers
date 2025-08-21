@@ -23,14 +23,14 @@ extern int o_dbg;
         }                                               \
     } while (0)
 
-#define hailo_emerg(board, fmt, ...) hailo_printk(KERN_EMERG, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
-#define hailo_alert(board, fmt, ...) hailo_printk(KERN_ALERT, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
-#define hailo_crit(board, fmt, ...)  hailo_printk(KERN_CRIT, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
-#define hailo_err(board, fmt, ...) hailo_printk(KERN_ERR, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
-#define hailo_warn(board, fmt, ...) hailo_printk(KERN_WARNING, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
-#define hailo_notice(board, fmt, ...) hailo_printk(KERN_NOTICE, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
-#define hailo_info(board, fmt, ...) hailo_printk(KERN_INFO, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
-#define hailo_dbg(board, fmt, ...) hailo_printk(KERN_DEBUG, &(board)->pDev->dev, fmt, ##__VA_ARGS__)
+#define hailo_emerg(board, fmt, ...) hailo_printk(KERN_EMERG, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
+#define hailo_alert(board, fmt, ...) hailo_printk(KERN_ALERT, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
+#define hailo_crit(board, fmt, ...)  hailo_printk(KERN_CRIT, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
+#define hailo_err(board, fmt, ...) hailo_printk(KERN_ERR, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
+#define hailo_warn(board, fmt, ...) hailo_printk(KERN_WARNING, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
+#define hailo_notice(board, fmt, ...) hailo_printk(KERN_NOTICE, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
+#define hailo_info(board, fmt, ...) hailo_printk(KERN_INFO, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
+#define hailo_dbg(board, fmt, ...) hailo_printk(KERN_DEBUG, &(board)->pdev->dev, fmt, ##__VA_ARGS__)
 
 #define hailo_dev_emerg(dev, fmt, ...) hailo_printk(KERN_EMERG, dev, fmt, ##__VA_ARGS__)
 #define hailo_dev_alert(dev, fmt, ...) hailo_printk(KERN_ALERT, dev, fmt, ##__VA_ARGS__)

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-module="hailo_pci"
+module="hailo1x_pci"
 
 #unload driver
 sudo rmmod $module || exit 1

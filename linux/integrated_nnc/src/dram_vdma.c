@@ -250,7 +250,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
 {
     struct hailo_vdma_engine_resources engine_resources;
     struct hailo_resource channel_registers[MAX_VDMA_ENGINES];
-    struct device_node *dev_node = board->pDev->dev.of_node;
+    struct device_node *dev_node = board->pdev->dev.of_node;
     struct device_node *vdma_node = NULL;
     int err = -EINVAL;
     int engine_idx = 0;
@@ -258,7 +258,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
 
     hailo_notice(board, "Initializing vDMA controller\n");
 
-    init_reserved_mem(&board->pDev->dev);
+    init_reserved_mem(&board->pdev->dev);
 
     engines_count = of_get_child_count(dev_node);
     if (ARRAY_SIZE(board->vdma_engines_resources) < engines_count) {
@@ -267,7 +267,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
     }
 
     for_each_child_of_node(dev_node, vdma_node) {
-        err = init_engine(&board->pDev->dev, vdma_node, &engine_resources, &board->irqs_info[engine_idx][0], engine_idx);
+        err = init_engine(&board->pdev->dev, vdma_node, &engine_resources, &board->irqs_info[engine_idx][0], engine_idx);
         if (err < 0) {
             return err;
         }
@@ -277,7 +277,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
         engine_idx++;
     }
 
-    err = hailo_vdma_controller_init(&board->vdma, &board->pDev->dev, &board->board_data->vdma_hw,
+    err = hailo_vdma_controller_init(&board->vdma, &board->pdev->dev, &board->board_data->vdma_hw,
         &core_vdma_controller_ops, channel_registers, engines_count);
     if (err < 0) {
         return err;

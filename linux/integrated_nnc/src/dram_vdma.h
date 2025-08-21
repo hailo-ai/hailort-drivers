@@ -14,7 +14,8 @@
 #define DMA_DESC_ADDRESS_MASK               (0x7fffffff0)
 #define EXTERNAL_DESCRIPTOR_KIND            (2)
 #define DESCRIPTOR_KIND_SHIFT               (62)
-#define CHANNEL_ID_MASK                     (0xf)
+#define MARS_CHANNEL_ID_MASK                (0x1f)
+#define H15X_CHANNEL_ID_MASK                (0xf)
 #define CHANNEL_ID_SHIFT                    (57)
 
 #define DDR_AXI_DATA_ID                     (1)

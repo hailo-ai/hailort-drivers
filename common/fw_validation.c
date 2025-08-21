@@ -33,20 +33,15 @@ int FW_VALIDATION__validate_fw_header(uintptr_t firmware_base_address,
     CONSUME_FIRMWARE(sizeof(firmware_header_t), -EINVAL);
 
     switch (board_type) {
-    case HAILO_BOARD_TYPE_HAILO8:
-        expected_firmware_magic = FIRMWARE_HEADER_MAGIC_HAILO8;
-        break;
     case HAILO_BOARD_TYPE_HAILO15H_ACCELERATOR_MODE:
     case HAILO_BOARD_TYPE_HAILO15:
     case HAILO_BOARD_TYPE_HAILO10H:
-    case HAILO_BOARD_TYPE_HAILO10H_LEGACY_BOOT:
         expected_firmware_magic = FIRMWARE_HEADER_MAGIC_HAILO15;
         break;
     case HAILO_BOARD_TYPE_HAILO15L:
         expected_firmware_magic = FIRMWARE_HEADER_MAGIC_HAILO15L;
         break;
     case HAILO_BOARD_TYPE_MARS:
-    case HAILO_BOARD_TYPE_MARS_LEGACY_BOOT:
         expected_firmware_magic = FIRMWARE_HEADER_MAGIC_MARS;
         break;
     default:

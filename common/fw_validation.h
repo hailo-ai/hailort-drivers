@@ -9,10 +9,9 @@
 #include "hailo_ioctl_common.h"
 #include <linux/types.h>
 
-#define FIRMWARE_HEADER_MAGIC_HAILO8    (0x1DD89DE0)
 #define FIRMWARE_HEADER_MAGIC_HAILO15   (0xE905DAAB)
 #define FIRMWARE_HEADER_MAGIC_HAILO15L  (0xF94739AB)
-#define FIRMWARE_HEADER_MAGIC_MARS      (0xF94739AB)
+#define FIRMWARE_HEADER_MAGIC_MARS      (0x8639AA42)
 
 typedef enum {
     FIRMWARE_HEADER_VERSION_INITIAL = 0,

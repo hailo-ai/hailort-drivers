@@ -68,42 +68,6 @@ static inline void mmap_read_unlock(struct mm_struct *mm)
 }
 #endif /* _LINUX_MMAP_LOCK_H */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
-#define sg_alloc_table_from_pages_segment_compat __sg_alloc_table_from_pages
-#else
-static inline struct scatterlist *sg_alloc_table_from_pages_segment_compat(struct sg_table *sgt,
-    struct page **pages, unsigned int n_pages, unsigned int offset,
-    unsigned long size, unsigned int max_segment,
-    struct scatterlist *prv, unsigned int left_pages,
-    gfp_t gfp_mask)
-{
-    int res = 0;
-
-    if (NULL != prv) {
-        // prv not suported
-        return ERR_PTR(-EINVAL);
-    }
-
-    if (0 != left_pages) {
-        // Left pages not supported
-        return ERR_PTR(-EINVAL);
-    }
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
-    res = sg_alloc_table_from_pages_segment(sgt, pages, n_pages, offset, size, max_segment, gfp_mask);
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
-    res = __sg_alloc_table_from_pages(sgt, pages, n_pages, offset, size, max_segment, gfp_mask);
-#else
-    res = sg_alloc_table_from_pages(sgt, pages, n_pages, offset, size, gfp_mask);
-#endif
-    if (res < 0) {
-        return ERR_PTR(res);
-    }
-
-    return sgt->sgl;
-}
-#endif
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 5, 0, 0 )
 #define compatible_access_ok(a,b,c) access_ok(b, c)
 #else
@@ -129,33 +93,5 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 #define kvfree vfree
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
-static inline bool is_dma_capable(struct device *dev, dma_addr_t dma_addr, size_t size)
-{
-// Case for Rasberry Pie kernel versions 5.4.83 <=> 5.5.0 - already changed bus_dma_mask -> bus_dma_limit
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 5, 0)) || (defined(HAILO_RASBERRY_PIE) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 83))
-    const u64 bus_dma_limit = dev->bus_dma_limit;
-#else
-    const u64 bus_dma_limit = dev->bus_dma_mask;
-#endif
-
-    return (dma_addr <= min_not_zero(*dev->dma_mask, bus_dma_limit));
-}
-#else
-static inline bool is_dma_capable(struct device *dev, dma_addr_t dma_addr, size_t size)
-{
-    // Implementation of dma_capable from linux kernel
-    const u64 bus_dma_limit = (*dev->dma_mask + 1) & ~(*dev->dma_mask);
-	if (bus_dma_limit && size > bus_dma_limit) {
-        return false;
-    }
-
-	if ((dma_addr | (dma_addr + size - 1)) & ~(*dev->dma_mask)) {
-        return false;
-    }
-
-    return true;
-}
-#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
 
 #endif /* _HAILO_PCI_COMPACT_H_ */

@@ -118,7 +118,7 @@ struct hailo_vdma_engine_resources
 
 struct hailo_board
 {
-    struct platform_device *pDev;
+    struct platform_device *pdev;
     struct cdev cdev;
     struct hailo_integrated_nnc_cpu integrated_nnc_cpu;
     struct reset_control *nn_core_reset;

@@ -13,7 +13,7 @@ static ssize_t board_location_show(struct device *dev, struct device_attribute *
     char *buf)
 {
     struct hailo_pcie_board *board = (struct hailo_pcie_board *)dev_get_drvdata(dev);
-    const char *dev_info = pci_name(board->pDev);
+    const char *dev_info = pci_name(board->pdev);
     return sprintf(buf, "%s", dev_info);
 }
 static DEVICE_ATTR_RO(board_location);
@@ -22,7 +22,7 @@ static ssize_t device_id_show(struct device *dev, struct device_attribute *_attr
     char *buf)
 {
     struct hailo_pcie_board *board = (struct hailo_pcie_board *)dev_get_drvdata(dev);
-    return sprintf(buf, "%x:%x", board->pDev->vendor, board->pDev->device);
+    return sprintf(buf, "%x:%x", board->pdev->vendor, board->pdev->device);
 }
 static DEVICE_ATTR_RO(device_id);
 

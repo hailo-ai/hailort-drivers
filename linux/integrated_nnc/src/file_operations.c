@@ -155,7 +155,7 @@ static long hailo_memory_transfer_ioctl(struct hailo_board *board, unsigned long
 
     switch (transfer->memory_type) {
     case HAILO_TRANSFER_DEVICE_DIRECT_MEMORY:
-        err = direct_memory_transfer(board->pDev, transfer);
+        err = direct_memory_transfer(board->pdev, transfer);
         break;
     case HAILO_TRANSFER_MEMORY_VDMA0:
         err = hailo_resource_transfer(&board->vdma_engines_resources[0].channel_registers, transfer);
@@ -306,7 +306,6 @@ static long hailo_query_device_properties(struct hailo_board *board, unsigned lo
     struct hailo_device_properties props = {
         .desc_max_page_size = 0x1000,
         .board_type         = board->board_data->board_type,
-        .allocation_mode    = HAILO_ALLOCATION_MODE_USERSPACE,
         .dma_type           = HAILO_DMA_TYPE_DRAM,
         .dma_engines_count  = board->vdma.vdma_engines_count,
         .is_fw_loaded       = true,     // TODO MSW-422: implement is fw loaded check

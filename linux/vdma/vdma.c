@@ -21,7 +21,8 @@
 
 
 static struct hailo_vdma_engine* init_vdma_engines(struct device *dev,
-    struct hailo_resource *channel_registers_per_engine, size_t engines_count, u64 src_channels_bitmask)
+    struct hailo_resource *channel_registers_per_engine, size_t engines_count, u64 src_channels_bitmask,
+    u16 channels_count)
 {
     struct hailo_vdma_engine *engines = NULL;
     u8 i = 0;
@@ -33,7 +34,8 @@ static struct hailo_vdma_engine* init_vdma_engines(struct device *dev,
     }
 
     for (i = 0; i < engines_count; i++) {
-        hailo_vdma_engine_init(&engines[i], i, &channel_registers_per_engine[i], src_channels_bitmask);
+        hailo_vdma_engine_init(&engines[i], i, &channel_registers_per_engine[i], src_channels_bitmask,
+        channels_count);
     }
 
     return engines;
@@ -194,7 +196,7 @@ int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
 
     controller->vdma_engines_count = engines_count;
     controller->vdma_engines = init_vdma_engines(dev, channel_registers_per_engine, engines_count,
-        vdma_hw->src_channels_bitmask);
+        vdma_hw->src_channels_bitmask, vdma_hw->channels_count);
     if (IS_ERR(controller->vdma_engines)) {
         dev_err(dev, "Failed initialized vdma engines\n");
         return PTR_ERR(controller->vdma_engines);
@@ -227,7 +229,6 @@ void hailo_vdma_file_context_init(struct hailo_vdma_file_context *context, struc
 
     atomic_set(&context->last_vdma_handle, 0);
     INIT_LIST_HEAD(&context->descriptors_buffer_list);
-    INIT_LIST_HEAD(&context->vdma_low_memory_buffer_list);
     INIT_LIST_HEAD(&context->continuous_buffer_list);
 
     hailo_vdma_init_context_channels(context);
@@ -235,6 +236,8 @@ void hailo_vdma_file_context_init(struct hailo_vdma_file_context *context, struc
     spin_lock_irqsave(&controller->file_context_list_lock, flags);
     list_add(&context->file_context_list, &controller->file_context_list);
     spin_unlock_irqrestore(&controller->file_context_list_lock, flags);
+
+    context->is_valid = true;
 }
 
 void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *controller,
@@ -250,9 +253,9 @@ void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
     size_t engine_index = 0;
     struct hailo_vdma_engine *engine = NULL;
     u64 channels_bitmap = 0;
-    // In case of FLR, the vdma registers will be NULL
-    const bool is_device_up = (NULL != controller->dev);
     unsigned long flags = 0;
+
+    context->is_valid = false;
 
     spin_lock_irqsave(&controller->file_context_list_lock, flags);
     list_del(&context->file_context_list);
@@ -261,21 +264,12 @@ void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
     for_each_vdma_engine(controller, engine, engine_index) {
         channels_bitmap = hailo_vdma_context_get_enabled_channels_bitmap(context, engine_index);
         if (channels_bitmap) {
-            hailo_dev_info(controller->dev, "Disabling channels for engine %zu, channels bitmap 0x%llx\n",
-                engine_index, channels_bitmap);
-            hailo_vdma_engine_disable_channels(engine, channels_bitmap);
-
-            if (is_device_up) {
-                hailo_vdma_update_interrupts_mask(controller, engine_index);
-            }
-
-            hailo_vdma_context_clear_channel_interrupts(context, engine_index, channels_bitmap);
+            hailo_vdma_disable_channels_per_engine(controller, context, engine_index, channels_bitmap);
         }
     }
 
     hailo_vdma_clear_mapped_user_buffer_list(context, controller);
     hailo_vdma_clear_descriptors_buffer_list(context, controller);
-    hailo_vdma_clear_low_memory_buffer_list(context);
     hailo_vdma_clear_continuous_buffer_list(context, controller);
 
     if (filp == controller->used_by_filp) {
@@ -293,6 +287,21 @@ void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller, size_t eng
     hailo_vdma_engine_push_timestamps(engine, channels_bitmap);
 
     hailo_vdma_wakeup_interrupts(controller, engine_index, channels_bitmap);
+}
+
+void hailo_vdma_disable_channels_per_engine(struct hailo_vdma_controller *controller,
+    struct hailo_vdma_file_context *context,
+    u8 engine_index, u64 channels_bitmap)
+{
+    struct hailo_vdma_engine *engine = &controller->vdma_engines[engine_index];
+    hailo_vdma_engine_disable_channels(engine, channels_bitmap);
+    hailo_vdma_update_interrupts_mask(controller, engine_index);
+    hailo_vdma_context_clear_channel_interrupts(context, engine_index, channels_bitmap);
+
+    hailo_dev_info(controller->dev, "Disabled channels for engine %u, bitmap 0x%llx\n",
+        engine_index, channels_bitmap);
+
+    hailo_vdma_context_clear_enabled_channels(context, engine_index, channels_bitmap);
 }
 
 long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
@@ -319,10 +328,6 @@ long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma
         return hailo_desc_list_release_ioctl(context, controller, arg);
     case HAILO_DESC_LIST_PROGRAM:
         return hailo_desc_list_program_ioctl(context, controller, arg);
-    case HAILO_VDMA_LOW_MEMORY_BUFFER_ALLOC:
-        return hailo_vdma_low_memory_buffer_alloc_ioctl(context, controller, arg);
-    case HAILO_VDMA_LOW_MEMORY_BUFFER_FREE:
-        return hailo_vdma_low_memory_buffer_free_ioctl(context, controller, arg);
     case HAILO_MARK_AS_IN_USE:
         return hailo_mark_as_in_use(controller, arg, filp);
     case HAILO_VDMA_CONTINUOUS_BUFFER_ALLOC:
@@ -331,47 +336,13 @@ long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma
         return hailo_vdma_continuous_buffer_free_ioctl(context, controller, arg);
     case HAILO_VDMA_LAUNCH_TRANSFER:
         return hailo_vdma_launch_transfer_ioctl(context, controller, arg);
+    case HAILO_VDMA_PREPARE_TRANSFER:
+        return hailo_vdma_prepare_transfer_ioctl(context, controller, arg);
+
     default:
         hailo_dev_err(controller->dev, "Invalid vDMA ioctl code 0x%x (nr: %d)\n", cmd, _IOC_NR(cmd));
         return -ENOTTY;
     }
-}
-
-static int low_memory_buffer_mmap(struct hailo_vdma_controller *controller,
-    struct hailo_vdma_low_memory_buffer *vdma_buffer, struct vm_area_struct *vma)
-{
-    int err     = 0;
-    size_t i    = 0;
-    unsigned long vsize         = vma->vm_end - vma->vm_start;
-    unsigned long orig_vm_start = vma->vm_start;
-    unsigned long orig_vm_end   = vma->vm_end;
-    unsigned long page_fn       = 0;
-
-    if (vsize != vdma_buffer->pages_count * PAGE_SIZE) {
-        hailo_dev_err(controller->dev, "mmap size should be %lu (given %lu)\n",
-            vdma_buffer->pages_count * PAGE_SIZE, vsize);
-        return -EINVAL;
-    }
-
-    for (i = 0 ; i < vdma_buffer->pages_count ; i++) {
-        if (i > 0) {
-            vma->vm_start = vma->vm_end;
-        }
-        vma->vm_end = vma->vm_start + PAGE_SIZE;
-
-        page_fn = virt_to_phys(vdma_buffer->pages_address[i]) >> PAGE_SHIFT ;
-        err = remap_pfn_range(vma, vma->vm_start, page_fn, PAGE_SIZE, vma->vm_page_prot);
-
-        if (err != 0) {
-            hailo_dev_err(controller->dev, " fops_mmap failed mapping kernel page %d\n", err);
-            return err;
-        }
-    }
-
-    vma->vm_start = orig_vm_start;
-    vma->vm_end = orig_vm_end;
-
-    return 0;
 }
 
 static int continuous_buffer_mmap(struct hailo_vdma_controller *controller,
@@ -399,14 +370,10 @@ static int continuous_buffer_mmap(struct hailo_vdma_controller *controller,
 int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     struct vm_area_struct *vma, uintptr_t vdma_handle)
 {
-    struct hailo_vdma_low_memory_buffer *low_memory_buffer = NULL;
     struct hailo_vdma_continuous_buffer *continuous_buffer = NULL;
 
     hailo_dev_info(controller->dev, "Map vdma_handle %llu\n", (u64)vdma_handle);
-    if (NULL != (low_memory_buffer = hailo_vdma_find_low_memory_buffer(context, vdma_handle))) {
-        return low_memory_buffer_mmap(controller, low_memory_buffer, vma);
-    }
-    else if (NULL != (continuous_buffer = hailo_vdma_find_continuous_buffer(context, vdma_handle))) {
+    if (NULL != (continuous_buffer = hailo_vdma_find_continuous_buffer(context, vdma_handle))) {
         return continuous_buffer_mmap(controller, continuous_buffer, vma);
     }
     else {
