@@ -214,6 +214,8 @@ void hailo_pcie_soc_read_response(struct hailo_pcie_resources *resources,
     struct hailo_pcie_soc_response *response);
 bool hailo_pcie_wait_for_boot(struct hailo_pcie_resources *resources);
 
+bool hailo_pcie_is_device_ready_for_boot(struct hailo_pcie_resources *resources);
+
 #ifdef __cplusplus
 }
 #endif
