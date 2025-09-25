@@ -12,7 +12,7 @@ int fw_logger_init(struct hailo_board *board)
     int err = -EINVAL;
     struct hailo_resource fw_logger;
 
-    err = hailo_ioremap_resource(board->pdev, &fw_logger, "core-fw-log");
+    err = hailo_ioremap_resource(board->pDev, &fw_logger, "core-fw-log");
     if (err < 0) {
         hailo_err(board, "Failed ioremap fw logger. err %d\n", err);
         return err;

@@ -18,6 +18,9 @@
 #include <linux/firmware.h>
 
 
+#define PCIE_HAILO8_BOARD_CFG_MAX_SIZE          (0x500)
+#define PCIE_HAILO8_FW_CFG_MAX_SIZE             (0x500)
+
 #define FW_CODE_SECTION_ALIGNMENT (4)
 
 #define HAILO_PCIE_CONFIG_BAR       (0)
@@ -27,23 +30,18 @@
 #define HAILO_PCIE_DMA_ENGINES_COUNT (1)
 #define PCI_VDMA_ENGINE_INDEX        (0)
 
-#define FW_FILENAME_MAX_LEN (128)
 #define MAX_FILES_PER_STAGE (4)
 
 #define HAILO_PCIE_HOST_DMA_DATA_ID    (0)
 #define HAILO_PCI_EP_HOST_DMA_DATA_ID  (6)
 
-#define DRIVER_NAME "hailo1x"
+#define DRIVER_NAME		"hailo"
 
 #define PCI_VENDOR_ID_HAILO           0x1e60
+#define PCI_DEVICE_ID_HAILO_HAILO8    0x2864
 #define PCI_DEVICE_ID_HAILO_HAILO10H  0x45C4
 #define PCI_DEVICE_ID_HAILO_HAILO15L  0x43a2
 #define PCI_DEVICE_ID_HAILO_MARS      0x26a2
-
-// On PCIe, masked_channel_id is always 0
-#define PCIE_CHANNEL_ID_MASK (0)
-#define PCIE_CHANNEL_ID_SHIFT (0)
-#define HAILO_SKU_ID_DEFAULT (0xffffffff)
 
 typedef u64 hailo_ptr_t;
 
@@ -53,7 +51,6 @@ struct hailo_pcie_resources {
     struct hailo_resource fw_access;            // BAR4
     enum hailo_board_type board_type;
     enum hailo_accelerator_type accelerator_type;
-    u32 sku_id;
 };
 
 struct hailo_atr_config {
@@ -67,7 +64,7 @@ struct hailo_atr_config {
 enum loading_stages {
     FIRST_STAGE = 0,
     SECOND_STAGE = 1,
-    THIRD_STAGE = 2,
+    SECOND_STAGE_LINUX_IN_EMMC = 2,
     MAX_LOADING_STAGES = 3
 };
 
@@ -92,18 +89,13 @@ struct hailo_pcie_interrupt_source {
     u32 vdma_channels_bitmap;
 };
 
-// File batch flags.
-#define HAILO_FILE_F_NONE         (0)
-#define HAILO_FILE_F_MANDATORY    (1 << 0)
-#define HAILO_FILE_F_HAS_HEADER   (1 << 1)
-#define HAILO_FILE_F_HAS_CORE     (1 << 2)
-#define HAILO_FILE_F_DYNAMIC_NAME (1 << 3)
-
 struct hailo_file_batch {
-    char filename[FW_FILENAME_MAX_LEN];
+    const char *filename;
     u32 address;
     size_t max_size;
-    u8 flags;
+    bool is_mandatory;
+    bool has_header;
+    bool has_core;
 };
 
 struct hailo_pcie_loading_stage {
@@ -111,14 +103,6 @@ struct hailo_pcie_loading_stage {
     u32 trigger_address;
     u32 timeout;
     u8 amount_of_files_in_stage;
-};
-
-// vDMA descriptor programming parameters for common firmware loading
-struct hailo_pcie_boot_desc_programming_params {
-    struct hailo_vdma_descriptors_list *device_desc_list;
-    struct hailo_vdma_descriptors_list *host_desc_list;
-    u32 desc_program_num;
-    u32 max_desc_count;
 };
 
 // TODO: HRT-6144 - Align Windows/Linux to QNX
@@ -158,8 +142,6 @@ extern "C" {
 #define FIRMWARE_WAIT_TIMEOUT_MS (5000000)
 #endif /* ifndef HAILO_EMULATOR */
 
-#define HAILO_SCU_LOG_MAX_SIZE (0x1000u)
-
 extern struct hailo_vdma_hw hailo_pcie_vdma_hw;
 
 const struct hailo_pcie_loading_stage* hailo_pcie_get_loading_stage_info(enum hailo_board_type board_type,
@@ -179,8 +161,6 @@ int hailo_pcie_write_firmware_batch(struct device *dev, struct hailo_pcie_resour
 bool hailo_pcie_is_firmware_loaded(struct hailo_pcie_resources *resources);
 bool hailo_pcie_wait_for_firmware(struct hailo_pcie_resources *resources);
 
-int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct hailo_memory_transfer_params *params);
-
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources);
 void hailo_pcie_write_firmware_driver_shutdown(struct hailo_pcie_resources *resources);
 void hailo_pcie_write_firmware_soft_reset(struct hailo_pcie_resources *resources);
@@ -188,25 +168,13 @@ void hailo_pcie_configure_ep_registers_for_dma_transaction(struct hailo_pcie_res
 void hailo_trigger_firmware_boot(struct hailo_pcie_resources *resources, u32 stage);
 
 int hailo_set_device_type(struct hailo_pcie_resources *resources);
-void hailo_read_sku_id(struct hailo_pcie_resources *resources);
-
-void hailo_resolve_dtb_filename(char *filename, u32 sku_id);
 
 u32 hailo_get_boot_status(struct hailo_pcie_resources *resources);
-int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
-    void *buffer, u32 *size);
 
 int hailo_pcie_configure_atr_table(struct hailo_resource *bridge_config, u64 trsl_addr, u32 atr_index);
 void hailo_pcie_read_atr_table(struct hailo_resource *bridge_config, struct hailo_atr_config *atr, u32 atr_index);
 
-int hailo_pcie_program_one_file_descriptors(
-    u32 file_address,
-    u32 transfer_size,
-    u8 channel_index,
-    bool raise_int_on_completion,
-    struct hailo_pcie_boot_desc_programming_params *desc_params,
-    struct hailo_vdma_mapped_transfer_buffer *transfer_buffer);
-
+u64 hailo_pcie_encode_desc_get_masked_channel_id(u8 channel_id);
 
 void hailo_pcie_soc_write_request(struct hailo_pcie_resources *resources,
     const struct hailo_pcie_soc_request *request);

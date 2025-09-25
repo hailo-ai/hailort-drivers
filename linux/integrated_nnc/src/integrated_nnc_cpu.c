@@ -109,26 +109,26 @@ int hailo_integrated_nnc_cpu_struct_init(struct hailo_board *board)
     struct reset_control *cpu_reset = NULL;
 
     /* Retrieve core cpu reset from device-tree */
-    cpu_reset = devm_reset_control_get_exclusive(&board->pdev->dev, "core-cpu");
+    cpu_reset = devm_reset_control_get_exclusive(&board->pDev->dev, "core-cpu");
     if (IS_ERR(cpu_reset)) {
         err = PTR_ERR(cpu_reset);
         hailo_err(board, "core cpu reset get failed: %d\n", err);
         return err;
     }
 
-    err = hailo_ioremap_resource(board->pdev, &fw_header, "core-fw-data");
+    err = hailo_ioremap_resource(board->pDev, &fw_header, "core-fw-data");
     if (err < 0) {
         hailo_err(board, "Failed ioremap fw header. err %d\n", err);
         return err;
     }
 
-    err = hailo_ioremap_resource(board->pdev, &fw_code, "core-fw-code");
+    err = hailo_ioremap_resource(board->pDev, &fw_code, "core-fw-code");
     if (err < 0) {
         hailo_err(board, "Failed ioremap fw code. err %d\n", err);
         return err;
     }
 
-    err = hailo_ioremap_resource(board->pdev, &fw_isr_vector, "core-fw-isr-vector");
+    err = hailo_ioremap_resource(board->pDev, &fw_isr_vector, "core-fw-isr-vector");
     if (err < 0) {
         hailo_err(board, "Failed ioremap fw isr-vector. err %d\n", err);
         return err;
@@ -150,7 +150,7 @@ int hailo_load_firmware(struct hailo_board *board)
     int err = 0;
     firmware_header_t *firmware_header = NULL;
 
-    err = request_firmware_direct(&firmware, board->board_data->fw_filename, &board->pdev->dev);
+    err = request_firmware_direct(&firmware, board->board_data->fw_filename, &board->pDev->dev);
     if (err < 0) {
         hailo_warn(board, "Firmware file not found (/lib/firmware/%s), please upload the firmware manually\n",
             board->board_data->fw_filename);

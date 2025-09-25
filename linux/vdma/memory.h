@@ -14,8 +14,8 @@
 #define SGL_MAX_SEGMENT_SIZE 	(0x10000)
 
 struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev, uintptr_t user_address, size_t size,
-    enum dma_data_direction direction, enum hailo_dma_buffer_type buffer_type);
-void hailo_vdma_buffer_destroy(struct hailo_vdma_buffer *buf);
+    enum dma_data_direction direction, enum hailo_dma_buffer_type buffer_type,
+    struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer);
 void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf);
 void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf);
 
@@ -39,6 +39,12 @@ struct hailo_descriptors_list_buffer* hailo_vdma_find_descriptors_buffer(struct 
     uintptr_t desc_handle);
 void hailo_vdma_clear_descriptors_buffer_list(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller);
+
+int hailo_vdma_low_memory_buffer_alloc(size_t size, struct hailo_vdma_low_memory_buffer *low_memory_buffer);
+void hailo_vdma_low_memory_buffer_free(struct hailo_vdma_low_memory_buffer *low_memory_buffer);
+struct hailo_vdma_low_memory_buffer* hailo_vdma_find_low_memory_buffer(struct hailo_vdma_file_context *context,
+    uintptr_t buf_handle);
+void hailo_vdma_clear_low_memory_buffer_list(struct hailo_vdma_file_context *context);
 
 int hailo_vdma_continuous_buffer_alloc(struct device *dev, size_t size,
     struct hailo_vdma_continuous_buffer *continuous_buffer);

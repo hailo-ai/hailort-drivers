@@ -19,8 +19,8 @@
 
 #include <linux/ioctl.h>
 
-#define HAILO_PCI_OVER_VDMA_NUM_CHANNELS (8)
-#define HAILO_PCI_OVER_VDMA_PAGE_SIZE    (512)
+#define HAILO_PCI_OVER_VDMA_NUM_CHANNELS                (8)
+#define HAILO_PCI_OVER_VDMA_PAGE_SIZE                   (512)
 
 struct hailo_fw_control_info {
     // protects that only one fw control will be send at a time
@@ -64,9 +64,9 @@ struct hailo_pcie_soc {
 };
 
 // Context for each open file handle
+// TODO: store board and use as actual context
 struct hailo_file_context {
     struct list_head open_files_list;
-    struct hailo_pcie_board *board;
     struct file *filp;
     struct hailo_vdma_file_context vdma_context;
     bool is_valid;
@@ -101,9 +101,9 @@ struct hailo_pcie_fw_boot {
 
 struct hailo_pcie_board {
     struct list_head board_list;
-    struct pci_dev *pdev;
+    struct pci_dev *pDev;
     u32 board_index;
-    struct kref kref;
+    atomic_t ref_count;
     struct list_head open_files_list;
     struct hailo_pcie_resources pcie_resources;
     struct hailo_pcie_nnc nnc;
@@ -115,15 +115,15 @@ struct hailo_pcie_board {
 
     struct hailo_pcie_fw_boot fw_boot;
     
-    struct hailo_memory_transfer_params memory_transfer_params;
+
     u32 desc_max_page_size;
+    enum hailo_allocation_mode allocation_mode;
     bool interrupts_enabled;
 };
 
 bool power_mode_enabled(void);
 
-struct hailo_pcie_board* hailo_pcie_get_board_by_index(u32 index);
-void hailo_pcie_put_board(struct hailo_pcie_board *board);
+struct hailo_pcie_board* hailo_pcie_get_board_index(u32 index);
 void hailo_disable_interrupts(struct hailo_pcie_board *board);
 int hailo_enable_interrupts(struct hailo_pcie_board *board);
 #endif /* _HAILO_PCI_PCIE_H_ */

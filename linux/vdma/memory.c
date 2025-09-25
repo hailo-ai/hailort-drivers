@@ -13,6 +13,7 @@
 #include <linux/scatterlist.h>
 #include <linux/sched.h>
 #include <linux/module.h>
+#include <linux/fdtable.h>
 
 // See linux/mm.h
 #define MMIO_AND_NO_PAGES_VMA_MASK (VM_IO | VM_PFNMAP)
@@ -21,7 +22,8 @@
 
 static int map_mmio_address(uintptr_t user_address, u32 size, struct vm_area_struct *vma,
     struct sg_table *sgt);
-static int prepare_sg_table(struct sg_table *sg_table, uintptr_t user_address, u32 size);
+static int prepare_sg_table(struct sg_table *sg_table, uintptr_t user_address, u32 size,
+    struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer);
 static void clear_sg_table(struct sg_table *sgt);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 3, 3, 0 )
@@ -147,7 +149,7 @@ static int create_fd_from_vma(struct device *dev, struct vm_area_struct *vma) {
 
 struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     uintptr_t addr_or_fd, size_t size, enum dma_data_direction direction,
-    enum hailo_dma_buffer_type buffer_type)
+    enum hailo_dma_buffer_type buffer_type, struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer)
 {
     int ret = -EINVAL;
     struct hailo_vdma_buffer *mapped_buffer = NULL;
@@ -155,7 +157,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     struct vm_area_struct *vma = NULL;
     bool is_mmio = false;
     struct hailo_dmabuf_info dmabuf_info = {0};
-    bool created_dmabuf_fd_from_vma = false;
+    uintptr_t dmabuf_from_pointer_addr = 0;
 
     mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
     if (NULL == mapped_buffer) {
@@ -165,9 +167,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     }
 
     if (HAILO_DMA_DMABUF_BUFFER != buffer_type) {
-        mmap_read_lock(current->mm);
         vma = find_vma(current->mm, addr_or_fd);
-        mmap_read_unlock(current->mm);
         if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING)) {
             if (NULL == vma) {
                 dev_err(dev, "no vma for virt_addr/size = 0x%08lx/0x%08zx\n", addr_or_fd, size);
@@ -176,10 +176,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             }
         }
 
-        if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) &&
-           (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
-            is_mmio = true;
-        } else if (is_dmabuf_vma(vma)) {
+        if (is_dmabuf_vma(vma)) {
             dev_dbg(dev, "Given vma is backed by dmabuf - creating fd and mapping as dmabuf\n");
             buffer_type = HAILO_DMA_DMABUF_BUFFER;
             ret = create_fd_from_vma(dev, vma);
@@ -187,20 +184,29 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
                 dev_err(dev, "Failed creating fd from vma in given dmabuf\n");
                 goto cleanup;
             }
-            // Override user address with fd to the dmabuf - like normal dmabuf flow
+            // Save original dmabuf user address in dmabuf_from_pointer_addr and override addr_or_fd with fd
+            dmabuf_from_pointer_addr = addr_or_fd;
             addr_or_fd = ret;
-            created_dmabuf_fd_from_vma = true;
         }
     }
 
     // TODO: is MMIO DMA MAPPINGS STILL needed after dmabuf
-    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && is_mmio) {
+    if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && (HAILO_DMA_DMABUF_BUFFER != buffer_type) &&
+        (MMIO_AND_NO_PAGES_VMA_MASK == (vma->vm_flags & MMIO_AND_NO_PAGES_VMA_MASK))) {
         // user_address represents memory mapped I/O and isn't backed by 'struct page' (only by pure pfn)
+        if (NULL != low_mem_driver_allocated_buffer) {
+            // low_mem_driver_allocated_buffer are backed by regular 'struct page' addresses, just in low memory
+            dev_err(dev, "low_mem_driver_allocated_buffer shouldn't be provided with an mmio address\n");
+            ret = -EINVAL;
+            goto free_buffer_struct;
+        }
+
         ret = map_mmio_address(addr_or_fd, size, vma, &sgt);
         if (ret < 0) {
             dev_err(dev, "failed to map mmio address %d\n", ret);
             goto free_buffer_struct;
         }
+        is_mmio = true;
     } else if (HAILO_DMA_DMABUF_BUFFER == buffer_type) {
         // Content user_address in case of dmabuf is fd - for now
         ret = hailo_map_dmabuf(dev, addr_or_fd, direction, &sgt, &dmabuf_info);
@@ -208,20 +214,15 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             dev_err(dev, "Failed mapping dmabuf\n");
             goto cleanup;
         }
-        // If created dmabuf fd from vma need to decrement refcount and release fd
-        if (created_dmabuf_fd_from_vma) {
-            fput(vma->vm_file);
-            put_unused_fd(addr_or_fd);
+        // If created dmabuf fd from vma need to close fd we created
+        if (0 != dmabuf_from_pointer_addr) {
+            close_fd(addr_or_fd);
+            buffer_type = HAILO_DMA_USER_PTR_BUFFER;
+            addr_or_fd = dmabuf_from_pointer_addr;
         }
     } else {
         // user_address is a standard 'struct page' backed memory address
-
-        // Align buffer to PAGE_SIZE before map.
-        size += addr_or_fd % PAGE_SIZE;
-        addr_or_fd = ALIGN_DOWN(addr_or_fd, PAGE_SIZE);
-        size = ALIGN(size, PAGE_SIZE);
-
-        ret = prepare_sg_table(&sgt, addr_or_fd, size);
+        ret = prepare_sg_table(&sgt, addr_or_fd, size, low_mem_driver_allocated_buffer);
         if (ret < 0) {
             dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
             goto free_buffer_struct;
@@ -257,12 +258,6 @@ cleanup:
 static void unmap_buffer(struct kref *kref)
 {
     struct hailo_vdma_buffer *buf = container_of(kref, struct hailo_vdma_buffer, kref);
-    hailo_vdma_buffer_destroy(buf);
-}
-
-void hailo_vdma_buffer_destroy(struct hailo_vdma_buffer *buf)
-{
-    list_del(&buf->mapped_user_buffer_list);
 
     // If dmabuf - unmap and detatch dmabuf
     if (NULL != buf->dmabuf_info.dmabuf) {
@@ -274,7 +269,6 @@ void hailo_vdma_buffer_destroy(struct hailo_vdma_buffer *buf)
 
         clear_sg_table(&buf->sg_table);
     }
-
     kfree(buf);
 }
 
@@ -331,7 +325,7 @@ void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
     struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
     size_t offset, size_t size)
 {
-    if ((IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && mapped_buffer->is_mmio) ||
+    if ((IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && mapped_buffer->is_mmio) || 
         (NULL != mapped_buffer->dmabuf_info.dmabuf)) {
         // MMIO buffers and dmabufs don't need to be sync'd
         return;
@@ -390,7 +384,8 @@ void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *co
 {
     struct hailo_vdma_buffer *cur = NULL, *next = NULL;
     list_for_each_entry_safe(cur, next, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
-        hailo_vdma_buffer_destroy(cur);
+        list_del(&cur->mapped_user_buffer_list);
+        hailo_vdma_buffer_put(cur);
     }
 }
 
@@ -429,16 +424,12 @@ int hailo_desc_list_create(struct device *dev, u32 descriptors_count, u16 desc_p
     descriptors->desc_list.desc_count_mask = is_circular ? (descriptors_count - 1) : (get_nearest_powerof_2(descriptors_count) - 1);
     descriptors->desc_list.desc_page_size = desc_page_size;
     descriptors->desc_list.is_circular = is_circular;
-    descriptors->desc_list.num_launched = 0;
-    descriptors->desc_list.num_programmed = 0;
-    descriptors->desc_list.prepared_transfers = NULL;
+
     return 0;
 }
 
 void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list_buffer *descriptors)
 {
-    hailo_vdma_transfer_list_free(&descriptors->desc_list.prepared_transfers);
-    
     dma_free_coherent(dev, descriptors->buffer_size, descriptors->kernel_address, descriptors->dma_address);
 }
 
@@ -461,6 +452,88 @@ void hailo_vdma_clear_descriptors_buffer_list(struct hailo_vdma_file_context *co
     list_for_each_entry_safe(cur, next, &context->descriptors_buffer_list, descriptors_buffer_list) {
         list_del(&cur->descriptors_buffer_list);
         hailo_desc_list_release(controller->dev, cur);
+        kfree(cur);
+    }
+}
+
+int hailo_vdma_low_memory_buffer_alloc(size_t size, struct hailo_vdma_low_memory_buffer *low_memory_buffer)
+{
+    int ret = -EINVAL;
+    void *kernel_address = NULL;
+    size_t pages_count = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+    size_t num_allocated = 0, i = 0;
+    void **pages = NULL;
+
+    pages = kcalloc(pages_count, sizeof(*pages), GFP_KERNEL);
+    if (NULL == pages) {
+        pr_err("Failed to allocate pages for buffer (size %zu)\n", size);
+        ret = -ENOMEM;
+        goto cleanup;
+    }
+
+    for (num_allocated = 0; num_allocated < pages_count; num_allocated++) {
+        // __GFP_DMA32 flag is used to limit system memory allocations to the lowest 4 GB of physical memory in order to guarantee DMA 
+        // Operations will not have to use bounce buffers on certain architectures (e.g 32-bit DMA enabled architectures)
+        kernel_address = (void*)__get_free_page(__GFP_DMA32);
+        if (NULL == kernel_address) {
+            pr_err("Failed to allocate %zu coherent bytes\n", (size_t)PAGE_SIZE);
+            ret = -ENOMEM;
+            goto cleanup;
+        }
+
+        pages[num_allocated] = kernel_address;
+    }
+
+    low_memory_buffer->pages_count = pages_count;
+    low_memory_buffer->pages_address = pages;
+
+    return 0;
+
+cleanup:
+    if (NULL != pages) {
+        for (i = 0; i < num_allocated; i++) {
+            free_page((long unsigned)pages[i]);
+        }
+
+        kfree(pages);
+    }
+
+    return ret;
+}
+
+void hailo_vdma_low_memory_buffer_free(struct hailo_vdma_low_memory_buffer *low_memory_buffer)
+{
+    size_t i = 0;
+    if (NULL == low_memory_buffer) {
+        return;
+    }
+
+    for (i = 0; i < low_memory_buffer->pages_count; i++) {
+        free_page((long unsigned)low_memory_buffer->pages_address[i]);
+    }
+
+    kfree(low_memory_buffer->pages_address);
+}
+
+struct hailo_vdma_low_memory_buffer* hailo_vdma_find_low_memory_buffer(struct hailo_vdma_file_context *context,
+    uintptr_t buf_handle)
+{
+    struct hailo_vdma_low_memory_buffer *cur = NULL;
+    list_for_each_entry(cur, &context->vdma_low_memory_buffer_list, vdma_low_memory_buffer_list) {
+        if (cur->handle == buf_handle) {
+            return cur;
+        }
+    }
+
+    return NULL;
+}
+
+void hailo_vdma_clear_low_memory_buffer_list(struct hailo_vdma_file_context *context)
+{
+    struct hailo_vdma_low_memory_buffer *cur = NULL, *next = NULL;
+    list_for_each_entry_safe(cur, next, &context->vdma_low_memory_buffer_list, vdma_low_memory_buffer_list) {
+        list_del(&cur->vdma_low_memory_buffer_list);
+        hailo_vdma_low_memory_buffer_free(cur);
         kfree(cur);
     }
 }
@@ -590,13 +663,15 @@ static int map_mmio_address(uintptr_t user_address, u32 size, struct vm_area_str
 #endif /* defined(HAILO_SUPPORT_MMIO_DMA_MAPPING) */
 
 
-static int prepare_sg_table(struct sg_table *sg_table, uintptr_t user_address, u32 size)
+static int prepare_sg_table(struct sg_table *sg_table, uintptr_t user_address, u32 size,
+    struct hailo_vdma_low_memory_buffer *low_mem_driver_allocated_buffer)
 {
     int ret = -EINVAL;
     int pinned_pages = 0;
     size_t npages = 0;
     struct page **pages = NULL;
     int i = 0;
+    struct scatterlist *sg_alloc_res = NULL;
 
     npages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
     pages = kvmalloc_array(npages, sizeof(*pages), GFP_KERNEL);
@@ -604,22 +679,40 @@ static int prepare_sg_table(struct sg_table *sg_table, uintptr_t user_address, u
         return -ENOMEM;
     }
 
-    mmap_read_lock(current->mm);
-    pinned_pages = get_user_pages_compact(user_address, npages, FOLL_WRITE | FOLL_FORCE, pages);
-    mmap_read_unlock(current->mm);
+    // Check whether mapping user allocated buffer or driver allocated low memory buffer
+    if (NULL == low_mem_driver_allocated_buffer) {
+        mmap_read_lock(current->mm);
+        pinned_pages = get_user_pages_compact(user_address, npages, FOLL_WRITE | FOLL_FORCE, pages);
+        mmap_read_unlock(current->mm);
 
-    if (pinned_pages < 0) {
-        pr_err("get_user_pages failed with %d\n", pinned_pages);
-        ret = pinned_pages;
-        goto exit;
-    } else if (pinned_pages != npages) {
-        pr_err("Pinned %d out of %zu\n", pinned_pages, npages);
-        ret = -EINVAL;
-        goto release_pages;
+        if (pinned_pages < 0) {
+            pr_err("get_user_pages failed with %d\n", pinned_pages);
+            ret = pinned_pages;
+            goto exit;
+        } else if (pinned_pages != npages) {
+            pr_err("Pinned %d out of %zu\n", pinned_pages, npages);
+            ret = -EINVAL;
+            goto release_pages;
+        }
+    } else {
+        // Check to make sure in case user provides wrong buffer
+        if (npages != low_mem_driver_allocated_buffer->pages_count) {
+            pr_err("Received wrong amount of pages %zu to map expected %zu\n",
+                npages, low_mem_driver_allocated_buffer->pages_count);
+            ret = -EINVAL;
+            goto exit;
+        }
+
+        for (i = 0; i < npages; i++) {
+            pages[i] = virt_to_page(low_mem_driver_allocated_buffer->pages_address[i]);
+            get_page(pages[i]);
+        }
     }
 
-    ret = sg_alloc_table_from_pages(sg_table, pages, npages, 0, size, GFP_KERNEL);
-    if (ret < 0) {
+    sg_alloc_res = sg_alloc_table_from_pages_segment_compat(sg_table, pages, npages,
+        0, size, SGL_MAX_SEGMENT_SIZE, NULL, 0, GFP_KERNEL);
+    if (IS_ERR(sg_alloc_res)) {
+        ret = PTR_ERR(sg_alloc_res);
         pr_err("sg table alloc failed (err %d)..\n", ret);
         goto release_pages;
     }

@@ -29,8 +29,8 @@ endif
 # Default is release folder
 TARGET_DIR:="$(BUILD_DIR)/release/$(ARCH)"
 
-DRIVER_NAME=hailo1x_pci.ko
-DRIVER_NAME_NO_EXT=hailo1x_pci
+DRIVER_NAME=hailo_pci.ko
+DRIVER_NAME_NO_EXT=hailo_pci
 
 VERSION_MAJOR=$(shell grep "\#define HAILO_DRV_VER_MAJOR" ../../common/hailo_ioctl_common.h | sed "s/\#define HAILO_DRV_VER_MAJOR //g")
 VERSION_MINOR=$(shell grep "\#define HAILO_DRV_VER_MINOR" ../../common/hailo_ioctl_common.h | sed "s/\#define HAILO_DRV_VER_MINOR //g")

@@ -36,7 +36,6 @@ struct integrated_board_data {
     enum hailo_board_type board_type;
     const struct vdma_interrupt_data *vdma_interrupts_data;
     const char *fw_filename;
-    struct hailo_vdma_hw vdma_hw;
 };
 
 // TODO: HRT-14781: remove this enum when every integrated uses BKC that has memory region
@@ -118,7 +117,7 @@ struct hailo_vdma_engine_resources
 
 struct hailo_board
 {
-    struct platform_device *pdev;
+    struct platform_device *pDev;
     struct cdev cdev;
     struct hailo_integrated_nnc_cpu integrated_nnc_cpu;
     struct reset_control *nn_core_reset;
@@ -135,7 +134,7 @@ struct hailo_board
     struct hailo_vdma_controller vdma;
     struct hailo_vdma_engine_resources vdma_engines_resources[MAX_VDMA_ENGINES];
     // Store transfer params here to avoid stack/dynamic allocation.
-    struct hailo_memory_transfer_params memory_transfer_params;
+
     // TODO: HRT-14781: remove this when every integrated uses BKC that has memory region
     struct hailo_vdma_continuous_buffer nnc_fw_shared_memory_continuous_buffer;
     struct nnc_fw_shared_mem_info nnc_fw_shared_mem_info;

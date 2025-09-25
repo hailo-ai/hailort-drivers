@@ -16,6 +16,12 @@
 
 #include <linux/uaccess.h>
 
+#ifndef HAILO_EMULATOR
+#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS (1000)
+#else
+#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS (1000000)
+#endif /* ifndef HAILO_EMULATOR */
+
 void hailo_soc_init(struct hailo_pcie_soc *soc)
 {
     init_completion(&soc->control_resp_ready);
@@ -52,7 +58,7 @@ static int soc_control(struct hailo_pcie_board *board,
 
     hailo_pcie_soc_write_request(&board->pcie_resources, request);
 
-    ret = wait_for_completion_killable_timeout(&board->soc.control_resp_ready,
+    ret = wait_for_completion_interruptible_timeout(&board->soc.control_resp_ready,
         msecs_to_jiffies(PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS));
     if (ret <= 0) {
         if (0 == ret) {
@@ -142,12 +148,12 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
     params.output_channel_index = response.connect.output_channel_index;
 
     if (!hailo_check_channel_index(params.input_channel_index, controller->hw->src_channels_bitmask, true)) {
-        hailo_dev_err(&board->pdev->dev, "Invalid input channel index %u\n", params.input_channel_index);
+        hailo_dev_err(&board->pDev->dev, "Invalid input channel index %u\n", params.input_channel_index);
         return -EINVAL;
     }
 
     if (!hailo_check_channel_index(params.output_channel_index, controller->hw->src_channels_bitmask, false)) {
-        hailo_dev_err(&board->pdev->dev, "Invalid output channel index %u\n", params.output_channel_index);
+        hailo_dev_err(&board->pDev->dev, "Invalid output channel index %u\n", params.output_channel_index);
         return -EINVAL;
     }
 
@@ -157,13 +163,13 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
     input_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.input_desc_handle);
     output_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.output_desc_handle);
     if (NULL == input_descriptors_buffer || NULL == output_descriptors_buffer) {
-        hailo_dev_err(&board->pdev->dev, "input / output descriptors buffer not found \n");
+        hailo_dev_err(&board->pDev->dev, "input / output descriptors buffer not found \n");
         return -EINVAL;
     }
 
     if (!is_powerof2((size_t)input_descriptors_buffer->desc_list.desc_count) ||
         !is_powerof2((size_t)output_descriptors_buffer->desc_list.desc_count)) {
-        hailo_dev_err(&board->pdev->dev, "Invalid desc list size\n");
+        hailo_dev_err(&board->pDev->dev, "Invalid desc list size\n");
         return -EINVAL;
     }
 
@@ -180,7 +186,7 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
     hailo_set_bit(params.output_channel_index, &context->soc_used_channels_bitmap);
 
     if (copy_to_user((void *)arg, &params, sizeof(params))) {
-        hailo_dev_err(&board->pdev->dev, "copy_to_user fail\n");
+        hailo_dev_err(&board->pDev->dev, "copy_to_user fail\n");
         return -ENOMEM;
     }
 
@@ -211,7 +217,7 @@ static int close_channels(struct hailo_pcie_board *board, u32 channels_bitmap)
     return soc_control(board, &request, &response);
 }
 
-long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_controller *controller,
+long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_controller *controller, 
     struct hailo_file_context *context, unsigned long arg)
 {
     struct hailo_soc_close_params params;
@@ -219,7 +225,7 @@ long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_con
     int err = 0;
 
     if (copy_from_user(&params, (void *)arg, sizeof(params))) {
-        hailo_dev_err(&board->pdev->dev, "copy_from_user fail\n");
+        hailo_dev_err(&board->pDev->dev, "copy_from_user fail\n");
         return -ENOMEM;
     }
 
@@ -229,7 +235,7 @@ long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_con
 
     err = close_channels(board, channels_bitmap);
     if (0 != err) {
-        hailo_dev_err(&board->pdev->dev, "Error closing channels\n");
+        hailo_dev_err(&board->pDev->dev, "Error closing channels\n");
         return err;
     }
 

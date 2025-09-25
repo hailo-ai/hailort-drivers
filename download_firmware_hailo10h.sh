@@ -2,12 +2,23 @@
 set -e
 
 readonly BASE_URI="https://hailo-hailort.s3.eu-west-2.amazonaws.com"
-readonly HRT_VERSION=5.0.1
-readonly FW_AWS_DIR="Hailo10H/${HRT_VERSION}/FW"
-readonly fw_file="hailo10h_fw.tar.gz"
+readonly HRT_VERSION=4.23.0
+readonly FW_AWS_DIR="Hailo10/${HRT_VERSION}/FW"
+readonly list_of_files=(
+    "image-fs"
+    "customer_certificate.bin"
+    "fitImage"
+    "scu_fw.bin"
+    "u-boot.dtb.signed"
+    "u-boot-spl.bin"
+    "u-boot-tfa.itb"
+)
 
 function download_fw(){
-    wget -N ${BASE_URI}/${FW_AWS_DIR}/${fw_file}
+    for file in ${list_of_files[@]}
+    do
+        wget -N ${BASE_URI}/${FW_AWS_DIR}/${file}
+    done
 }
 
 function create_fw_dir(){
@@ -16,14 +27,9 @@ function create_fw_dir(){
     cd ${dir_name}
 }
 
-function unpack_fw(){
-    tar -xzf ${fw_file}
-}
-
 function main(){
     create_fw_dir
     download_fw
-    unpack_fw
 }
 
 main

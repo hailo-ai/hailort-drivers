@@ -14,15 +14,12 @@
 #define DMA_DESC_ADDRESS_MASK               (0x7fffffff0)
 #define EXTERNAL_DESCRIPTOR_KIND            (2)
 #define DESCRIPTOR_KIND_SHIFT               (62)
-#define MARS_CHANNEL_ID_MASK                (0x1f)
-#define H15X_CHANNEL_ID_MASK                (0xf)
+#define CHANNEL_ID_MASK                     (0xf)
 #define CHANNEL_ID_SHIFT                    (57)
 
 #define DDR_AXI_DATA_ID                     (1)
 #define DRAM_DMA_HOST_INTERRUPTS_BITMASK    (1 << 4)
 #define DRAM_DMA_DEVICE_INTERRUPTS_BITMASK  (1 << 5)
-#define DRAM_DMA_SRC_CHANNELS_BITMASK_H10H  (0x000000000000FFFF)
-#define DRAM_DMA_SRC_CHANNELS_BITMASK_H10H2 (0x0000000000FFFFFF)
 
 #define OUTPUT_IRQ_NAME                     "output"
 #define INPUT_IRQ_NAME                      "input"

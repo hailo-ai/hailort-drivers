@@ -43,15 +43,17 @@ void hailo_nnc_finalize(struct hailo_pcie_nnc *nnc)
     rcu_read_unlock();
 }
 
-static int hailo_fw_control(struct hailo_pcie_board *board, struct hailo_file_context *context,
-    unsigned long arg, bool* should_up_board_mutex)
+static int hailo_fw_control(struct hailo_pcie_board *board, unsigned long arg, bool* should_up_board_mutex)
 {
     struct hailo_fw_control *command = &board->nnc.fw_control.command;
     long completion_result = 0;
     int err = 0;
 
+    up(&board->mutex);
+    *should_up_board_mutex = false;
+
     if (down_interruptible(&board->nnc.fw_control.mutex)) {
-        pr_debug(DRIVER_NAME ": hailo_fw_control down_interruptible fail tgid:%d (process was interrupted or killed)\n", current->tgid);
+        hailo_info(board, "hailo_fw_control down_interruptible fail tgid:%d (process was interrupted or killed)\n", current->tgid);
         return -ERESTARTSYS;
     }
 
@@ -70,21 +72,7 @@ static int hailo_fw_control(struct hailo_pcie_board *board, struct hailo_file_co
     }
 
     // Wait for response
-    up(&board->mutex);
     completion_result = wait_for_completion_interruptible_timeout(&board->nnc.fw_control.completion, msecs_to_jiffies(command->timeout_ms));
-    if (down_interruptible(&board->mutex)) {
-        pr_info(DRIVER_NAME ": hailo_fw_control down_interruptible fail tgid:%d (process was interrupted or killed)\n", current->tgid);
-        *should_up_board_mutex = false;
-        err = -ERESTARTSYS;
-        goto l_exit;
-    }
-
-    if (!context->is_valid) {
-        pr_err(DRIVER_NAME ": hailo_fw_control, context is not valid\n");
-        err = -ENXIO;
-        goto l_exit;
-    }
-
     if (completion_result <= 0) {
         if (0 == completion_result) {
             hailo_err(board, "hailo_fw_control, timeout waiting for control (timeout_ms=%d)\n", command->timeout_ms);
@@ -129,8 +117,7 @@ static long hailo_get_notification_wait_thread(struct hailo_pcie_board *board, s
     return -EFAULT;
 }
 
-static long hailo_read_notification_ioctl(struct hailo_pcie_board *board, struct hailo_file_context *context,
-    unsigned long arg, struct file *filp,
+static long hailo_read_notification_ioctl(struct hailo_pcie_board *board, unsigned long arg, struct file *filp,
     bool* should_up_board_mutex)
 {
     long err = 0;
@@ -142,26 +129,20 @@ static long hailo_read_notification_ioctl(struct hailo_pcie_board *board, struct
     if (0 != err) {
         goto l_exit;
     }
-
     up(&board->mutex);
-    err = wait_for_completion_interruptible(&current_waiting_thread->notification_completion);
-    if (down_interruptible(&board->mutex)) {
-        pr_debug("hailo_read_notification_ioctl: down_interruptible error (process was interrupted or killed)\n");
-        *should_up_board_mutex = false;
-        err = -ERESTARTSYS;
-        goto l_exit;
-    }
 
-    if (!context->is_valid) {
-        pr_err(DRIVER_NAME ": hailo_read_notification_ioctl, context is not valid\n");
-        err = -ENXIO;
-        goto l_exit;
-    }
-
-    if (err < 0) {
+    if (0 > (err = wait_for_completion_interruptible(&current_waiting_thread->notification_completion))) {
         hailo_info(board,
             "HAILO_READ_NOTIFICATION - wait_for_completion_interruptible error. err=%ld. tgid=%d (process was interrupted or killed)\n",
             err, current_waiting_thread->tgid);
+        *should_up_board_mutex = false;
+        goto l_exit;
+    }
+
+    if (down_interruptible(&board->mutex)) {
+        hailo_info(board, "HAILO_READ_NOTIFICATION - down_interruptible error (process was interrupted or killed)\n");
+        *should_up_board_mutex = false;
+        err = -ERESTARTSYS;
         goto l_exit;
     }
 
@@ -229,15 +210,14 @@ static long hailo_read_log_ioctl(struct hailo_pcie_board *board, unsigned long a
     return 0;
 }
 
-long hailo_nnc_ioctl(struct hailo_pcie_board *board, struct hailo_file_context *context, 
-    unsigned int cmd, unsigned long arg,
+long hailo_nnc_ioctl(struct hailo_pcie_board *board, unsigned int cmd, unsigned long arg,
     struct file *filp, bool *should_up_board_mutex)
 {
     switch (cmd) {
     case HAILO_FW_CONTROL:
-        return hailo_fw_control(board, context, arg, should_up_board_mutex);
+        return hailo_fw_control(board, arg, should_up_board_mutex);
     case HAILO_READ_NOTIFICATION:
-        return hailo_read_notification_ioctl(board, context, arg, filp, should_up_board_mutex);
+        return hailo_read_notification_ioctl(board, arg, filp, should_up_board_mutex);
     case HAILO_DISABLE_NOTIFICATION:
         return hailo_disable_notification(board, filp);
     case HAILO_READ_LOG:

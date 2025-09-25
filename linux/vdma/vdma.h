@@ -29,11 +29,8 @@
 #define VDMA_CHANNEL_NUM_PROC_ADDRESS(vdma_registers, channel_index, direction) \
     ((u8*)((vdma_registers)->address) + VDMA_CHANNEL_NUM_PROC_OFFSET(channel_index, direction))
 
-#define DMA_DIRECTION_EQUALS(curr, other) (curr == DMA_BIDIRECTIONAL || curr == other)
+#define DMA_DIRECTION_EQUALS(a, b) (a == DMA_BIDIRECTIONAL || b == DMA_BIDIRECTIONAL || a == b)
 
-#define for_each_vdma_engine(controller, engine, engine_index)                          \
-    _for_each_element_array(controller->vdma_engines, controller->vdma_engines_count,   \
-        engine, engine_index)
 
 // dmabuf is supported from linux kernel version 3.3
 #if LINUX_VERSION_CODE < KERNEL_VERSION( 3, 3, 0 )
@@ -85,6 +82,13 @@ struct hailo_descriptors_list_buffer {
     struct hailo_vdma_descriptors_list desc_list;
 };
 
+struct hailo_vdma_low_memory_buffer {
+    struct list_head                    vdma_low_memory_buffer_list;
+    uintptr_t                           handle;
+    size_t                              pages_count;
+    void                                **pages_address;
+};
+
 struct hailo_vdma_continuous_buffer {
     struct list_head    continuous_buffer_list;
     uintptr_t           handle;
@@ -96,19 +100,19 @@ struct hailo_vdma_continuous_buffer {
 struct hailo_vdma_controller;
 struct hailo_vdma_controller_ops {
     void (*update_channel_interrupts)(struct hailo_vdma_controller *controller, size_t engine_index,
-        u64 channels_bitmap);
+        u32 channels_bitmap);
 };
 
 struct hailo_vdma_controller {
-    struct hailo_vdma_hw             *hw;
+    struct hailo_vdma_hw *hw;
     struct hailo_vdma_controller_ops *ops;
-    struct device                    *dev;
+    struct device *dev;
 
-    size_t                   vdma_engines_count;
+    size_t vdma_engines_count;
     struct hailo_vdma_engine *vdma_engines;
 
-    struct list_head file_context_list;
-    spinlock_t       file_context_list_lock;
+    spinlock_t interrupts_lock;
+    wait_queue_head_t interrupts_wq;
 
     struct file *used_by_filp;
 
@@ -116,40 +120,23 @@ struct hailo_vdma_controller {
     struct hailo_vdma_interrupts_read_timestamp_params read_interrupt_timestamps_params;
 };
 
-struct hailo_vdma_context_channels {
-    u64                enabled_bitmap[MAX_VDMA_ENGINES];
-    u64                interrupted_bitmap[MAX_VDMA_ENGINES];
-    wait_queue_head_t  interrupts_wq;
-    spinlock_t         lock;
-};
+#define for_each_vdma_engine(controller, engine, engine_index)                          \
+    _for_each_element_array(controller->vdma_engines, controller->vdma_engines_count,   \
+        engine, engine_index)
 
 struct hailo_vdma_file_context {
-    struct list_head file_context_list;
-    bool             is_valid;
-
-    atomic_t         last_vdma_user_buffer_handle;
+    atomic_t last_vdma_user_buffer_handle;
     struct list_head mapped_user_buffer_list;
 
-    // Last_vdma_handle works as a handle for vdma descriptor list and for the vdma buffer -
+    // Last_vdma_handle works as a handle for vdma decriptor list and for the vdma buffer -
     // there will be no collisions between the two
-    atomic_t         last_vdma_handle;
+    atomic_t last_vdma_handle;
     struct list_head descriptors_buffer_list;
+    struct list_head vdma_low_memory_buffer_list;
     struct list_head continuous_buffer_list;
-
-    struct hailo_vdma_context_channels channels;
+    u32 enabled_channels_bitmap[MAX_VDMA_ENGINES];
 };
 
-void hailo_vdma_init_context_channels(struct hailo_vdma_file_context *context);
-
-u64 hailo_vdma_context_get_enabled_channels_bitmap(struct hailo_vdma_file_context *context, u8 engine_idx);
-void hailo_vdma_context_set_enabled_channels(struct hailo_vdma_file_context *context, u8 engine_idx, u64 bitmap);
-void hailo_vdma_context_clear_enabled_channels(struct hailo_vdma_file_context *context, u8 engine_idx, u64 bitmap);
-
-u64 hailo_vdma_context_get_and_clear_interrupts(struct hailo_vdma_file_context *context, u8 engine_idx, u64 bitmap);
-void hailo_vdma_context_set_channel_interrupts(struct hailo_vdma_file_context *context, u8 engine_idx, u64 bitmap);
-void hailo_vdma_context_clear_channel_interrupts(struct hailo_vdma_file_context *context, u8 engine_idx, u64 bitmap);
-
-int hailo_vdma_context_wait_for_interrupt(struct hailo_vdma_file_context *context, u64 bitmaps[MAX_VDMA_ENGINES]);
 
 int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
     struct device *dev, struct hailo_vdma_hw *vdma_hw,
@@ -159,17 +146,14 @@ int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
 void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *controller,
     size_t engine_index);
 
-void hailo_vdma_file_context_init(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller);
+void hailo_vdma_file_context_init(struct hailo_vdma_file_context *context);
 void hailo_vdma_file_context_finalize(struct hailo_vdma_file_context *context,
     struct hailo_vdma_controller *controller, struct file *filp);
 
-void hailo_vdma_wakeup_interrupts(struct hailo_vdma_controller *controller, u8 engine_index, u64 channels_bitmap);
+void hailo_vdma_wakeup_interrupts(struct hailo_vdma_controller *controller, struct hailo_vdma_engine *engine, 
+    u32 channels_bitmap);
 void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller, size_t engine_index,
-    u64 channels_bitmap);
-
-void hailo_vdma_disable_channels_per_engine(struct hailo_vdma_controller *controller,
-    struct hailo_vdma_file_context *context,
-    u8 engine_index, u64 channels_bitmap);
+    u32 channels_bitmap);
 
 // TODO: reduce params count
 long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
@@ -179,5 +163,6 @@ int hailo_vdma_mmap(struct hailo_vdma_file_context *context, struct hailo_vdma_c
     struct vm_area_struct *vma, uintptr_t vdma_handle);
 
 enum dma_data_direction get_dma_direction(enum hailo_dma_data_direction hailo_direction);
+void hailo_vdma_disable_vdma_channels(struct hailo_vdma_controller *controller, const bool should_close_channels);
 
 #endif /* _HAILO_VDMA_VDMA_H_ */

@@ -34,8 +34,6 @@
 // 16 MB
 #define CMA_FW_SHM_SIZE (0x1000000)
 
-#define MAX_VDMA_CHANNELS_PER_ENGINE_H15 (32)
-
 // Enum that indexes different integrated board types - only used as indexing for the integrated_board_data_arr array
 enum integrated_board_type
 {
@@ -45,8 +43,18 @@ enum integrated_board_type
 };
 
 static const struct vdma_interrupt_data hailo15h_interrupts_data[] = {
-    [IRQ_TYPE_INPUT] = {0},
-    [IRQ_TYPE_OUTPUT] = {0},
+    [IRQ_TYPE_INPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_INPUT,
+    },
+    [IRQ_TYPE_OUTPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_OUTPUT,
+    },
     [IRQ_TYPE_BOTH] = {
         .vdma_interrupt_mask_offset = 0x990,
         .vdma_interrupt_status_offset = 0x994,
@@ -56,8 +64,18 @@ static const struct vdma_interrupt_data hailo15h_interrupts_data[] = {
 };
 
 static const struct vdma_interrupt_data hailo15l_interrupts_data[] = {
-    [IRQ_TYPE_INPUT] = {0},
-    [IRQ_TYPE_OUTPUT] = {0},
+    [IRQ_TYPE_INPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_INPUT,
+    },
+    [IRQ_TYPE_OUTPUT] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0x00,
+        .irq_type = IRQ_TYPE_OUTPUT,
+    },
     [IRQ_TYPE_BOTH] = {
         .vdma_interrupt_mask_offset = 0xa00,
         .vdma_interrupt_status_offset = 0xa04,
@@ -68,18 +86,23 @@ static const struct vdma_interrupt_data hailo15l_interrupts_data[] = {
 
 static const struct vdma_interrupt_data hailo10h2_interrupts_data[] = {
     [IRQ_TYPE_INPUT] = {
-        .vdma_interrupt_mask_offset = 0xda0,
-        .vdma_interrupt_status_offset = 0xda4,
-        .vdma_interrupt_w1c_offset = 0xda8,
+        .vdma_interrupt_mask_offset = 0xc50,
+        .vdma_interrupt_status_offset = 0xc54,
+        .vdma_interrupt_w1c_offset = 0xc58,
         .irq_type = IRQ_TYPE_INPUT,
     },
     [IRQ_TYPE_OUTPUT] = {
-        .vdma_interrupt_mask_offset = 0xdb0,
-        .vdma_interrupt_status_offset = 0xdb4,
-        .vdma_interrupt_w1c_offset = 0xdb8,
+        .vdma_interrupt_mask_offset = 0xc60,
+        .vdma_interrupt_status_offset = 0xc64,
+        .vdma_interrupt_w1c_offset = 0xc68,
         .irq_type = IRQ_TYPE_OUTPUT,
     },
-    [IRQ_TYPE_BOTH] = {0}
+    [IRQ_TYPE_BOTH] = {
+        .vdma_interrupt_mask_offset = 0x00,
+        .vdma_interrupt_status_offset = 0x00,
+        .vdma_interrupt_w1c_offset = 0xc00,
+        .irq_type = IRQ_TYPE_BOTH,
+    }
 };
 
 // TODO: HRT-14933 : chnage name to hailo15h in mercury
@@ -88,47 +111,16 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
         .board_type = HAILO_BOARD_TYPE_HAILO15,
         .vdma_interrupts_data = hailo15h_interrupts_data,
         .fw_filename          = "hailo/hailo15_nnc_fw.bin",
-        // TODO: HRT-17117 : Remove vdma_hw duplications between board types
-        .vdma_hw =
-        {
-            .channel_id_mask = H15X_CHANNEL_ID_MASK,
-            .channel_id_shift = CHANNEL_ID_SHIFT,
-            .ddr_data_id = DDR_AXI_DATA_ID,
-            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
-            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
-            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE_H15,
-        }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO15L] = {
         .board_type = HAILO_BOARD_TYPE_HAILO15L,
         .vdma_interrupts_data = hailo15l_interrupts_data,
         .fw_filename          = "hailo/hailo15l_nnc_fw.bin",
-        .vdma_hw =
-        {
-            .channel_id_mask = H15X_CHANNEL_ID_MASK,
-            .channel_id_shift = CHANNEL_ID_SHIFT,
-            .ddr_data_id = DDR_AXI_DATA_ID,
-            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
-            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
-            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE_H15,
-        }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2] = {
         .board_type = HAILO_BOARD_TYPE_MARS,
         .vdma_interrupts_data = hailo10h2_interrupts_data,
         .fw_filename          = "hailo/mars_nnc_fw.bin",
-        .vdma_hw =
-        {
-            .channel_id_mask = MARS_CHANNEL_ID_MASK,
-            .channel_id_shift = CHANNEL_ID_SHIFT,
-            .ddr_data_id = DDR_AXI_DATA_ID,
-            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
-            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H2,
-            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE,
-        }
     },
 };
 
@@ -309,7 +301,7 @@ static int driver_probe(struct platform_device *pdev)
     }
 
     sema_init(&board->mutex, 1);
-    board->pdev = pdev;
+    board->pDev = pdev;
 
     err = hailo_integrated_nnc_cpu_struct_init(board);
     if (err < 0) {
@@ -398,7 +390,7 @@ static int driver_probe(struct platform_device *pdev)
     board->class = class;
 
     /* Creating device */
-    device = device_create_with_groups(class, &pdev->dev, dev, NULL, hailo_dev_groups,
+    device = device_create_with_groups(class, NULL, dev, NULL, hailo_dev_groups,
         DEVICE_NODE_NAME);
     if (IS_ERR(device)) {
         err = PTR_ERR(device);
