@@ -21,7 +21,7 @@
 
 #include "fops.h"
 #include "vdma_common.h"
-#include "utils/logs.h"
+#include "logs.h"
 #include "vdma/memory.h"
 #include "vdma/ioctl.h"
 #include "utils/compact.h"
@@ -222,30 +222,7 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
-static long hailo_memory_transfer_ioctl(struct hailo_pcie_board *board, unsigned long arg)
-{
-    long err = 0;
-    struct hailo_memory_transfer_params* transfer = &board->memory_transfer_params;
 
-    hailo_dbg(board, "Start memory transfer ioctl\n");
-
-    if (copy_from_user(transfer, (void __user*)arg, sizeof(*transfer))) {
-        hailo_err(board, "copy_from_user fail\n");
-        return -ENOMEM;
-    }
-
-    err = hailo_pcie_memory_transfer(&board->pcie_resources, transfer);
-    if (err < 0) {
-        hailo_err(board, "memory transfer failed %ld", err);
-    }
-
-    if (copy_to_user((void __user*)arg, transfer, sizeof(*transfer))) {
-        hailo_err(board, "copy_to_user fail\n");
-        return -ENOMEM;
-    }
-
-    return err;
-}
 
 static void firmware_notification_irq_handler(struct hailo_pcie_board *board)
 {
@@ -278,14 +255,15 @@ static void boot_irq_handler(struct hailo_pcie_board *board, struct hailo_pcie_i
         complete(&board->soft_reset.reset_completed);
     }
     if (irq_source->sw_interrupts & HAILO_PCIE_BOOT_IRQ) {
-        hailo_dbg(board, "boot trigger IRQ\n");
+        hailo_dbg(board, "boot trigger IRQ - firmware boot completed\n");
         complete_all(&board->fw_boot.fw_loaded_completion);
     } else {
-        board->fw_boot.boot_used_channel_bitmap &= ~irq_source->vdma_channels_bitmap;
-        hailo_dbg(board, "boot vDMA data IRQ - channel_bitmap = 0x%x\n", irq_source->vdma_channels_bitmap);
-        if (0 == board->fw_boot.boot_used_channel_bitmap) {
+        board->fw_boot.common.boot_used_channel_bitmap &= ~irq_source->vdma_channels_bitmap;
+        hailo_dbg(board, "boot vDMA data IRQ - boot_used_channel_bitmap=0x%x, vdma_channels_bitmap=0x%x\n", 
+            board->fw_boot.common.boot_used_channel_bitmap, irq_source->vdma_channels_bitmap);
+        if (0 == board->fw_boot.common.boot_used_channel_bitmap) {
             complete_all(&board->fw_boot.vdma_boot_completion);
-            hailo_dbg(board, "boot vDMA data trigger IRQ\n");
+            hailo_dbg(board, "BOOT_COMPLETION: boot vDMA data trigger IRQ - ALL CHANNELS COMPLETED\n");
         }
     }
 }
@@ -379,7 +357,7 @@ static long hailo_query_device_properties(struct hailo_pcie_board *board, unsign
 
     if (copy_to_user((void __user*)arg, &props, sizeof(props))) {
         hailo_err(board, "HAILO_QUERY_DEVICE_PROPERTIES, copy_to_user failed\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;
@@ -398,7 +376,7 @@ static long hailo_query_driver_info(struct hailo_pcie_board *board, unsigned lon
 
     if (copy_to_user((void __user*)arg, &info, sizeof(info))) {
         hailo_err(board, "HAILO_QUERY_DRIVER_INFO, copy_to_user failed\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;
@@ -407,8 +385,6 @@ static long hailo_query_driver_info(struct hailo_pcie_board *board, unsigned lon
 static long hailo_general_ioctl(struct hailo_pcie_board *board, unsigned int cmd, unsigned long arg)
 {
     switch (cmd) {
-    case HAILO_MEMORY_TRANSFER:
-        return hailo_memory_transfer_ioctl(board, arg);
     case HAILO_QUERY_DEVICE_PROPERTIES:
         return hailo_query_device_properties(board, arg);
     case HAILO_QUERY_DRIVER_INFO:

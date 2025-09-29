@@ -4,7 +4,7 @@
  **/
 
 #include "fw_notification.h"
-#include "utils/logs.h"
+#include "logs.h"
 #include "utils/integrated_nnc_utils.h"
 #include "utils/fw_common.h"
 #include "fw_operation.h"
@@ -117,7 +117,7 @@ static long hailo_get_notification_wait_thread(struct hailo_board *board, struct
         }
     }
 
-    return -EFAULT;
+    return -EINVAL;
 }
 
 long hailo_read_notification_ioctl(struct hailo_board *board, unsigned long arg, struct file *filp,

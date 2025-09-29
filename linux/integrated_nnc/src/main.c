@@ -21,7 +21,7 @@
 #include "driver_down_notification.h"
 #include "fw_logger.h"
 #include "dram_vdma.h"
-#include "utils/logs.h"
+#include "logs.h"
 #include "utils/compact.h"
 #include "vdma/memory.h"
 
@@ -41,7 +41,7 @@ enum integrated_board_type
 {
     HAILO_INTEGRATED_BOARD_TYPE_HAILO15H = 0,
     HAILO_INTEGRATED_BOARD_TYPE_HAILO15L = 1,
-    HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2 = 2,
+    HAILO_INTEGRATED_BOARD_TYPE_HAILO12L = 2,
 };
 
 static const struct vdma_interrupt_data hailo15h_interrupts_data[] = {
@@ -66,7 +66,7 @@ static const struct vdma_interrupt_data hailo15l_interrupts_data[] = {
     }
 };
 
-static const struct vdma_interrupt_data hailo10h2_interrupts_data[] = {
+static const struct vdma_interrupt_data hailo12l_interrupts_data[] = {
     [IRQ_TYPE_INPUT] = {
         .vdma_interrupt_mask_offset = 0xda0,
         .vdma_interrupt_status_offset = 0xda4,
@@ -115,9 +115,9 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
             .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE_H15,
         }
     },
-    [HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2] = {
+    [HAILO_INTEGRATED_BOARD_TYPE_HAILO12L] = {
         .board_type = HAILO_BOARD_TYPE_MARS,
-        .vdma_interrupts_data = hailo10h2_interrupts_data,
+        .vdma_interrupts_data = hailo12l_interrupts_data,
         .fw_filename          = "hailo/mars_nnc_fw.bin",
         .vdma_hw =
         {
@@ -126,7 +126,7 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
             .ddr_data_id = DDR_AXI_DATA_ID,
             .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
             .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H2,
+            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H12L,
             .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE,
         }
     },
@@ -146,9 +146,29 @@ static ssize_t accelerator_type_show(struct device *dev, struct device_attribute
 }
 static DEVICE_ATTR_RO(accelerator_type);
 
+static ssize_t cma_in_use_show(struct device *dev, struct device_attribute *_attr,
+    char *buf)
+{
+    struct hailo_board *board = (struct hailo_board *)dev_get_drvdata(dev);
+    u64 total_cma = atomic64_read(&board->vdma.cma_in_use);
+    return sprintf(buf, "%llu\n", total_cma);
+}
+static DEVICE_ATTR_RO(cma_in_use);
+
+static ssize_t desc_cma_in_use_show(struct device *dev, struct device_attribute *_attr,
+    char *buf)
+{
+    struct hailo_board *board = (struct hailo_board *)dev_get_drvdata(dev);
+    u64 total_desc_cma = atomic64_read(&board->vdma.desc_cma_in_use);
+    return sprintf(buf, "%llu\n", total_desc_cma);
+}
+static DEVICE_ATTR_RO(desc_cma_in_use);
+
 static struct attribute *hailo_dev_attrs[] = {
     &dev_attr_board_location.attr,
     &dev_attr_accelerator_type.attr,
+    &dev_attr_cma_in_use.attr,
+    &dev_attr_desc_cma_in_use.attr,
     NULL
 };
 
@@ -166,8 +186,8 @@ static const struct of_device_id driver_match[] = {
         .data = &integrated_board_data_arr[HAILO_INTEGRATED_BOARD_TYPE_HAILO15L],
     },
     {
-        .compatible = "hailo,integrated-nnc,hailo10h2",
-        .data = &integrated_board_data_arr[HAILO_INTEGRATED_BOARD_TYPE_HAILO10H2],
+        .compatible = "hailo,integrated-nnc,hailo12l",
+        .data = &integrated_board_data_arr[HAILO_INTEGRATED_BOARD_TYPE_HAILO12L],
     },
     { }
 };
@@ -398,7 +418,7 @@ static int driver_probe(struct platform_device *pdev)
     board->class = class;
 
     /* Creating device */
-    device = device_create_with_groups(class, &pdev->dev, dev, NULL, hailo_dev_groups,
+    device = device_create_with_groups(class, &pdev->dev, dev, board, hailo_dev_groups,
         DEVICE_NODE_NAME);
     if (IS_ERR(device)) {
         err = PTR_ERR(device);

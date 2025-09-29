@@ -6,6 +6,7 @@
 #include "pcie_common.h"
 #include "fw_operation.h"
 #include "soc_structs.h"
+#include "logs.h"
 
 #include <linux/errno.h>
 #include <linux/bug.h>
@@ -73,8 +74,13 @@
 #define GPIO_SKU_ID_4_BIT   10  /* GPIO26 - SKU ID[4] */
 #define GPIO_SKU_ID_5_BIT   11  /* GPIO27 - SKU ID[5] */
 
-#define DTB_FILENAME_TEMPLATE "hailo/hailo10h/u-boot-%d.dtb.signed"
-#define DTB_FILENAME_DEFAULT "hailo/hailo10h/u-boot-default.dtb.signed"
+// max len of u32 is 10, plus the null terminator
+#define SKU_ID_MAX_LEN 11
+
+// Constants for the new common function
+#ifndef MAX_SG_DESCS_COUNT
+#define MAX_SG_DESCS_COUNT (65536)
+#endif
 
 struct hailo_fw_addresses {
     u32 boot_fw_header;
@@ -112,66 +118,87 @@ static const struct hailo_file_batch hailo10h_files_stg1[] = {
 
 static const struct hailo_file_batch hailo10h_files_stg2[] = {
     {
-        .filename = "hailo/hailo10h/u-boot.dtb.signed",
+        .filename = "hailo/hailo10h/u-boot-%s.dtb.signed",
         .address = 0xA8004,
         .max_size = 0x20000,
         .flags = HAILO_FILE_F_MANDATORY | HAILO_FILE_F_DYNAMIC_NAME
     }
 };
 
-static const struct hailo_file_batch hailo10h2_files_stg1[] = {
+static const struct hailo_file_batch hailo10h_files_stg3[] = {
     {
-        .filename = "hailo/hailo10h/customer_certificate.bin",
+        .filename = "hailo/hailo10h/u-boot-spl.bin",
+        .address = 0x80300000,
+        .max_size = 0x2C000,
+        .flags = HAILO_FILE_F_MANDATORY,
+    },
+    {
+        .filename = "hailo/hailo10h/u-boot-tfa.itb",
+        .address = 0x8032C000,
+        .max_size = 0x1d4000,
+        .flags = HAILO_FILE_F_NONE,
+    },
+    {
+        .filename = "hailo/hailo10h/fitImage",
+        .address = 0x88000000,
+        .max_size = 0x8000000,
+        .flags = HAILO_FILE_F_MANDATORY
+    },
+    {
+        .filename = "hailo/hailo10h/image-fs",
+        .address = 0x90000000,
+        .max_size = 0x20000000, // max size 512 MiB
+        .flags = HAILO_FILE_F_MANDATORY
+    }
+};
+
+static const struct hailo_file_batch hailo12l_files_stg1[] = {
+    {
+        .filename = "hailo/hailo12l/customer_certificate.bin",
         .address = 0x88000,
         .max_size = 0x8004,
         .flags = HAILO_FILE_F_MANDATORY
     },
     {
-        .filename = "hailo/hailo10h/scu_fw.bin",
+        .filename = "hailo/hailo12l/scu_fw.bin",
         .address = 0x20000,
         .max_size = 0x40000,
         .flags = HAILO_FILE_F_MANDATORY | HAILO_FILE_F_HAS_HEADER
     }
 };
 
-static const struct hailo_file_batch hailo10h2_files_stg2[] = {
+static const struct hailo_file_batch hailo12l_files_stg2[] = {
     {
-        .filename = "hailo/hailo10h/u-boot.dtb.signed",
+        .filename = "hailo/hailo12l/u-boot-%s.dtb.signed",
         .address = 0x80004,
         .max_size = 0x20000,
         .flags = HAILO_FILE_F_MANDATORY | HAILO_FILE_F_DYNAMIC_NAME
     }
 };
 
-// This second stage supports both hailo10h and hailo10hs (a.k.a hailo10h_family)
-static const struct hailo_file_batch hailo10h_family_files_stg3[] = {
+static const struct hailo_file_batch hailo12l_files_stg3[] = {
     {
-        .filename = "hailo/hailo10h/u-boot-spl.bin",
-        .address = 0x85000000,
-        .max_size = 0x1000000,
+        .filename = "hailo/hailo12l/u-boot-spl.bin",
+        .address = 0x80300000,
+        .max_size = 0x2C000,
         .flags = HAILO_FILE_F_MANDATORY
     },
     {
-        .filename = "hailo/hailo10h/u-boot-tfa.itb",
-        .address = 0x86000000,
-        .max_size = 0x1000000,
+        .filename = "hailo/hailo12l/u-boot-tfa.itb",
+        .address = 0x8032C000,
+        .max_size = 0x1d4000,
         .flags = HAILO_FILE_F_NONE
     },
     {
-        .filename = "hailo/hailo10h/fitImage",
-        .address = 0x87000000,
-        .max_size = 0x1000000,
+        .filename = "hailo/hailo12l/fitImage",
+        .address = 0x88000000,
+        .max_size = 0x8000000,
         .flags = HAILO_FILE_F_MANDATORY
     },
     {
-        .filename = "hailo/hailo10h/image-fs",
-#ifndef HAILO_EMULATOR
-        .address = 0x88000000,
-#else
-        // TODO : HRT-15692 - merge two cases
-        .address = 0x89000000,
-#endif /* ifndef HAILO_EMULATOR */
-        .max_size = 0x20000000, // Max size 512MB
+        .filename = "hailo/hailo12l/image-fs",
+        .address = 0x90000000,
+        .max_size = 0x20000000, // max size 512 MiB
         .flags = HAILO_FILE_F_MANDATORY
     }
 };
@@ -243,8 +270,8 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
                 .amount_of_files_in_stage = 1
             },
             {
-                .batch = hailo10h_family_files_stg3,
-                .trigger_address = 0x84000000,
+                .batch = hailo10h_files_stg3,
+                .trigger_address = 0x802FF000,
                 .timeout = PCI_EP_WAIT_TIMEOUT_MS,
                 .amount_of_files_in_stage = 4
             },
@@ -289,20 +316,20 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
         },
         .stages = {
             {
-                .batch = hailo10h2_files_stg1,
+                .batch = hailo12l_files_stg1,
                 .trigger_address = 0x98d18,
                 .timeout = FIRMWARE_WAIT_TIMEOUT_MS,
                 .amount_of_files_in_stage = 2
             },
             {
-                .batch = hailo10h2_files_stg2,
+                .batch = hailo12l_files_stg2,
                 .trigger_address = 0xa6ff8,
                 .timeout = FIRMWARE_WAIT_TIMEOUT_MS,
                 .amount_of_files_in_stage = 1
             },
             {
-                .batch = hailo10h_family_files_stg3,
-                .trigger_address = 0x84000000,
+                .batch = hailo12l_files_stg3,
+                .trigger_address = 0x802FF000,
                 .timeout = PCI_EP_WAIT_TIMEOUT_MS,
                 .amount_of_files_in_stage = 4
             },
@@ -310,12 +337,14 @@ static const struct hailo_board_compatibility compat[HAILO_BOARD_TYPE_COUNT] = {
     },
 };
 
-void hailo_resolve_dtb_filename(char *filename, u32 sku_id)
+void hailo_resolve_dtb_filename(char *filename, u32 sku_id, const char *file_name_template)
 {
+    char sku_id_str[SKU_ID_MAX_LEN];
     if (HAILO_SKU_ID_DEFAULT == sku_id) {
-        snprintf(filename, FW_FILENAME_MAX_LEN, DTB_FILENAME_DEFAULT);
+        snprintf(filename, FW_FILENAME_MAX_LEN, file_name_template, "default");
     } else {
-        snprintf(filename, FW_FILENAME_MAX_LEN, DTB_FILENAME_TEMPLATE, sku_id);
+        snprintf(sku_id_str, SKU_ID_MAX_LEN, "%d", sku_id);
+        snprintf(filename, FW_FILENAME_MAX_LEN, file_name_template, sku_id_str);
     }
 }
 
@@ -679,7 +708,7 @@ static int write_single_file(struct hailo_pcie_resources *resources, const struc
     }
 
     if (file_info->flags & HAILO_FILE_F_HAS_HEADER) {
-        err = FW_VALIDATION__validate_fw_headers((uintptr_t)firmware->data, firmware->size, &app_firmware_header,
+        err = FW_VALIDATION__validate_fw_headers((uintptr_t)firmware->data, (u32)firmware->size, &app_firmware_header,
             &core_firmware_header, &firmware_cert, resources->board_type, resources->accelerator_type);
         if (err < 0) {
             release_firmware(firmware);
@@ -713,22 +742,22 @@ int hailo_pcie_write_firmware_batch(struct device *dev, struct hailo_pcie_resour
         char filename[FW_FILENAME_MAX_LEN] = {0};
 
         if (file->flags & HAILO_FILE_F_DYNAMIC_NAME) {
-            hailo_resolve_dtb_filename(filename, resources->sku_id);
+            hailo_resolve_dtb_filename(filename, resources->sku_id, file->filename);
         } else {
             memcpy(filename, file->filename, FW_FILENAME_MAX_LEN);
         }
 
-        dev_notice(dev, "Writing file %s\n", filename);
+        hailo_dev_notice(dev, "Writing file %s\n", filename);
 
         err = write_single_file(resources, file, filename, dev);
         if (err < 0) {
             if (file->flags & HAILO_FILE_F_MANDATORY) {
-                pr_err("Failed with error %d to write file %s\n err\n", err, filename);
+                hailo_dev_err(dev, "Failed with error %d to write file %s\n", err, filename);
                 return err;
             }
         }
 
-        dev_notice(dev, "File %s written successfully\n", filename);
+        hailo_dev_notice(dev, "File %s written successfully\n", filename);
     }
 
     hailo_trigger_firmware_boot(resources, stage);
@@ -794,43 +823,9 @@ void hailo_pcie_disable_interrupts(struct hailo_pcie_resources* resources)
     hailo_resource_write32(&resources->config, BSC_IMASK_HOST, 0);
 }
 
-static int direct_memory_transfer(struct hailo_pcie_resources *resources,
-    struct hailo_memory_transfer_params *params)
-{
-    switch (params->transfer_direction) {
-    case TRANSFER_READ:
-        read_memory(resources, params->address, params->buffer, (u32)params->count);
-        break;
-    case TRANSFER_WRITE:
-        write_memory(resources, params->address, params->buffer, (u32)params->count);
-        break;
-    default:
-        return -EINVAL;
-    }
 
-    return 0;
-}
 
-int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct hailo_memory_transfer_params *params)
-{
-    if (params->count > ARRAY_SIZE(params->buffer)) {
-        return -EINVAL;
-    }
 
-    switch (params->memory_type) {
-    case HAILO_TRANSFER_DEVICE_DIRECT_MEMORY:
-        return direct_memory_transfer(resources, params);
-    case HAILO_TRANSFER_MEMORY_PCIE_BAR0:
-        return hailo_resource_transfer(&resources->config, params);
-    case HAILO_TRANSFER_MEMORY_PCIE_BAR2:
-    case HAILO_TRANSFER_MEMORY_VDMA0:
-        return hailo_resource_transfer(&resources->vdma_registers, params);
-    case HAILO_TRANSFER_MEMORY_PCIE_BAR4:
-        return hailo_resource_transfer(&resources->fw_access, params);
-    default:
-        return -EINVAL;
-    }
-}
 
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources)
 {
@@ -899,65 +894,225 @@ void hailo_pcie_soc_read_response(struct hailo_pcie_resources *resources,
     hailo_resource_read_buffer(&resources->fw_access, 0, sizeof(*response), response);
 }
 
-// Common descriptor programming function that receives descriptor lists
-// Returns number of descriptors programmed, or negative error code
-int hailo_pcie_program_one_file_descriptors(
+/**
+ * Program one FW file descriptors to the vDMA engine.
+ *
+ * @param file_address - the address of the file in the device memory.
+ * @param transfer_size - the size of the file to program.
+ * @param channel_index - the index of the channel to program.
+ * @param raise_int_on_completion - true if this is the last descriptors chunk in the specific channel in the boot flow, false otherwise. If true - will enable
+ * an IRQ for the relevant channel when the transfer is finished.
+ * @param channel - the channel to program.
+ * @param transfer_buffer - the transfer buffer to use.
+ * @param dev - the device to use.
+ * @return the amount of descriptors programmed on success, negative error code on failure.
+ */
+static int hailo_pcie_program_one_file_descriptors(
     u32 file_address,
     u32 transfer_size,
     u8 channel_index,
     bool raise_int_on_completion,
-    struct hailo_pcie_boot_desc_programming_params *desc_params,
-    struct hailo_vdma_mapped_transfer_buffer *transfer_buffer)
+    struct hailo_pcie_boot_dma_channel_state *channel,
+    struct hailo_vdma_mapped_transfer_buffer *transfer_buffer,
+    struct device *dev)
 {
-    int device_desc = 0, host_desc = 0;
     enum hailo_vdma_interrupts_domain interrupts_domain = raise_int_on_completion ?
         HAILO_VDMA_INTERRUPTS_DOMAIN_HOST : HAILO_VDMA_INTERRUPTS_DOMAIN_NONE;
-    const u64 masked_channel_id_for_encode_addr = 0;
+    const u64 masked_channel_id_for_encode_addr = HAILO_PCI_EP_HOST_DMA_DATA_ID;
 
-    struct hailo_vdma_descriptors_list *device_desc_list = desc_params->device_desc_list;
-    struct hailo_vdma_descriptors_list *host_desc_list = desc_params->host_desc_list;
-
-    if (!desc_params || !transfer_buffer || !device_desc_list || !host_desc_list) {
-        pr_err("hailo_pcie_program_one_file_descriptors: Invalid parameters - received NULL pointer\n");
+    if (!channel || !transfer_buffer || !channel->device_descriptors_list || !channel->host_descriptors_list) {
+        hailo_dev_err(dev, "hailo_pcie_program_one_file_descriptors: Invalid parameters - received NULL pointer\n");
         return -EINVAL;
     }
 
-    // Program device descriptors using vdma_common
-    device_desc = hailo_vdma_program_descriptors_in_chunk(
-        file_address,
+    // Program device descriptors
+    hailo_vdma_program_descriptors_in_chunk(
+        file_address | masked_channel_id_for_encode_addr,
         transfer_size,
-        device_desc_list,
-        desc_params->desc_program_num,
-        desc_params->max_desc_count,
-        HAILO_PCI_EP_HOST_DMA_DATA_ID,
-        DEFAULT_STRIDE,
-        masked_channel_id_for_encode_addr);
-    if (device_desc < 0) {
-        pr_err("hailo_pcie_program_one_file_descriptors: Failed to program device descriptors, error = %d\n", device_desc);
-        return device_desc;
-    }
+        channel->device_descriptors_list,
+        channel->desc_program_num,
+        HAILO_PCI_OVER_VDMA_PAGE_SIZE,
+        0);
 
-    // Program host descriptors using vdma_common
-    host_desc = hailo_vdma_program_descriptors_list(
+    // Program host descriptors
+    return hailo_vdma_program_descriptors_list(
         &hailo_pcie_vdma_hw,
-        host_desc_list,
-        desc_params->desc_program_num,
+        channel->host_descriptors_list,
+        channel->desc_program_num,
         transfer_buffer,
         true,
         channel_index,
         interrupts_domain,
         false,
-        DEFAULT_STRIDE);
-    if (host_desc < 0) {
-        pr_err("hailo_pcie_program_one_file_descriptors: Failed to program host descriptors, error = %d\n", host_desc);
-        return host_desc;
+        HAILO_PCI_OVER_VDMA_PAGE_SIZE);
+}
+
+/**
+ * Program one FW file to the vDMA engine.
+ *
+ * @param fw_boot - pointer to the fw boot struct which includes all of the boot resources.
+ * @param file_address - the address of the file in the device memory.
+ * @param file - pointer to the file batch struct.
+ * @param raise_int_on_completion - true if this is the last file in the boot flow, false otherwise. uses to enable an IRQ for the
+ * relevant channel when the transfer is finished.
+ * @param dev - the device to use.
+ * @return 0 on success, negative error code on failure. at the end of the function the firmware is released.
+ */
+static int hailo_pcie_program_one_file_common(struct hailo_pcie_fw_boot *fw_boot, u32 file_address,
+    const struct hailo_file_batch *file, bool raise_int_on_completion, struct device *dev)
+{
+    const struct firmware *firmware = NULL;
+    struct hailo_vdma_mapped_transfer_buffer transfer_buffer = {0};
+    int desc_programmed = 0;
+    int err = 0;
+    size_t remaining_size = 0, data_offset = 0, desc_num_left = 0, current_desc_to_program = 0;
+    struct hailo_pcie_boot_dma_state *boot_dma_state = &fw_boot->boot_dma_state;
+    const char *filename = file->filename;
+
+    hailo_dev_notice(dev, "Programming file %s for DMA transfer\n", filename);
+
+    // Load firmware directly without usermode helper for the relevant file
+    err = request_firmware_direct(&firmware, filename, dev);
+    if (err < 0) {
+        if (file->flags & HAILO_FILE_F_MANDATORY) {
+            hailo_dev_err(dev, "Failed to load firmware file %s\n", filename);
+        }
+        return err;
     }
 
-    // Validate that same amount of descriptors were programmed
-    if (host_desc != device_desc) {
-        pr_err("hailo_pcie_program_one_file_descriptors: Descriptor count mismatch - host: %d, device: %d\n", host_desc, device_desc);
+    // Set the remaining size as the whole file size to begin with
+    remaining_size = firmware->size;
+
+    while (remaining_size > 0) {
+        struct hailo_pcie_boot_dma_channel_state *channel = &boot_dma_state->channels[boot_dma_state->curr_channel_index];
+        bool is_last_desc_chunk_of_curr_channel = false;
+        bool raise_interrupt_on_last_chunk = false;
+
+        // Increment the channel index if the current channel is full
+        if ((MAX_SG_DESCS_COUNT - 1) == channel->desc_program_num) {
+            boot_dma_state->curr_channel_index++;
+            channel = &boot_dma_state->channels[boot_dma_state->curr_channel_index];
+            fw_boot->boot_used_channel_bitmap |= (1 << boot_dma_state->curr_channel_index);
+        }
+
+        // Calculate the number of descriptors left to program and the number of bytes left to program
+        desc_num_left = (MAX_SG_DESCS_COUNT - 1) - channel->desc_program_num;
+
+        // prepare the transfer buffer to make sure all the fields are initialized
+        transfer_buffer.sg_table = &channel->sg_table;
+        transfer_buffer.size = (u32)min(remaining_size, (desc_num_left * HAILO_PCI_OVER_VDMA_PAGE_SIZE));
+        // no need to check for overflow since the variables are constant and always desc_program_num <= max u16 (65536)
+        // & the buffer max size is 256 Mb << 4G (max u32)
+        transfer_buffer.offset = (channel->desc_program_num * HAILO_PCI_OVER_VDMA_PAGE_SIZE);
+
+        // Check if this is the last descriptor chunk to program in the whole boot flow
+        current_desc_to_program = (transfer_buffer.size / HAILO_PCI_OVER_VDMA_PAGE_SIZE);
+        // Validate that we have enough descriptors in the current channel's buffer
+        if (channel->desc_program_num + current_desc_to_program > channel->device_descriptors_list->desc_count) {
+            hailo_dev_err(dev, "Invalid descriptors range: (desc_index + descs_to_program > max_desc_index + 1) where: desc_index=%u, descs_to_program=%zu, max_desc_index=%u\n",
+                channel->desc_program_num, current_desc_to_program, channel->device_descriptors_list->desc_count - 1);
+            release_firmware(firmware);
+            return -EINVAL;
+        }
+
+        // Check if this is the last descriptor chunk to program in the whole boot flow
+        is_last_desc_chunk_of_curr_channel = ((MAX_SG_DESCS_COUNT - 1) ==
+            (current_desc_to_program + channel->desc_program_num));
+        raise_interrupt_on_last_chunk = (is_last_desc_chunk_of_curr_channel || (raise_int_on_completion &&
+            (remaining_size == transfer_buffer.size)));
+
+        // Copy firmware data to DMA buffer
+        if (!channel->kernel_address || !channel->device_descriptors_list || !channel->host_descriptors_list) {
+            hailo_dev_err(dev, "kernel_addresses is NULL or descriptor lists are NULL for channel %u\n",
+                boot_dma_state->curr_channel_index);
+            release_firmware(firmware);
+            return -EINVAL;
+        }
+        memcpy((uint8_t*)channel->kernel_address + transfer_buffer.offset,
+            &((const uint8_t*)firmware->data)[data_offset], transfer_buffer.size);
+
+        // Program the descriptors using common function
+        desc_programmed = hailo_pcie_program_one_file_descriptors(
+            file_address + (u32)data_offset,
+            (u32)transfer_buffer.size,
+            (u8)boot_dma_state->curr_channel_index,
+            raise_interrupt_on_last_chunk,
+            channel,
+            &transfer_buffer,
+            dev);
+        if (desc_programmed < 0) {
+            hailo_dev_err(dev, "Failed to program descriptors for file %s, on channel = %d\n", filename,
+                boot_dma_state->curr_channel_index);
+            release_firmware(firmware);
+            return desc_programmed;
+        }
+
+        // Update remaining size, data_offset and desc_program_num for the next iteration
+        remaining_size -= transfer_buffer.size;
+        data_offset += transfer_buffer.size;
+        channel->desc_program_num += desc_programmed;
+    }
+
+    hailo_dev_notice(dev, "File %s programmed successfully\n", filename);
+    release_firmware(firmware);
+
+    return desc_programmed;
+}
+
+/**
+ * Program the entire batch of firmware files to the vDMA engine.
+ *
+ * @param fw_boot - pointer to the fw boot struct which includes all of the boot resources.
+ * @param resources - pointer to the hailo_pcie_resources struct.
+ * @param stage - the stage to program.
+ * @param dev - the device to use.
+ * @return 0 on success, negative error code on failure.
+ */
+long hailo_pcie_program_firmware_batch_common(struct hailo_pcie_fw_boot *fw_boot,
+    struct hailo_pcie_resources *resources, u32 stage, struct device *dev)
+{
+    long err = 0;
+    int file_index = 0;
+    const struct hailo_pcie_loading_stage *stage_info = hailo_pcie_get_loading_stage_info(resources->board_type, stage);
+    const struct hailo_file_batch *files_batch = stage_info->batch;
+    const u8 amount_of_files = stage_info->amount_of_files_in_stage;
+
+    if (!fw_boot || !resources || !dev) {
+        hailo_dev_err(dev, "Invalid parameters passed to program_firmware_batch_common\n");
         return -EINVAL;
     }
 
-    return host_desc;
+    hailo_dev_dbg(dev, "Programming firmware batch for stage %u (%d files)\n", stage, amount_of_files);
+
+    for (file_index = 0; file_index < amount_of_files; file_index++) {
+        const struct hailo_file_batch *file = &files_batch[file_index];
+        char filename[FW_FILENAME_MAX_LEN] = {0};
+        u32 file_address = file->address;
+        bool raise_int_on_completion = (file_index == (amount_of_files - 1));
+
+        // Handle dynamic filenames (like DTB files based on SKU ID)
+        if (file->flags & HAILO_FILE_F_DYNAMIC_NAME) {
+            hailo_resolve_dtb_filename(filename, resources->sku_id, file->filename);
+        } else {
+            strncpy(filename, file->filename, FW_FILENAME_MAX_LEN - 1);
+            filename[FW_FILENAME_MAX_LEN - 1] = '\0';
+        }
+
+        hailo_dev_dbg(dev, "Programming file %s (address: 0x%x, max_size: %zu)\n", 
+            filename, file_address, file->max_size);
+
+        err = hailo_pcie_program_one_file_common(fw_boot, file_address, file,
+            raise_int_on_completion, dev);
+        if (err < 0) {
+            if (file->flags & HAILO_FILE_F_MANDATORY) {
+                hailo_dev_err(dev, "Failed to program mandatory file %s (error: %ld)\n", filename, err);
+                return err;
+            }
+        } else {
+            hailo_dev_dbg(dev, "File %s programmed successfully (%ld descriptors)\n", filename, err);
+        }
+    }
+
+    hailo_dev_notice(dev, "Firmware batch programming completed for stage %u\n", stage);
+    return 0;
 }

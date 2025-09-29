@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/scatterlist.h>
 #include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/module.h>
 
 // See linux/mm.h
@@ -223,7 +224,9 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
 
         ret = prepare_sg_table(&sgt, addr_or_fd, size);
         if (ret < 0) {
-            dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
+            if (ret != -EINTR) {
+                dev_err(dev, "failed to set sg list for user buffer %d\n", ret);
+            }
             goto free_buffer_struct;
         }
         sgt.nents = dma_map_sg(dev, sgt.sgl, sgt.orig_nents, direction);
@@ -288,21 +291,21 @@ void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf)
     kref_put(&buf->kref, unmap_buffer);
 }
 
-static void vdma_sync_entire_buffer(struct hailo_vdma_controller *controller,
+static void vdma_sync_entire_buffer(struct device *dev,
     struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type)
 {
     if (sync_type == HAILO_SYNC_FOR_CPU) {
-        dma_sync_sg_for_cpu(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
+        dma_sync_sg_for_cpu(dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
             mapped_buffer->data_direction);
     } else {
-        dma_sync_sg_for_device(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
+        dma_sync_sg_for_device(dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
             mapped_buffer->data_direction);
     }
 }
 
 typedef void (*dma_sync_single_callback)(struct device *, dma_addr_t, size_t, enum dma_data_direction);
 // Map sync_info->count bytes starting at sync_info->offset
-static void vdma_sync_buffer_interval(struct hailo_vdma_controller *controller,
+static void vdma_sync_buffer_interval(struct device *dev,
     struct hailo_vdma_buffer *mapped_buffer,
     size_t offset, size_t size, enum hailo_vdma_buffer_sync_type sync_type)
 {
@@ -319,7 +322,7 @@ static void vdma_sync_buffer_interval(struct hailo_vdma_controller *controller,
         // Check if the intervals: [current_iter_offset, sg_dma_len(sg_entry)] and [sync_start_offset, sync_end_offset]
         // have any intersection. If offset isn't at the start of a sg_entry, we still want to sync it.
         if (max(sync_start_offset, current_iter_offset) <= min(sync_end_offset, current_iter_offset + sg_dma_len(sg_entry))) {
-            dma_sync_single(controller->dev, sg_dma_address(sg_entry), sg_dma_len(sg_entry),
+            dma_sync_single(dev, sg_dma_address(sg_entry), sg_dma_len(sg_entry),
                 mapped_buffer->data_direction);
         }
 
@@ -327,7 +330,7 @@ static void vdma_sync_buffer_interval(struct hailo_vdma_controller *controller,
     }
 }
 
-void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
+void hailo_vdma_buffer_sync(struct device *dev,
     struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
     size_t offset, size_t size)
 {
@@ -338,9 +341,9 @@ void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
     }
 
     if ((offset == 0) && (size == mapped_buffer->size)) {
-        vdma_sync_entire_buffer(controller, mapped_buffer, sync_type);
+        vdma_sync_entire_buffer(dev, mapped_buffer, sync_type);
     } else {
-        vdma_sync_buffer_interval(controller, mapped_buffer, offset, size, sync_type);
+        vdma_sync_buffer_interval(dev, mapped_buffer, offset, size, sync_type);
     }
 }
 
@@ -460,6 +463,7 @@ void hailo_vdma_clear_descriptors_buffer_list(struct hailo_vdma_file_context *co
     struct hailo_descriptors_list_buffer *cur = NULL, *next = NULL;
     list_for_each_entry_safe(cur, next, &context->descriptors_buffer_list, descriptors_buffer_list) {
         list_del(&cur->descriptors_buffer_list);
+        atomic64_sub(cur->buffer_size, &controller->desc_cma_in_use);
         hailo_desc_list_release(controller->dev, cur);
         kfree(cur);
     }
@@ -510,6 +514,7 @@ void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *con
     struct hailo_vdma_continuous_buffer *cur = NULL, *next = NULL;
     list_for_each_entry_safe(cur, next, &context->continuous_buffer_list, continuous_buffer_list) {
         list_del(&cur->continuous_buffer_list);
+        atomic64_sub(cur->size, &controller->cma_in_use);
         hailo_vdma_continuous_buffer_free(controller->dev, cur);
         kfree(cur);
     }
@@ -609,12 +614,19 @@ static int prepare_sg_table(struct sg_table *sg_table, uintptr_t user_address, u
     mmap_read_unlock(current->mm);
 
     if (pinned_pages < 0) {
-        pr_err("get_user_pages failed with %d\n", pinned_pages);
+        if (pinned_pages != -EINTR) {
+            pr_err("get_user_pages failed with %d\n", pinned_pages);
+        }
         ret = pinned_pages;
         goto exit;
     } else if (pinned_pages != npages) {
-        pr_err("Pinned %d out of %zu\n", pinned_pages, npages);
-        ret = -EINVAL;
+        if (signal_pending(current)) {
+            // don't log an error if the interrupt is pending
+            ret = -EINTR;
+        } else {
+            pr_err("Pinned %d out of %zu\n", pinned_pages, npages);
+            ret = -EINVAL;
+        }
         goto release_pages;
     }
 

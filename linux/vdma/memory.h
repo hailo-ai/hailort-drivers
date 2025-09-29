@@ -19,7 +19,7 @@ void hailo_vdma_buffer_destroy(struct hailo_vdma_buffer *buf);
 void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf);
 void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf);
 
-void hailo_vdma_buffer_sync(struct hailo_vdma_controller *controller,
+void hailo_vdma_buffer_sync(struct device *dev,
     struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
     size_t offset, size_t size);
 

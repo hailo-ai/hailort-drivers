@@ -4,7 +4,7 @@
  **/
 
 #include "integrated_nnc_utils.h"
-#include "utils/logs.h"
+#include "logs.h"
 
 #include <linux/uaccess.h>
 #include <asm/io.h>
@@ -70,32 +70,7 @@ int hailo_ioremap_shmem(struct platform_device *pdev, int index, struct hailo_re
     return 0;
 }
 
-int direct_memory_transfer(struct platform_device *pdev, struct hailo_memory_transfer_params *params)
-{
-    int err = -EINVAL;
-    void __iomem *mem = ioremap(params->address, params->count);
-    if (NULL == mem) {
-        hailo_dev_err(&pdev->dev, "Failed ioremap %llu %zu\n", params->address, params->count);
-        return -ENOMEM;
-    }
 
-    switch (params->transfer_direction) {
-    case TRANSFER_READ:
-        memcpy_fromio(params->buffer, mem, params->count);
-        err = 0;
-        break;
-    case TRANSFER_WRITE:
-        memcpy_toio(mem, params->buffer, params->count);
-        err = 0;
-        break;
-    default:
-        hailo_dev_err(&pdev->dev, "Invalid transfer direction %d\n", (int)params->transfer_direction);
-        err = -EINVAL;
-    }
-
-    iounmap(mem);
-    return err;
-}
 
 int hailo_get_resource_physical_addr(struct platform_device *pdev, const char *name, u64 *address)
 {
