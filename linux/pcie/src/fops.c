@@ -245,30 +245,7 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
-static long hailo_memory_transfer_ioctl(struct hailo_pcie_board *board, unsigned long arg)
-{
-    long err = 0;
-    struct hailo_memory_transfer_params* transfer = &board->memory_transfer_params;
 
-    hailo_dbg(board, "Start memory transfer ioctl\n");
-
-    if (copy_from_user(transfer, (void __user*)arg, sizeof(*transfer))) {
-        hailo_err(board, "copy_from_user fail\n");
-        return -ENOMEM;
-    }
-
-    err = hailo_pcie_memory_transfer(&board->pcie_resources, transfer);
-    if (err < 0) {
-        hailo_err(board, "memory transfer failed %ld", err);
-    }
-
-    if (copy_to_user((void __user*)arg, transfer, sizeof(*transfer))) {
-        hailo_err(board, "copy_to_user fail\n");
-        return -ENOMEM;
-    }
-
-    return err;
-}
 
 static void firmware_notification_irq_handler(struct hailo_pcie_board *board)
 {
@@ -432,8 +409,7 @@ static long hailo_query_driver_info(struct hailo_pcie_board *board, unsigned lon
 static long hailo_general_ioctl(struct hailo_pcie_board *board, unsigned int cmd, unsigned long arg)
 {
     switch (cmd) {
-    case HAILO_MEMORY_TRANSFER:
-        return hailo_memory_transfer_ioctl(board, arg);
+
     case HAILO_QUERY_DEVICE_PROPERTIES:
         return hailo_query_device_properties(board, arg);
     case HAILO_QUERY_DRIVER_INFO:

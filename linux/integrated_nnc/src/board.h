@@ -134,7 +134,7 @@ struct hailo_board
     struct hailo_vdma_controller vdma;
     struct hailo_vdma_engine_resources vdma_engines_resources[MAX_VDMA_ENGINES];
     // Store transfer params here to avoid stack/dynamic allocation.
-    struct hailo_memory_transfer_params memory_transfer_params;
+
     // TODO: HRT-14781: remove this when every integrated uses BKC that has memory region
     struct hailo_vdma_continuous_buffer nnc_fw_shared_memory_continuous_buffer;
     struct nnc_fw_shared_mem_info nnc_fw_shared_mem_info;

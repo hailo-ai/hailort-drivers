@@ -54,7 +54,7 @@ static bool support_soft_reset = true;
 
 #define DEVICE_NODE_NAME "hailo"
 static int char_major = 0;
-static struct class *chardev_class;
+static struct class *g_chrdev_class = NULL;
 
 static LIST_HEAD(g_hailo_board_list);
 static struct semaphore g_hailo_add_board_mutex = __SEMAPHORE_INITIALIZER(g_hailo_add_board_mutex, 1);
@@ -250,13 +250,21 @@ static int hailo_pcie_disable_aspm(struct hailo_pcie_board *board, u16 state, bo
     return 0;
 }
 
-static void hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
+static long hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
 {
     u32 index = 0;
     struct hailo_pcie_board *pCurrent, *pNext;
 
-
     down(&g_hailo_add_board_mutex);
+
+    if (!g_chrdev_class) {
+        g_chrdev_class = class_create_compat("hailo_chardev");
+        if (IS_ERR(g_chrdev_class)) {
+            hailo_err(pBoard, "Failed to create class for chrdev");
+            return PTR_ERR(g_chrdev_class);
+        }
+    }
+
     if ( list_empty(&g_hailo_board_list)  ||
             list_first_entry(&g_hailo_board_list, struct hailo_pcie_board, board_list)->board_index > 0)
     {
@@ -264,7 +272,7 @@ static void hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
         list_add(&pBoard->board_list, &g_hailo_board_list);
 
         up(&g_hailo_add_board_mutex);
-        return;
+        return 0;
     }
 
     list_for_each_entry_safe(pCurrent, pNext, &g_hailo_board_list, board_list)
@@ -281,7 +289,7 @@ static void hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
 
     up(&g_hailo_add_board_mutex);
 
-    return;
+    return 0;
 }
 
 static void hailo_pcie_remove_board(struct hailo_pcie_board* pBoard)
@@ -1221,7 +1229,7 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
     init_completion(&pBoard->driver_down.reset_completed);
     init_completion(&pBoard->soft_reset.reset_completed);
 
-    memset(&pBoard->memory_transfer_params, 0, sizeof(pBoard->memory_transfer_params));
+
 
     err = hailo_pcie_vdma_controller_init(&pBoard->vdma, &pBoard->pDev->dev,
         &pBoard->pcie_resources.vdma_registers);
@@ -1249,10 +1257,14 @@ static int hailo_pcie_probe(struct pci_dev* pDev, const struct pci_device_id* id
 
     /* Keep track on the device, in order, to be able to remove it later */
     pci_set_drvdata(pDev, pBoard);
-    hailo_pcie_insert_board(pBoard);
+    err = hailo_pcie_insert_board(pBoard);
+    if (err < 0) {
+        hailo_err(pBoard, "Failed inserting pBoard %d to list\n", err);
+        goto probe_release_pcie_resources;
+    }
 
     /* Create dynamically the device node*/
-    char_device = device_create_with_groups(chardev_class, NULL,
+    char_device = device_create_with_groups(g_chrdev_class, &pDev->dev,
                                             MKDEV(char_major, pBoard->board_index),
                                             pBoard,
                                             g_hailo_dev_groups,
@@ -1280,7 +1292,6 @@ probe_free_board:
     kfree(pBoard);
 
 probe_exit:
-
     return err;
 }
 
@@ -1292,24 +1303,21 @@ static void hailo_pcie_remove(struct pci_dev* pDev)
 
     if (pBoard)
     {
-
-        // lock board to wait for any pending operations and for synchronization with open
+        // Lock board to wait for any pending operations and for synchronization with open
         down(&pBoard->mutex);
 
-
-        // remove board from active boards list
+        // Remove board from active boards list
         hailo_pcie_remove_board(pBoard);
 
+        // Delete the device node
+        device_destroy(g_chrdev_class, MKDEV(char_major, pBoard->board_index));
 
-        /* Delete the device node */
-        device_destroy(chardev_class, MKDEV(char_major, pBoard->board_index));
-
-        // disable interrupts - will only disable if they have not been disabled in release already
+        // Disable interrupts - will only disable if they have not been disabled in release already
         hailo_disable_interrupts(pBoard);
 
         pcie_resources_release(pBoard->pDev, &pBoard->pcie_resources);
 
-        // deassociate device from board to be picked up by char device
+        // Deassociate device from board to be picked up by char device
         pBoard->pDev = NULL;
 
         pBoard->vdma.dev = NULL;
@@ -1334,7 +1342,6 @@ static void hailo_pcie_remove(struct pci_dev* pDev)
             pci_notice(pDev, "Remove: Scheduled for board removal, /dev/hailo%d\n", pBoard->board_index);
         }
     }
-
 }
 
 inline int driver_down(struct hailo_pcie_board *board)
@@ -1444,9 +1451,6 @@ static const struct pci_error_handlers hailo_pcie_err_handlers = {
 static struct pci_device_id hailo_pcie_id_table[] =
 {
     {PCI_DEVICE_DATA(HAILO, HAILO8, HAILO_BOARD_TYPE_HAILO8)},
-    {PCI_DEVICE_DATA(HAILO, HAILO10H, HAILO_BOARD_TYPE_HAILO10H)},
-    {PCI_DEVICE_DATA(HAILO, HAILO15L, HAILO_BOARD_TYPE_HAILO15L)},
-    {PCI_DEVICE_DATA(HAILO, MARS, HAILO_BOARD_TYPE_MARS)},
     {0,0,0,0,0,0,0 },
 };
 
@@ -1481,14 +1485,15 @@ static int hailo_pcie_register_chrdev(unsigned int major, const char *name)
 
     char_major = register_chrdev(major, name, &hailo_pcie_fops);
 
-    chardev_class = class_create_compat("hailo_chardev");
-
     return char_major;
 }
 
 static void hailo_pcie_unregister_chrdev(unsigned int major, const char *name)
 {
-    class_destroy(chardev_class);
+    if (!g_chrdev_class) {
+        return;
+    }
+    class_destroy(g_chrdev_class);
     unregister_chrdev(major, name);
 }
 
@@ -1508,7 +1513,6 @@ static int __init hailo_pcie_module_init(void)
     if ( 0 != (err = pci_register_driver(&hailo_pci_driver)))
     {
         pr_err(DRIVER_NAME ": Init Error, failed to call pci_register_driver.\n");
-        class_destroy(chardev_class);
         hailo_pcie_unregister_chrdev(char_major, DRIVER_NAME);
         return err;
     }

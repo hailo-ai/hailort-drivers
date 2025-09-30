@@ -879,44 +879,6 @@ void hailo_pcie_disable_interrupts(struct hailo_pcie_resources* resources)
     hailo_resource_write32(&resources->config, BSC_IMASK_HOST, 0);
 }
 
-static int direct_memory_transfer(struct hailo_pcie_resources *resources,
-    struct hailo_memory_transfer_params *params)
-{
-    switch (params->transfer_direction) {
-    case TRANSFER_READ:
-        read_memory(resources, params->address, params->buffer, (u32)params->count);
-        break;
-    case TRANSFER_WRITE:
-        write_memory(resources, params->address, params->buffer, (u32)params->count);
-        break;
-    default:
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct hailo_memory_transfer_params *params)
-{
-    if (params->count > ARRAY_SIZE(params->buffer)) {
-        return -EINVAL;
-    }
-
-    switch (params->memory_type) {
-    case HAILO_TRANSFER_DEVICE_DIRECT_MEMORY:
-        return direct_memory_transfer(resources, params);
-    case HAILO_TRANSFER_MEMORY_PCIE_BAR0:
-        return hailo_resource_transfer(&resources->config, params);
-    case HAILO_TRANSFER_MEMORY_PCIE_BAR2:
-    case HAILO_TRANSFER_MEMORY_VDMA0:
-        return hailo_resource_transfer(&resources->vdma_registers, params);
-    case HAILO_TRANSFER_MEMORY_PCIE_BAR4:
-        return hailo_resource_transfer(&resources->fw_access, params);
-    default:
-        return -EINVAL;
-    }
-}
-
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources)
 {
     return PCI_VENDOR_ID_HAILO == hailo_resource_read16(&resources->config, PCIE_CONFIG_VENDOR_OFFSET);

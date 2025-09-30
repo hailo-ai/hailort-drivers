@@ -161,8 +161,6 @@ int hailo_pcie_write_firmware_batch(struct device *dev, struct hailo_pcie_resour
 bool hailo_pcie_is_firmware_loaded(struct hailo_pcie_resources *resources);
 bool hailo_pcie_wait_for_firmware(struct hailo_pcie_resources *resources);
 
-int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct hailo_memory_transfer_params *params);
-
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources);
 void hailo_pcie_write_firmware_driver_shutdown(struct hailo_pcie_resources *resources);
 void hailo_pcie_write_firmware_soft_reset(struct hailo_pcie_resources *resources);

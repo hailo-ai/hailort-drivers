@@ -115,7 +115,7 @@ struct hailo_pcie_board {
 
     struct hailo_pcie_fw_boot fw_boot;
     
-    struct hailo_memory_transfer_params memory_transfer_params;
+
     u32 desc_max_page_size;
     enum hailo_allocation_mode allocation_mode;
     bool interrupts_enabled;
