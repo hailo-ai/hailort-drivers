@@ -5,7 +5,7 @@
 
 #include "ioctl.h"
 #include "memory.h"
-#include "utils/logs.h"
+#include "logs.h"
 #include "utils.h"
 
 #include <linux/slab.h>
@@ -21,14 +21,15 @@ long hailo_vdma_enable_channels_ioctl(struct hailo_vdma_controller *controller, 
 
     if (copy_from_user(&input, (void *)arg, sizeof(input))) {
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     // Validate params (ignoring engine_index >= controller->vdma_engines_count).
     for_each_vdma_engine(controller, engine, engine_index) {
         channels_bitmap = input.channels_bitmap_per_engine[engine_index];
         if (0 != (channels_bitmap & engine->enabled_channels)) {
-            hailo_dev_err(controller->dev, "Trying to enable channels that are already enabled\n");
+            hailo_dev_err(controller->dev, "Trying to enable channels %llx that are already enabled %llx\n",
+                channels_bitmap, engine->enabled_channels);
             return -EINVAL;
         }
     }
@@ -56,7 +57,7 @@ long hailo_vdma_disable_channels_ioctl(struct hailo_vdma_controller *controller,
 
     if (copy_from_user(&input, (void*)arg, sizeof(input))) {
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     // Validate params (ignoring engine_index >= controller->vdma_engines_count).
@@ -75,13 +76,12 @@ long hailo_vdma_disable_channels_ioctl(struct hailo_vdma_controller *controller,
     return 0;
 }
 
-void hailo_vdma_transfer_done(struct hailo_transfer *transfer, void *opaque)
+void hailo_vdma_transfer_done(struct device *dev, struct hailo_transfer *transfer)
 {
     u8 i = 0;
-    struct hailo_vdma_controller *controller = (struct hailo_vdma_controller *)opaque;
     for (i = 0; i < transfer->buffers_count; i++) {
         struct hailo_vdma_buffer *mapped_buffer = (struct hailo_vdma_buffer *)transfer->buffers[i].opaque;
-        hailo_vdma_buffer_sync(controller, mapped_buffer, HAILO_SYNC_FOR_CPU,
+        hailo_vdma_buffer_sync(dev, mapped_buffer, HAILO_SYNC_FOR_CPU,
             transfer->buffers[i].offset, transfer->buffers[i].size);
         hailo_vdma_buffer_put(mapped_buffer);
     }
@@ -99,7 +99,7 @@ long hailo_vdma_interrupts_wait_ioctl(struct hailo_vdma_file_context *context, s
 
     if (copy_from_user(&params, (void*)arg, sizeof(params))) {
         hailo_dev_err(controller->dev, "HAILO_VDMA_INTERRUPTS_WAIT, copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     // We don't need to validate that channels_bitmap_per_engine are enabled -
@@ -140,7 +140,7 @@ long hailo_vdma_interrupts_wait_ioctl(struct hailo_vdma_file_context *context, s
     for_each_vdma_engine(controller, engine, engine_index) {
         irq_bitmap = hailo_vdma_context_get_and_clear_interrupts(context, engine_index,
             params.channels_bitmap_per_engine[engine_index]);
-        err = hailo_vdma_engine_fill_irq_data(&params, engine, irq_bitmap, controller);
+        err = hailo_vdma_engine_fill_irq_data(controller->dev, &params, engine, irq_bitmap);
         if (err < 0) {
             hailo_dev_err(controller->dev, "Failed fill irq data %ld", err);
             return err;
@@ -149,7 +149,7 @@ long hailo_vdma_interrupts_wait_ioctl(struct hailo_vdma_file_context *context, s
 
     if (copy_to_user((void __user*)arg, &params, sizeof(params))) {
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;
@@ -186,7 +186,7 @@ static struct hailo_vdma_buffer* get_or_map_buffer(
 
     default:
         hailo_dev_err(controller->dev, "invalid user buffer type\n");
-        return ERR_PTR(-EFAULT);
+        return ERR_PTR(-EINVAL);
     }
 
     if (NULL == mapped_buffer) {
@@ -194,7 +194,9 @@ static struct hailo_vdma_buffer* get_or_map_buffer(
         mapped_buffer = hailo_vdma_buffer_map(controller->dev,
             buffer.addr_or_fd, buffer.size, direction, buffer.buffer_type);
         if (IS_ERR(mapped_buffer)) {
-            hailo_dev_err(controller->dev, "failed map buffer %lx\n", buffer.addr_or_fd);
+            if (PTR_ERR(mapped_buffer) != -EINTR) {
+                hailo_dev_err(controller->dev, "failed map buffer %lx\n", buffer.addr_or_fd);
+            }
             return mapped_buffer;
         }
 
@@ -236,7 +238,9 @@ long hailo_vdma_buffer_map_ioctl(struct hailo_vdma_file_context *context, struct
     // TODO: HRT-17044: investigate why using get_or_map_buffer here causes issues
     mapped_buffer = hailo_vdma_buffer_map(controller->dev, params.user_address, params.size, direction, params.buffer_type);
     if (IS_ERR(mapped_buffer)) {
-        hailo_dev_err(controller->dev, "failed map buffer %lx\n", params.user_address);
+        if (PTR_ERR(mapped_buffer) != -EINTR) {
+            hailo_dev_err(controller->dev, "failed map buffer %lx\n", params.user_address);
+        }
         return PTR_ERR(mapped_buffer);
     }
     mapped_buffer->handle = atomic_inc_return(&context->last_vdma_user_buffer_handle);
@@ -300,7 +304,7 @@ long hailo_vdma_buffer_sync_ioctl(struct hailo_vdma_file_context *context, struc
         return -EINVAL;
     }
 
-    hailo_vdma_buffer_sync(controller, mapped_buffer, sync_info.sync_type,
+    hailo_vdma_buffer_sync(controller->dev, mapped_buffer, sync_info.sync_type,
         sync_info.offset, sync_info.count);
     return 0;
 }
@@ -351,6 +355,8 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
         return err;
     }
 
+    atomic64_add(descriptors_buffer->buffer_size, &controller->desc_cma_in_use);
+
     list_add(&descriptors_buffer->descriptors_buffer_list, &context->descriptors_buffer_list);
 
     // Note: The physical address is required for CONTEXT_SWITCH firmware controls
@@ -361,6 +367,7 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
     if (copy_to_user((void __user*)arg, &params, sizeof(params))){
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
         list_del(&descriptors_buffer->descriptors_buffer_list);
+        atomic64_sub(descriptors_buffer->buffer_size, &controller->desc_cma_in_use);
         hailo_desc_list_release(controller->dev, descriptors_buffer);
         kfree(descriptors_buffer);
         return -EFAULT;
@@ -389,6 +396,7 @@ long hailo_desc_list_release_ioctl(struct hailo_vdma_file_context *context, stru
     }
 
     list_del(&descriptors_buffer->descriptors_buffer_list);
+    atomic64_sub(descriptors_buffer->buffer_size, &controller->desc_cma_in_use);
     hailo_desc_list_release(controller->dev, descriptors_buffer);
     kfree(descriptors_buffer);
     return 0;
@@ -413,12 +421,12 @@ long hailo_desc_list_program_ioctl(struct hailo_vdma_file_context *context, stru
     descriptors_buffer = hailo_vdma_find_descriptors_buffer(context, configure_info.desc_handle);
     if (mapped_buffer == NULL || descriptors_buffer == NULL) {
         hailo_dev_err(controller->dev, "invalid user/descriptors buffer\n");
-        return -EFAULT;
+        return -EINVAL;
     }
 
     if (configure_info.buffer_size > mapped_buffer->size) {
         hailo_dev_err(controller->dev, "invalid buffer size. \n");
-        return -EFAULT;
+        return -EINVAL;
     }
 
     transfer_buffer.sg_table = &mapped_buffer->sg_table;
@@ -489,6 +497,8 @@ long hailo_vdma_continuous_buffer_alloc_ioctl(struct hailo_vdma_file_context *co
         return err;
     }
 
+    atomic64_add(aligned_buffer_size, &controller->cma_in_use);
+
     continuous_buffer->handle = hailo_get_next_vdma_handle(context);
     list_add(&continuous_buffer->continuous_buffer_list, &context->continuous_buffer_list);
 
@@ -497,6 +507,7 @@ long hailo_vdma_continuous_buffer_alloc_ioctl(struct hailo_vdma_file_context *co
     if (copy_to_user((void __user*)arg, &buf_info, sizeof(buf_info))) {
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
         list_del(&continuous_buffer->continuous_buffer_list);
+        atomic64_sub(aligned_buffer_size, &controller->cma_in_use);
         hailo_vdma_continuous_buffer_free(controller->dev, continuous_buffer);
         kfree(continuous_buffer);
         return -EFAULT;
@@ -522,6 +533,7 @@ long hailo_vdma_continuous_buffer_free_ioctl(struct hailo_vdma_file_context *con
     }
 
     list_del(&continuous_buffer->continuous_buffer_list);
+    atomic64_sub(continuous_buffer->size, &controller->cma_in_use);
     hailo_vdma_continuous_buffer_free(controller->dev, continuous_buffer);
     kfree(continuous_buffer);
     return 0;
@@ -537,7 +549,7 @@ long hailo_vdma_interrupts_read_timestamps_ioctl(struct hailo_vdma_controller *c
 
     if (copy_from_user(params, (void __user*)arg, sizeof(*params))) {
         hailo_dev_err(controller->dev, "copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     if (params->engine_index >= controller->vdma_engines_count) {
@@ -555,7 +567,7 @@ long hailo_vdma_interrupts_read_timestamps_ioctl(struct hailo_vdma_controller *c
 
     if (copy_to_user((void __user*)arg, params, sizeof(*params))) {
         hailo_dev_err(controller->dev, "copy_to_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;
@@ -566,6 +578,7 @@ static long hailo_prepare_transfer(struct hailo_vdma_controller *controller, str
     struct hailo_transfer *prepare_transfer, bool is_cyclic)
 {
     u8 i = 0;
+    u8 j = 0;
     int ret = 0;
     enum dma_data_direction direction = DMA_NONE;
 
@@ -588,7 +601,13 @@ static long hailo_prepare_transfer(struct hailo_vdma_controller *controller, str
 
         mapped_buffer = get_or_map_buffer(context, controller, params->buffers[i], direction);
         if (IS_ERR(mapped_buffer)) {
-            hailo_dev_err(controller->dev, "failed get or map buffer %lx\n", params->buffers[i].addr_or_fd);
+            if (PTR_ERR(mapped_buffer) != -EINTR) {
+                hailo_dev_err(controller->dev, "failed get or map buffer %lx\n", params->buffers[i].addr_or_fd);
+                //unmap previous mapped buffers
+                for (j = 0; j < i; j++) {
+                    hailo_vdma_buffer_put(prepare_transfer->buffers[j].opaque);
+                }
+            }
             return PTR_ERR(mapped_buffer);
         }
 
@@ -598,7 +617,7 @@ static long hailo_prepare_transfer(struct hailo_vdma_controller *controller, str
             // Syncing the buffer to device change its ownership from host to the device.
             // We sync on D2H as well if the user owns the buffer since the buffer might have been changed by
             // the host between the time it was mapped and the current async transfer.
-            hailo_vdma_buffer_sync(controller, mapped_buffer, HAILO_SYNC_FOR_DEVICE,
+            hailo_vdma_buffer_sync(controller->dev, mapped_buffer, HAILO_SYNC_FOR_DEVICE,
                 offset_from_map, params->buffers[i].size);
         }
 
@@ -621,11 +640,10 @@ static long hailo_prepare_transfer(struct hailo_vdma_controller *controller, str
 
 
     if (ret < 0) {
-        hailo_dev_err(controller->dev, "Failed to prepare transfer\n");
         // Usually buffer_put() is called in hailo_vdma_transfer_done().
         // If we got an error, then we release the buffers here
         // instead for proper cleanup.
-        hailo_vdma_transfer_done(prepare_transfer, controller);
+        hailo_vdma_transfer_done(controller->dev, prepare_transfer);
     }
     return ret;
 }
@@ -658,10 +676,31 @@ long hailo_vdma_prepare_transfer_ioctl(struct hailo_vdma_file_context *context, 
     ret = hailo_vdma_transfer_push(&descriptors_buffer->desc_list.prepared_transfers, &prepared_transfer);
     if (ret < 0) {
         hailo_dev_err(controller->dev, "Failed to push prepared transfer to list\n");
-        hailo_vdma_transfer_done(&prepared_transfer, controller);  
+        hailo_vdma_transfer_done(controller->dev, &prepared_transfer);
         return ret;
     }
     return ret;
+}
+
+long hailo_vdma_cancel_prepared_transfer_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
+    unsigned long arg)
+{
+    struct hailo_descriptors_list_buffer *descriptors_buffer = NULL;
+    struct hailo_vdma_cancel_prepared_transfer_params params;
+
+    if (copy_from_user(&params, (void *)arg, sizeof(params))) {
+        hailo_dev_err(controller->dev, "copy_from_user fail\n");
+        return -ENOMEM;
+    }
+
+    descriptors_buffer = hailo_vdma_find_descriptors_buffer(context, params.desc_handle);
+    if (NULL == descriptors_buffer) {
+        hailo_dev_err(controller->dev, "Descriptors buffer not found for handle %llu\n", (u64)params.desc_handle);
+        return -EINVAL;
+    }
+    hailo_vdma_cancel_prepared_transfer(controller->dev, &descriptors_buffer->desc_list);
+
+    return 0;
 }
 
 long hailo_vdma_launch_transfer_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
@@ -699,20 +738,22 @@ long hailo_vdma_launch_transfer_ioctl(struct hailo_vdma_file_context *context, s
     descriptors_buffer = hailo_vdma_find_descriptors_buffer(context, params.prepare_transfer_params.desc_handle);
     if (NULL == descriptors_buffer) {
         hailo_dev_err(controller->dev, "invalid descriptors list handle\n");
-        return -EFAULT;
+        return -EINVAL;
     }
   
-    if (SHOULD_PREPARE_TRANSFER(&descriptors_buffer->desc_list) || params.is_cyclic) {
-        ret = hailo_prepare_transfer(controller, context, &params.prepare_transfer_params, &descriptors_buffer->desc_list, &prepared_transfer, params.is_cyclic);
-        if (ret < 0) {
-            hailo_dev_err(controller->dev, "Failed to prepare transfer\n");
+    if (descriptors_buffer->desc_list.prepared_transfers && TRANSFERS_CIRC_CNT(*descriptors_buffer->desc_list.prepared_transfers) > 0) {
+        ret = hailo_vdma_transfer_pop(&descriptors_buffer->desc_list.prepared_transfers, &prepared_transfer);
+        if ( ret < 0) {
+            hailo_dev_err(controller->dev, "Failed to pop ongoing transfer from list\n");
             return ret;
         }
     }
     else {
-        ret = hailo_vdma_transfer_pop(&descriptors_buffer->desc_list.prepared_transfers, &prepared_transfer);
-        if ( ret < 0) {
-            hailo_dev_err(controller->dev, "Failed to pop ongoing transfer from list\n");
+        ret = hailo_prepare_transfer(controller, context, &params.prepare_transfer_params, &descriptors_buffer->desc_list, &prepared_transfer, params.is_cyclic);
+        if (ret < 0) {
+            if (ret != -EINTR) {
+                hailo_dev_err(controller->dev, "Failed to prepare transfer\n");
+            }
             return ret;
         }
     }
@@ -726,7 +767,7 @@ long hailo_vdma_launch_transfer_ioctl(struct hailo_vdma_file_context *context, s
         // Usually buffer_put() is called in hailo_vdma_transfer_done().
         // If we got an error, then we release the buffers here
         // instead for proper cleanup.
-            hailo_vdma_transfer_done(&prepared_transfer, controller);
+        hailo_vdma_transfer_done(controller->dev, &prepared_transfer);
     }
     return ret;
 }

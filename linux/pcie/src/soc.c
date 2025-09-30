@@ -10,7 +10,7 @@
 #include "soc.h"
 
 #include "vdma_common.h"
-#include "utils/logs.h"
+#include "logs.h"
 #include "vdma/memory.h"
 #include "pcie_common.h"
 
@@ -45,30 +45,37 @@ long hailo_soc_ioctl(struct hailo_pcie_board *board, struct hailo_file_context *
 
 static int soc_control(struct hailo_pcie_board *board,
     const struct hailo_pcie_soc_request *request,
-    struct hailo_pcie_soc_response *response)
+    struct hailo_pcie_soc_response *response,
+    bool killable)
 {
     int ret = 0;
     reinit_completion(&board->soc.control_resp_ready);
 
     hailo_pcie_soc_write_request(&board->pcie_resources, request);
 
-    ret = wait_for_completion_killable_timeout(&board->soc.control_resp_ready,
-        msecs_to_jiffies(PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS));
+    if (killable) {
+        ret = wait_for_completion_killable_timeout(&board->soc.control_resp_ready,
+            msecs_to_jiffies(PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS));
+    } else {
+        ret = wait_for_completion_timeout(&board->soc.control_resp_ready,
+            msecs_to_jiffies(PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS));
+    }
+
     if (ret <= 0) {
         if (0 == ret) {
             hailo_err(board, "Timeout waiting for soc control (timeout_ms=%d)\n", PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS);
             return -ETIMEDOUT;
         } else {
-            hailo_info(board, "soc control failed with err=%d (process was interrupted or killed)\n",
-                ret);
+            if ((ret != -EAGAIN) && (ret != -EINTR)) {
+                hailo_err(board, "soc control failed with err=%d (process was interrupted or killed)\n",
+                    ret);
+            }
             return ret;
         }
     }
 
     hailo_pcie_soc_read_response(&board->pcie_resources, response);
-    
     if (response->status < 0) {
-        hailo_err(board, "soc control failed with status=%d\n", response->status);
         return response->status;
     }
 
@@ -90,8 +97,9 @@ int hailo_soc_get_driver_info(struct hailo_pcie_board *board)
     struct hailo_pcie_soc_response response = {0};
     int err;
 
-    err = soc_control(board, &request, &response);
+    err = soc_control(board, &request, &response, true);
     if (err < 0) {
+        hailo_err(board, "soc_get_driver_info failed with err=%d\n", err);
         return err;
     }
 
@@ -124,7 +132,20 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
 
     if (copy_from_user(&params, (void *)arg, sizeof(params))) {
         hailo_err(board, "copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
+    }
+
+    input_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.input_desc_handle);
+    output_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.output_desc_handle);
+    if (NULL == input_descriptors_buffer || NULL == output_descriptors_buffer) {
+        hailo_dev_err(&board->pdev->dev, "input / output descriptors buffer not found \n");
+        return -EINVAL;
+    }
+
+    if (!is_powerof2((size_t)input_descriptors_buffer->desc_list.desc_count) ||
+        !is_powerof2((size_t)output_descriptors_buffer->desc_list.desc_count)) {
+        hailo_dev_err(&board->pdev->dev, "Invalid desc list size\n");
+        return -EINVAL;
     }
 
     request = (struct hailo_pcie_soc_request) {
@@ -133,11 +154,17 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
             .port = params.port_number
         }
     };
-    err = soc_control(board, &request, &response);
+
+    err = soc_control(board, &request, &response, true);
     if (err < 0) {
+        if (err != -EAGAIN) {
+            hailo_err(board, "soc_connect failed with err=%d\n", err);
+        }
         return err;
     }
 
+    hailo_info(board,"soc_connect: in=%d, out=%d\n",
+        response.connect.input_channel_index, response.connect.output_channel_index);
     params.input_channel_index = response.connect.input_channel_index;
     params.output_channel_index = response.connect.output_channel_index;
 
@@ -154,19 +181,6 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
     input_channel = &vdma_engine->channels[params.input_channel_index];
     output_channel = &vdma_engine->channels[params.output_channel_index];
 
-    input_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.input_desc_handle);
-    output_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.output_desc_handle);
-    if (NULL == input_descriptors_buffer || NULL == output_descriptors_buffer) {
-        hailo_dev_err(&board->pdev->dev, "input / output descriptors buffer not found \n");
-        return -EINVAL;
-    }
-
-    if (!is_powerof2((size_t)input_descriptors_buffer->desc_list.desc_count) ||
-        !is_powerof2((size_t)output_descriptors_buffer->desc_list.desc_count)) {
-        hailo_dev_err(&board->pdev->dev, "Invalid desc list size\n");
-        return -EINVAL;
-    }
-
     // configure and start channels
     hailo_vdma_start_channel(input_channel->host_regs,
         input_descriptors_buffer->dma_address, input_descriptors_buffer->desc_list.desc_count,
@@ -181,7 +195,7 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
 
     if (copy_to_user((void *)arg, &params, sizeof(params))) {
         hailo_dev_err(&board->pdev->dev, "copy_to_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;
@@ -189,6 +203,7 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
 
 static int close_channels(struct hailo_pcie_board *board, u32 channels_bitmap)
 {
+    int err = 0;
     struct hailo_pcie_soc_request request = {0};
     struct hailo_pcie_soc_response response = {0};
     struct hailo_vdma_engine *engine = &board->vdma.vdma_engines[PCI_VDMA_ENGINE_INDEX];
@@ -208,7 +223,12 @@ static int close_channels(struct hailo_pcie_board *board, u32 channels_bitmap)
             .channels_bitmap = channels_bitmap
         }
     };
-    return soc_control(board, &request, &response);
+    err = soc_control(board, &request, &response, false);
+    if (err < 0) {
+        hailo_err(board, "soc_close failed with err=%d\n", err);
+        return err;
+    }
+    return 0;
 }
 
 long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_controller *controller,
@@ -220,12 +240,22 @@ long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_con
 
     if (copy_from_user(&params, (void *)arg, sizeof(params))) {
         hailo_dev_err(&board->pdev->dev, "copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     // TOOD: check channels are connected
 
     channels_bitmap = (1 << params.input_channel_index) | (1 << params.output_channel_index);
+
+    // check if channels are from this bitmap
+    if (!hailo_test_bit(params.input_channel_index, &context->soc_used_channels_bitmap) ||
+        !hailo_test_bit(params.output_channel_index, &context->soc_used_channels_bitmap)) {
+        hailo_dev_err(&board->pdev->dev, "Channels %u and %u are not connected\n",
+            params.input_channel_index, params.output_channel_index);
+        return -EINVAL;
+    }
+
+    hailo_info(board, "soc_close_ioctl: ch %x\n", channels_bitmap);
 
     err = close_channels(board, channels_bitmap);
     if (0 != err) {
@@ -250,13 +280,9 @@ void hailo_soc_file_context_finalize(struct hailo_pcie_board *board, struct hail
 {
     // close only channels connected by this (by bitmap)
     if (context->soc_used_channels_bitmap != 0) {
+        hailo_info(board, "close_finalize: %x\n", context->soc_used_channels_bitmap);
         close_channels(board, context->soc_used_channels_bitmap);
     }
-}
-
-int hailo_soc_driver_down(struct hailo_pcie_board *board)
-{
-    return close_channels(board, 0xFFFFFFFF);
 }
 
 long hailo_soc_power_off_ioctl(struct hailo_pcie_board *board, unsigned long arg)
@@ -267,7 +293,11 @@ long hailo_soc_power_off_ioctl(struct hailo_pcie_board *board, unsigned long arg
     };
     struct hailo_pcie_soc_response response = {0};
 
-    err = soc_control(board, &request, &response);
+    err = soc_control(board, &request, &response, true);
+    if (err < 0) {
+        hailo_err(board, "soc_power_off failed with err=%d\n", err);
+        return err;
+    }
 
-    return err;
+    return 0;
 }

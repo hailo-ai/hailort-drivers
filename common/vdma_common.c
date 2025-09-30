@@ -35,8 +35,11 @@
 
 #define DESCRIPTOR_PAGE_SIZE_SHIFT (8)
 #define DESCRIPTOR_DESC_CONTROL (0x2)
-#define DESCRIPTOR_ADDR_L_MASK (0xFFFFFFC0)
+#define DESCRIPTOR_ADDR_MASK (~0x3FULL)
 #define DESCRIPTOR_LIST_MAX_DEPTH (16)
+
+#define DESCRIPTOR_PAGE_SIZE_CONTROL_REG(page_size) \
+    (((page_size) << DESCRIPTOR_PAGE_SIZE_SHIFT) + DESCRIPTOR_DESC_CONTROL)
 
 #define DESCRIPTOR_DESC_STATUS_DONE_BIT  (0x0)
 #define DESCRIPTOR_DESC_STATUS_ERROR_BIT (0x1)
@@ -60,6 +63,14 @@
 #define for_each_sgtable_dma_sg(sgt, sg, i)	\
     for_each_sg((sgt)->sgl, sg, (sgt)->nents, i)
 #endif /* for_each_sgtable_dma_sg */
+
+
+static u8 vdma_regs_get_channel_depth(u32 regs_p0)
+{
+    u8 depth = READ_BITS_AT_OFFSET(VDMA_CHANNEL_DESC_DEPTH_WIDTH, VDMA_CHANNEL_DESC_DEPTH_SHIFT, regs_p0);
+    // According to spec, depth 0 is equivalent to depth DESCRIPTOR_LIST_MAX_DEPTH.
+    return (0 == depth) ? DESCRIPTOR_LIST_MAX_DEPTH : depth;
+}
 
 static void clear_dirty_desc(struct hailo_vdma_descriptors_list *desc_list, u16 desc)
 {
@@ -96,12 +107,11 @@ static bool validate_last_desc_status(struct hailo_vdma_channel *channel,
     return true;
 }
 
-static inline void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *descriptor, u64 dma_address, size_t page_size,
-    u8 data_id)
+static inline void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *descriptor, u64 dma_address,
+    u32 page_size_control_reg)
 {
-    descriptor->PageSize_DescControl = (u32)((page_size << DESCRIPTOR_PAGE_SIZE_SHIFT) +
-        DESCRIPTOR_DESC_CONTROL);
-    descriptor->AddrL_rsvd_DataID = (u32)(((dma_address & DESCRIPTOR_ADDR_L_MASK)) | data_id);
+    descriptor->PageSize_DescControl = page_size_control_reg;
+    descriptor->AddrL_rsvd_DataID = (u32)(dma_address);
     descriptor->AddrH = (u32)(dma_address >> 32);
     descriptor->RemainingPageSize_Status = 0;
 }
@@ -109,56 +119,83 @@ static inline void hailo_vdma_program_descriptor(struct hailo_vdma_descriptor *d
 static inline u64 get_masked_channel_id(u8 channel_index, struct hailo_vdma_hw *vdma_hw)
 {
     u8 channel_id = (channel_index < MAX_VDMA_CHANNELS_PER_ENGINE) ? (channel_index & vdma_hw->channel_id_mask) : INVALID_VDMA_CHANNEL;
-    return ((u64)channel_id & vdma_hw->channel_id_mask) << vdma_hw->channel_id_shift;
+    return (((u64)channel_id & vdma_hw->channel_id_mask) << vdma_hw->channel_id_shift) | vdma_hw->ddr_data_id;
 }
 
-int hailo_vdma_program_descriptors_in_chunk(
-    dma_addr_t chunk_addr,
+/**
+ * Program a continuous chunk of descriptors (i.e no wrap around to the first descriptor)
+ *
+ * Notice - this function should be extremely optimized for performance since it is the bottleneck of
+ * the entire program.
+ */
+static void program_continuous_descriptors_in_chunk(u64 chunk_addr, struct hailo_vdma_descriptor *desc,
+    u32 desc_count, u32 stride, u32 page_size, u32 total_desc_programmed)
+{
+    // The pattern is (pages_in_pattern - 1) pages of page size and a residue page of size pattern_residue
+    const u32 pages_in_pattern = DIV_ROUND_UP(stride, page_size);
+    u32 idx_in_pattern = (total_desc_programmed + pages_in_pattern - 1) % pages_in_pattern;
+    const u32 pattern_residue = (stride % page_size) == 0 ? page_size : (stride % page_size);
+
+    // pre calculate the control register values
+    const u32 page_size_control_reg = DESCRIPTOR_PAGE_SIZE_CONTROL_REG(page_size);
+    const u32 pattern_residue_control_reg = DESCRIPTOR_PAGE_SIZE_CONTROL_REG(pattern_residue);
+
+    while (desc_count --> 0) {
+        hailo_vdma_program_descriptor(desc, chunk_addr,
+            (idx_in_pattern == 0) ? pattern_residue_control_reg : page_size_control_reg);
+        chunk_addr += page_size;
+        desc++;
+
+        // reduce index_in_pattern by 1 (or wrap around to the last index in pattern)
+        idx_in_pattern = (idx_in_pattern == 0) ? pages_in_pattern - 1 : idx_in_pattern - 1;
+    }
+}
+
+/**
+ * Program the descripotrs list into a chunk of continous memory.
+ *
+ * @param chunk_addr - the encoded address of the chunk.
+ * @param chunk_size - chunk size in bytes.
+ * @param stride - defines the pattern to program.
+ * @param total_desc_programmed - the total number of descriptors already programmed.
+ *                                This arg is used to get the right place in the pattern (a single pattern can cross
+ *                                the chunk boundaries).
+ */
+void hailo_vdma_program_descriptors_in_chunk(
+    u64 chunk_addr,
     unsigned int chunk_size,
     struct hailo_vdma_descriptors_list *desc_list,
-    u32 desc_index,
-    u32 max_desc_index,
-    u8 data_id,
+    u32 starting_desc,
     u32 stride,
-    u64 masked_channel_id_for_encode_addr)
+    u32 total_desc_programmed)
 {
     const u16 page_size = desc_list->desc_page_size;
-    const u32 starting_desc_index = desc_index;
-    const u32 residue_size = chunk_size % page_size;
-    struct hailo_vdma_descriptor *dma_desc = NULL;
-    u64 encoded_addr = INVALID_VDMA_ADDRESS;
-    const u32 descs_to_program = DIV_ROUND_UP(chunk_size, page_size);
-    // Precompute the base address pointer and mask outside the loop
-    struct hailo_vdma_descriptor* desc_list_ptr = desc_list->desc_list;
-    const u32 addr_mask = desc_list->desc_count_mask;
-    const u32 last_desc_to_program = (starting_desc_index + descs_to_program - 1);
+    const u32 descs_to_program = chunk_size / page_size;
+    u32 descs_to_end = min(descs_to_program, desc_list->desc_count - starting_desc);
+    u32 descs_from_start = descs_to_program - descs_to_end;
 
-    // We iterate through descriptors [desc_index, desc_index + descs_to_program)
-    if (desc_index + descs_to_program > max_desc_index + 1) {
-        pr_err("Invalid descriptors range: (desc_index + descs_to_program > max_desc_index + 1) where:"
-        " desc_index=%u, descs_to_program=%u, max_desc_index=%u, page_size=%u, chunk_size=%u, stride=%u\n",
-            desc_index, descs_to_program, max_desc_index, page_size, chunk_size, stride);
-        return -ERANGE;
+    BUG_ON(starting_desc >= desc_list->desc_count);
+
+    // Program in two continuous chunks (may have wrap around to the first descriptor)
+    program_continuous_descriptors_in_chunk(chunk_addr, &desc_list->desc_list[starting_desc], descs_to_end,
+        stride, page_size, total_desc_programmed);
+    chunk_addr += descs_to_end * page_size;
+    total_desc_programmed += descs_to_end;
+
+    if (descs_from_start > 0) {
+        program_continuous_descriptors_in_chunk(chunk_addr, &desc_list->desc_list[0], descs_from_start,
+            stride, page_size, total_desc_programmed);
+        chunk_addr += descs_from_start * page_size;
+        total_desc_programmed += descs_from_start;
     }
 
-    encoded_addr = (chunk_addr | masked_channel_id_for_encode_addr);
-
-    // Program all descriptors except the last one
-    for (desc_index = starting_desc_index; desc_index < last_desc_to_program; desc_index++) {
-        // 'desc_index & desc_list_len_mask' is used instead of modulo; see hailo_vdma_descriptors_list documentation.
+    if ((chunk_size % page_size) != 0) {
+        // Handle the last descriptor outside of the loops if there is a residue
         hailo_vdma_program_descriptor(
-            &desc_list_ptr[desc_index & addr_mask],
-            encoded_addr, stride, data_id);
-        encoded_addr += page_size;
+            &desc_list->desc_list[(starting_desc + descs_to_program) & desc_list->desc_count_mask],
+            chunk_addr,
+            DESCRIPTOR_PAGE_SIZE_CONTROL_REG(chunk_size % page_size));
     }
-
-    // Handle the last descriptor outside of the loop
-    // 'desc_index & desc_list_len_mask' is used instead of modulo; see hailo_vdma_descriptors_list documentation.
-    dma_desc = &desc_list_ptr[desc_index & addr_mask];
-    hailo_vdma_program_descriptor(dma_desc, encoded_addr,
-        (residue_size == 0) ? stride : (u16)residue_size, data_id);
-
-    return (int)descs_to_program;
 }
 
 static unsigned long get_interrupts_bitmask(struct hailo_vdma_hw *vdma_hw,
@@ -193,20 +230,25 @@ static int bind_and_program_descriptors_list(
     bool is_debug,
     u32 stride)
 {
-    int desc_programmed = 0;
-    int descs_programmed_in_chunk = 0;
-    u32 max_desc_index = 0;
     u32 chunk_size = 0;
     struct scatterlist *sg_entry = NULL;
     unsigned int i = 0;
     size_t buffer_current_offset = 0;
     dma_addr_t chunk_start_addr = 0;
     u32 program_size = buffer->size;
+    u32 total_desc_to_program = DIV_ROUND_UP(program_size, desc_list->desc_page_size);
+    u32 desc_programmed = 0;
+    // On circular buffer, allow programming  desc_count descriptors (starting
+    // from starting_desc). On non circular, don't allow is to pass desc_count
+    const u32 max_descs_to_program = desc_list->is_circular ?
+        desc_list->desc_count:
+        (desc_list->desc_count - starting_desc);
     u64 masked_channel_id = get_masked_channel_id(channel_index, vdma_hw);
 
     if ((buffer->offset % desc_list->desc_page_size != 0) ||
         (starting_desc >= desc_list->desc_count)) {
-        pr_err("Invalid buffer offset %u or starting_desc %u\n", buffer->offset, starting_desc);
+        pr_err("Invalid buffer offset %u or starting_desc %u. desc_list->desc_count %u, desc_list->desc_page_size %d\n",
+            buffer->offset, starting_desc, desc_list->desc_count, desc_list->desc_page_size);
         return -EINVAL;
     }
 
@@ -215,16 +257,13 @@ static int bind_and_program_descriptors_list(
     } else if (buffer->size % desc_list->desc_page_size != 0) {
         pr_err("Buffer size %u is not aligned to desc_page_size %u\n", buffer->size, desc_list->desc_page_size);
         return -EINVAL;
-    } else if (stride > desc_list->desc_page_size) {
-        pr_err("Stride %u is larger than page size %u\n", stride, desc_list->desc_page_size);
+    }
+
+    if (total_desc_to_program > max_descs_to_program) {
+        pr_err("Desc programmed size %u is larger than max_descs_to_program %u\n", total_desc_to_program, max_descs_to_program);
         return -EINVAL;
     }
 
-    // On circular buffer, allow programming  desc_count descriptors (starting
-    // from starting_desc). On non circular, don't allow is to pass desc_count
-    max_desc_index = desc_list->is_circular ?
-        starting_desc + desc_list->desc_count - 1 :
-        desc_list->desc_count - 1;
     for_each_sgtable_dma_sg(buffer->sg_table, sg_entry, i) {
         u32 sg_len = sg_dma_len(sg_entry);
         dma_addr_t sg_addr = sg_dma_address(sg_entry);
@@ -251,14 +290,14 @@ static int bind_and_program_descriptors_list(
             chunk_size = min((u32)program_size, chunk_size);
         }
 
-        descs_programmed_in_chunk = hailo_vdma_program_descriptors_in_chunk(chunk_start_addr, chunk_size, desc_list,
-            starting_desc, max_desc_index, vdma_hw->ddr_data_id, stride, masked_channel_id);
-        if (descs_programmed_in_chunk < 0) {
-            return descs_programmed_in_chunk;
-        }
-
-        desc_programmed += descs_programmed_in_chunk;
-        starting_desc += descs_programmed_in_chunk;
+        hailo_vdma_program_descriptors_in_chunk(
+            (chunk_start_addr & DESCRIPTOR_ADDR_MASK) | masked_channel_id,
+            chunk_size, desc_list,
+            starting_desc & desc_list->desc_count_mask,
+            stride,
+            desc_programmed);
+        starting_desc += DIV_ROUND_UP(chunk_size, desc_list->desc_page_size);
+        desc_programmed += DIV_ROUND_UP(chunk_size, desc_list->desc_page_size);
         program_size -= chunk_size;
         buffer_current_offset += sg_len;
         if (program_size == 0) {
@@ -269,13 +308,18 @@ static int bind_and_program_descriptors_list(
     if (program_size != 0) {
         // We didn't program all the buffer.
         pr_err("Didn't program all the buffer. program_size=%u\n", program_size);
-        return -EFAULT;
+        return -EINVAL;
+    }
+
+    if (desc_programmed != total_desc_to_program) {
+        pr_err("Desc programmed size %u is not equal to total_desc_to_program %u\n", desc_programmed, total_desc_to_program);
+        return -EINVAL;
     }
 
     desc_list->desc_list[(starting_desc - 1) % desc_list->desc_count].PageSize_DescControl |=
         get_interrupts_bitmask(vdma_hw, last_desc_interrupts, is_debug);
 
-    return desc_programmed;
+    return (int)desc_programmed;
 }
 
 static int program_last_desc(
@@ -380,7 +424,7 @@ static int validate_channel_state(struct hailo_vdma_channel *channel)
     if (hw_num_avail != channel->state.num_avail) {
         pr_err("Channel %d hw state out of sync. num available is %d, expected %d\n",
             channel->index, hw_num_avail, channel->state.num_avail);
-        return -EFAULT;
+        return -EIO;
     }
 
     return 0;
@@ -409,7 +453,6 @@ int hailo_vdma_prepare_transfer(
     struct hailo_transfer *prepared_transfer,
     bool is_cyclic)
 {
-    int ret = -EFAULT;
     u32 total_descs = 0;
     u32 last_desc = U32_MAX;
     u8 i = 0;
@@ -427,10 +470,14 @@ int hailo_vdma_prepare_transfer(
     prepared_transfer->dirty_descs[0] = (u16)starting_desc;
 
     for (i = 0; i < buffers_count; i++) {
-        ret = hailo_vdma_program_descriptors_list(vdma_hw, desc_list,
+        int ret = hailo_vdma_program_descriptors_list(vdma_hw, desc_list,
             starting_desc, &prepared_transfer->buffers[i], (!is_cyclic), channel_index,
             (i == (buffers_count - 1) ? last_desc_interrupts : HAILO_VDMA_INTERRUPTS_DOMAIN_NONE),
             is_debug, DEFAULT_STRIDE);
+        if (ret < 0) {
+            pr_err("Failed program descriptors list\n");
+            return ret;
+        }
 
         total_descs += ret;
         last_desc = (starting_desc + ret - 1) % desc_list->desc_count;
@@ -442,13 +489,23 @@ int hailo_vdma_prepare_transfer(
     prepared_transfer->last_desc = (u16)last_desc;
     prepared_transfer->is_debug = is_debug;
     desc_list->desc_list[first_desc].PageSize_DescControl |=
-    get_interrupts_bitmask(vdma_hw, first_desc_interrupts, is_debug);
-
-    if (ret < 0) {
-        pr_err("Failed push prepare transfer list \n");
-        return ret;
-    }
+        get_interrupts_bitmask(vdma_hw, first_desc_interrupts, is_debug);
     return total_descs;
+}
+
+void hailo_vdma_cancel_prepared_transfer(struct device *dev,
+    struct hailo_vdma_descriptors_list *desc_list)
+{
+    while (desc_list->prepared_transfers && TRANSFERS_CIRC_CNT(*desc_list->prepared_transfers) > 0) {
+        struct hailo_transfer prepared_transfer;
+        hailo_vdma_transfer_pop(&desc_list->prepared_transfers, &prepared_transfer);
+        hailo_vdma_transfer_done(dev, &prepared_transfer);
+    }
+
+    hailo_vdma_transfer_list_free(&desc_list->prepared_transfers);
+    desc_list->prepared_transfers = NULL;
+    desc_list->num_programmed = 0;
+    desc_list->num_launched = 0;
 }
 
 int hailo_vdma_launch_transfer(
@@ -456,7 +513,7 @@ int hailo_vdma_launch_transfer(
     struct hailo_vdma_descriptors_list *desc_list,
     struct hailo_transfer *ongoing_transfer)
 {
-    int ret = -EFAULT;
+    int ret = 0;
     u32 total_descs = 0;
     u32 descs_count = 0;
     channel->state.desc_count_mask = (desc_list->desc_count - 1);
@@ -472,14 +529,13 @@ int hailo_vdma_launch_transfer(
 
     ret = validate_channel_state(channel);
     if (ret < 0) {
-        pr_err("Channel %d state validation failed\n", channel->index);
         return ret;
     }
 
     if (channel->state.num_avail != (u16)desc_list->num_launched) {
         pr_err("Channel %d state out of sync. num available is %d, expected %d\n",
             channel->index, channel->state.num_avail, (u16)desc_list->num_launched);
-        return -EFAULT;
+        return -EIO;
     }
 
     hailo_vdma_transfer_push(&channel->ongoing_transfers, ongoing_transfer);
@@ -608,11 +664,11 @@ void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bit
 /**
  * Disables the given channels bitmap in the given engine.
  *
+ * @param dev - device object, depends on the platform
  * @param engine - dma engine.
  * @param bitmap - channels bitmap to enable.
- * @param measure_timestamp - if set, allow interrupts timestamp measure.
  */
-void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u64 bitmap)
+void hailo_vdma_engine_disable_channels(struct device *dev, struct hailo_vdma_engine *engine, u64 bitmap)
 {
     struct hailo_vdma_channel *channel = NULL;
     u8 channel_index = 0;
@@ -633,6 +689,7 @@ void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u64 bi
                 }
 
                 clear_dirty_descs(channel, &transfer);
+                hailo_vdma_transfer_done(dev, &transfer);
             }
             if (channel->last_desc_list != NULL) {
                 channel->last_desc_list->num_launched = 0;
@@ -708,8 +765,8 @@ static u64 ioread64_safe(u8 *addr)
     return ((u64)ioread32(addr + 4) << 32) | ioread32(addr);
 }
 
-static void fill_channel_irq_data(struct hailo_vdma_interrupts_channel_data *irq_data,
-    struct hailo_vdma_engine *engine, struct hailo_vdma_channel *channel, void *transfer_done_opaque)
+static void fill_channel_irq_data(struct device *dev, struct hailo_vdma_interrupts_channel_data *irq_data,
+    struct hailo_vdma_engine *engine, struct hailo_vdma_channel *channel)
 {
     u8 transfers_completed = 0;
     bool validation_success = true;
@@ -729,7 +786,7 @@ static void fill_channel_irq_data(struct hailo_vdma_interrupts_channel_data *irq
         (READ_BITS_AT_OFFSET(WORD_SIZE * BITS_IN_BYTE, CHANNEL_NUM_PROC_OFFSET * BITS_IN_BYTE, host_regs_low_qword) &
          channel->state.desc_count_mask);
 
-    while (TRANSFERS_CIRC_CNT(*channel->ongoing_transfers) > 0) {
+    while (channel->ongoing_transfers && TRANSFERS_CIRC_CNT(*channel->ongoing_transfers) > 0) {
         struct hailo_transfer *cur_transfer =
             &channel->ongoing_transfers->transfers[channel->ongoing_transfers->tail];
         if (!is_transfer_complete(channel, cur_transfer, hw_num_proc)) {
@@ -743,7 +800,7 @@ static void fill_channel_irq_data(struct hailo_vdma_interrupts_channel_data *irq
         }
 
         clear_dirty_descs(channel, cur_transfer);
-        hailo_vdma_transfer_done(cur_transfer, transfer_done_opaque);
+        hailo_vdma_transfer_done(dev, cur_transfer);
         channel->state.num_proc = (u16)((cur_transfer->last_desc + 1) & channel->state.desc_count_mask);
 
         hailo_vdma_transfer_pop(&channel->ongoing_transfers, NULL);
@@ -772,8 +829,8 @@ static void fill_channel_irq_data(struct hailo_vdma_interrupts_channel_data *irq
     }
 }
 
-int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *irq_data,
-    struct hailo_vdma_engine *engine, u64 irq_channels_bitmap, void *transfer_done_opaque)
+int hailo_vdma_engine_fill_irq_data(struct device *dev, struct hailo_vdma_interrupts_wait_params *irq_data,
+    struct hailo_vdma_engine *engine, u64 irq_channels_bitmap)
 {
     while (irq_channels_bitmap) {
         u8 channel_index = (u8)__builtin_ctzl(irq_channels_bitmap);
@@ -790,7 +847,7 @@ int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *ir
             return -EINVAL;
         }
 
-        fill_channel_irq_data(&irq_data->irq_data[irq_data->channels_count], engine, channel, transfer_done_opaque);
+        fill_channel_irq_data(dev, &irq_data->irq_data[irq_data->channels_count], engine, channel);
         irq_data->channels_count++;
     }
 
@@ -881,9 +938,8 @@ static int hailo_vdma_wait_until_channel_idle(u8 __iomem *host_regs)
     bool is_idle = false;
     uint32_t check_counter = 0;
 
-    u8 depth = (uint8_t)(READ_BITS_AT_OFFSET(VDMA_CHANNEL_DESC_DEPTH_WIDTH, VDMA_CHANNEL_DESC_DEPTH_SHIFT,
-        ioread32(host_regs)));
-    size_t host_side_max_desc_count = (size_t)(1 << depth);
+    const u8 depth = vdma_regs_get_channel_depth(ioread32(host_regs));
+    const size_t host_side_max_desc_count = (size_t)(1 << depth);
 
     for (check_counter = 0; check_counter < VDMA_CHANNEL__MAX_CHECKS_CHANNEL_IS_IDLE; check_counter++) {
         is_idle = hailo_vdma_channel_is_idle(host_regs, host_side_max_desc_count);

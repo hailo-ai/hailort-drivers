@@ -16,6 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
+#include <linux/device.h>
 
 
 #define VDMA_DESCRIPTOR_LIST_ALIGN  (1 << 16)
@@ -45,10 +46,6 @@
 #define PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS    (1000)
 #endif /* ifndef HAILO_EMULATOR */
 #define PCI_EP_CONTROL_CONNECT_TIMEOUT_MS           (PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS - PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS)
-
-/* If (num_available == num_programmed), it means the current buffer was not prepared in advance.
-Otherwise, the buffer was already prepared and is ready to be launch.*/
-#define SHOULD_PREPARE_TRANSFER(desc_list)          ((desc_list)->num_launched == (desc_list)->num_programmed)
 
 #define TRANSFERS_CIRC_SPACE(transfers_list) \
     CIRC_SPACE((transfers_list).head, (transfers_list).tail, HAILO_VDMA_MAX_ONGOING_TRANSFERS)
@@ -173,7 +170,7 @@ struct hailo_vdma_hw {
     unsigned long device_interrupts_bitmask;
 
     // Bitmask for each vdma hw, which channels are src side by index (on pcie - 0x0..0000FFFF, pci ep - 0x0..FFFF0000)
-    // dram[h10h/15x] - 0x0..0000FFFF, dram[h10h2] - 0x0..00FFFFFF
+    // dram[h10h/15x] - 0x0..0000FFFF, dram[h12l] - 0x0..00FFFFFF
     u64 src_channels_bitmask;
 
     u16 channels_count;
@@ -188,15 +185,13 @@ struct hailo_vdma_hw {
     _for_each_element_array((engine)->channels, (engine)->channels_count, \
         channel, channel_index)
 
-int hailo_vdma_program_descriptors_in_chunk(
+void hailo_vdma_program_descriptors_in_chunk(
     dma_addr_t chunk_addr,
     unsigned int chunk_size,
     struct hailo_vdma_descriptors_list *desc_list,
-    u32 desc_index,
-    u32 max_desc_index,
-    u8 data_id,
+    u32 starting_desc,
     u32 stride,
-    u64 masked_channel_id);
+    u32 total_desc_programmed);
 
 /**
  * Program the given descriptors list to map the given buffer.
@@ -296,11 +291,11 @@ u16 hailo_vdma_get_num_proc(u8 __iomem *regs);
     }
 
     if (unlikely(!TRANSFERS_CIRC_SPACE(**transfers))) {
-        return -EFAULT;
+        return -EINVAL;
     }
 
     if (unlikely(prepared_transfer->dirty_descs_count > ARRAY_SIZE(prepared_transfer->dirty_descs))) {
-        return -EFAULT;
+        return -EINVAL;
     }
 
     (*transfers)->transfers[(*transfers)->head] = *prepared_transfer;
@@ -320,7 +315,7 @@ static inline int hailo_vdma_transfer_pop(struct transfer_list **transfers,
     struct hailo_transfer *prepared_transfer)
 {
     if (!*transfers || !TRANSFERS_CIRC_CNT(**transfers)) {
-        return -EFAULT;
+        return -ENOENT;
     }
 
     if (prepared_transfer) {
@@ -341,6 +336,10 @@ int hailo_vdma_prepare_transfer(
     struct hailo_transfer *prepared_transfer,
     bool is_cyclic);
 
+void hailo_vdma_cancel_prepared_transfer(
+    struct device *dev,
+    struct hailo_vdma_descriptors_list *desc_list);
+
 int hailo_vdma_launch_transfer(
     struct hailo_vdma_channel *channel,
     struct hailo_vdma_descriptors_list *desc_list,
@@ -352,7 +351,8 @@ void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
 void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bitmap,
     bool measure_timestamp);
 
-void hailo_vdma_engine_disable_channels(struct hailo_vdma_engine *engine, u64 bitmap);
+void hailo_vdma_engine_disable_channels(struct device *dev,
+    struct hailo_vdma_engine *engine, u64 bitmap);
 
 void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u64 bitmap);
 int hailo_vdma_engine_read_timestamps(struct hailo_vdma_engine *engine,
@@ -362,10 +362,12 @@ typedef void(*transfer_done_cb_t)(struct hailo_transfer *transfer, void *opaque)
 
 // Assuming irq_data->channels_count contains the amount of channels already
 // written (used for multiple engines).
-int hailo_vdma_engine_fill_irq_data(struct hailo_vdma_interrupts_wait_params *irq_data,
-    struct hailo_vdma_engine *engine, u64 irq_channels_bitmap, void *transfer_done_opaque);
+int hailo_vdma_engine_fill_irq_data(
+    struct device *dev,
+    struct hailo_vdma_interrupts_wait_params *irq_data,
+    struct hailo_vdma_engine *engine, u64 irq_channels_bitmap);
 
-void hailo_vdma_transfer_done(struct hailo_transfer *transfer, void *opaque);
+void hailo_vdma_transfer_done(struct device *dev,struct hailo_transfer *transfer);
 
 void hailo_vdma_start_channel(u8 __iomem *regs, uint64_t desc_dma_address, uint32_t desc_count, uint8_t data_id);
 void hailo_vdma_stop_channel(u8 __iomem *regs);

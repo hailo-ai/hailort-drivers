@@ -7,7 +7,7 @@
 #include "dram_vdma.h"
 #include "utils/integrated_nnc_utils.h"
 #include "vdma/vdma.h"
-#include "utils/logs.h"
+#include "logs.h"
 
 #include <linux/interrupt.h>
 #include <linux/of_address.h>
@@ -114,7 +114,7 @@ static irqreturn_t vdma_irqhandler(int irq, void *p)
 static int ioremap_vdma_resource(struct device *dev, struct device_node *vdma_node,
     const char *name, struct hailo_resource *resource)
 {
-    int err = -EFAULT;
+    int err = 0;
     void __iomem *address = NULL;
     struct resource of_resource;
 
@@ -168,7 +168,6 @@ static int setup_engine_irq(struct device *dev, struct device_node *vdma_node,
     int err = -EINVAL;
     int ret = 0;
     const char *irq_name;
-    enum irq_type type;
 
     for (idx = 0; idx < MAX_INTERRUPTS_PER_ENGINE; idx++) {
         err = of_property_read_string_index(vdma_node, "interrupt-names", idx, &irq_name);
@@ -189,13 +188,12 @@ static int setup_engine_irq(struct device *dev, struct device_node *vdma_node,
             }
         }
 
-        type = map_irq_name_to_type(irq_name);
-        irqs_info[type].irq = ret;
-        irqs_info[type].type = type;
-        irqs_info[type].dev = dev;
-        irqs_info[type].engine_index = engine_index;
+        irqs_info[idx].irq = ret;
+        irqs_info[idx].type = map_irq_name_to_type(irq_name);
+        irqs_info[idx].dev = dev;
+        irqs_info[idx].engine_index = engine_index;
 
-        err = devm_request_irq(dev, ret, vdma_irqhandler, 0, dev_name(dev), (void *)&irqs_info[type]);
+        err = devm_request_irq(dev, ret, vdma_irqhandler, 0, dev_name(dev), (void *)&irqs_info[idx]);
         if (err < 0) {
             dev_err(dev, "Failed setting up vDMA interrupts. err %d\n", err);
             return err;

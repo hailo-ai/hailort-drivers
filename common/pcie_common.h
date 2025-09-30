@@ -16,7 +16,12 @@
 
 #include <linux/types.h>
 #include <linux/firmware.h>
+#include <linux/scatterlist.h>
 
+// Platform-specific includes are now handled in platform layers only
+
+#define HAILO_PCI_OVER_VDMA_NUM_CHANNELS (8)
+#define HAILO_PCI_OVER_VDMA_PAGE_SIZE    (512)
 
 #define FW_CODE_SECTION_ALIGNMENT (4)
 
@@ -113,12 +118,39 @@ struct hailo_pcie_loading_stage {
     u8 amount_of_files_in_stage;
 };
 
-// vDMA descriptor programming parameters for common firmware loading
+// Common descriptor programming function - works directly with common structures
 struct hailo_pcie_boot_desc_programming_params {
     struct hailo_vdma_descriptors_list *device_desc_list;
     struct hailo_vdma_descriptors_list *host_desc_list;
     u32 desc_program_num;
     u32 max_desc_count;
+};
+
+// Common structure definitions for platform-agnostic firmware loading
+struct hailo_pcie_boot_dma_channel_state {
+    // The sg_table and kernel_address are considered common as linux-port provides
+    // compatible types for all platforms. The memory itself is allocated by the platform.
+    struct sg_table sg_table;
+    void *kernel_address;
+
+    // Pointers to the descriptor lists within the buffers for convenience.
+    // The backing memory is allocated and managed by the platform-specific driver code.
+    struct hailo_vdma_descriptors_list *host_descriptors_list;
+    struct hailo_vdma_descriptors_list *device_descriptors_list;
+
+    // Common channel state
+    u32 buffer_size;
+    u32 desc_program_num;
+};
+
+struct hailo_pcie_boot_dma_state {
+    struct hailo_pcie_boot_dma_channel_state channels[HAILO_PCI_OVER_VDMA_NUM_CHANNELS];
+    u8 curr_channel_index;
+};
+
+struct hailo_pcie_fw_boot {
+    struct hailo_pcie_boot_dma_state boot_dma_state;
+    u16 boot_used_channel_bitmap;
 };
 
 // TODO: HRT-6144 - Align Windows/Linux to QNX
@@ -179,7 +211,6 @@ int hailo_pcie_write_firmware_batch(struct device *dev, struct hailo_pcie_resour
 bool hailo_pcie_is_firmware_loaded(struct hailo_pcie_resources *resources);
 bool hailo_pcie_wait_for_firmware(struct hailo_pcie_resources *resources);
 
-int hailo_pcie_memory_transfer(struct hailo_pcie_resources *resources, struct hailo_memory_transfer_params *params);
 
 bool hailo_pcie_is_device_connected(struct hailo_pcie_resources *resources);
 void hailo_pcie_write_firmware_driver_shutdown(struct hailo_pcie_resources *resources);
@@ -190,7 +221,7 @@ void hailo_trigger_firmware_boot(struct hailo_pcie_resources *resources, u32 sta
 int hailo_set_device_type(struct hailo_pcie_resources *resources);
 void hailo_read_sku_id(struct hailo_pcie_resources *resources);
 
-void hailo_resolve_dtb_filename(char *filename, u32 sku_id);
+void hailo_resolve_dtb_filename(char *filename, u32 sku_id, const char *file_name_template);
 
 u32 hailo_get_boot_status(struct hailo_pcie_resources *resources);
 int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
@@ -199,23 +230,29 @@ int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
 int hailo_pcie_configure_atr_table(struct hailo_resource *bridge_config, u64 trsl_addr, u32 atr_index);
 void hailo_pcie_read_atr_table(struct hailo_resource *bridge_config, struct hailo_atr_config *atr, u32 atr_index);
 
-int hailo_pcie_program_one_file_descriptors(
-    u32 file_address,
-    u32 transfer_size,
-    u8 channel_index,
-    bool raise_int_on_completion,
-    struct hailo_pcie_boot_desc_programming_params *desc_params,
-    struct hailo_vdma_mapped_transfer_buffer *transfer_buffer);
-
+/**
+ * Program a batch of firmware files over vDMA.
+ *
+ * This function orchestrates the firmware loading process by iterating through the
+ * files for a given stage, preparing DMA transfers, and programming the descriptors
+ * using platform-specific data.
+ *
+ * @fw_boot Pointer to the common firmware boot state structure.
+ * @resources Pointer to the PCIe hardware resources.
+ * @stage The firmware loading stage to be programmed.
+ * @dev Pointer to the device struct for logging and resource management.
+ * @return Returns 0 on success, or a negative error code on failure.
+ */
+long hailo_pcie_program_firmware_batch_common(struct hailo_pcie_fw_boot *fw_boot,
+    struct hailo_pcie_resources *resources, u32 stage, struct device *dev);
 
 void hailo_pcie_soc_write_request(struct hailo_pcie_resources *resources,
     const struct hailo_pcie_soc_request *request);
 void hailo_pcie_soc_read_response(struct hailo_pcie_resources *resources,
     struct hailo_pcie_soc_response *response);
 bool hailo_pcie_wait_for_boot(struct hailo_pcie_resources *resources);
-
 #ifdef __cplusplus
 }
 #endif
-
 #endif /* _HAILO_COMMON_PCIE_COMMON_H_ */
+

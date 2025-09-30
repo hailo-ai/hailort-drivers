@@ -8,7 +8,7 @@
 #include "vdma.h"
 #include "memory.h"
 #include "ioctl.h"
-#include "utils/logs.h"
+#include "logs.h"
 
 #include <linux/sched.h>
 #include <linux/version.h>
@@ -203,6 +203,8 @@ int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
     }
 
     controller->used_by_filp = NULL;
+    atomic64_set(&controller->cma_in_use, 0);
+    atomic64_set(&controller->desc_cma_in_use, 0);
 
     /* Check and configure DMA length */
     err = hailo_set_dma_mask(dev);
@@ -294,7 +296,7 @@ void hailo_vdma_disable_channels_per_engine(struct hailo_vdma_controller *contro
     u8 engine_index, u64 channels_bitmap)
 {
     struct hailo_vdma_engine *engine = &controller->vdma_engines[engine_index];
-    hailo_vdma_engine_disable_channels(engine, channels_bitmap);
+    hailo_vdma_engine_disable_channels(controller->dev, engine, channels_bitmap);
     hailo_vdma_update_interrupts_mask(controller, engine_index);
     hailo_vdma_context_clear_channel_interrupts(context, engine_index, channels_bitmap);
 
@@ -338,6 +340,8 @@ long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma
         return hailo_vdma_launch_transfer_ioctl(context, controller, arg);
     case HAILO_VDMA_PREPARE_TRANSFER:
         return hailo_vdma_prepare_transfer_ioctl(context, controller, arg);
+    case HAILO_VDMA_CANCEL_PREPARED_TRANSFER:
+        return hailo_vdma_cancel_prepared_transfer_ioctl(context, controller, arg);
 
     default:
         hailo_dev_err(controller->dev, "Invalid vDMA ioctl code 0x%x (nr: %d)\n", cmd, _IOC_NR(cmd));

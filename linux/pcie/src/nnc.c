@@ -10,7 +10,7 @@
 #include "nnc.h"
 #include "hailo_ioctl_common.h"
 
-#include "utils/logs.h"
+#include "logs.h"
 #include "utils/compact.h"
 
 #include <linux/uaccess.h>
@@ -126,7 +126,7 @@ static long hailo_get_notification_wait_thread(struct hailo_pcie_board *board, s
         }
     }
 
-    return -EFAULT;
+    return -EINVAL;
 }
 
 static long hailo_read_notification_ioctl(struct hailo_pcie_board *board, struct hailo_file_context *context,
@@ -214,7 +214,7 @@ static long hailo_read_log_ioctl(struct hailo_pcie_board *board, unsigned long a
 
     if (copy_from_user(&params, (void __user*)arg, sizeof(params))) {
         hailo_err(board, "HAILO_READ_LOG, copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     if (0 > (err = hailo_pcie_read_firmware_log(&board->pcie_resources.fw_access, &params))) {
@@ -223,7 +223,7 @@ static long hailo_read_log_ioctl(struct hailo_pcie_board *board, unsigned long a
     }
 
     if (copy_to_user((void*)arg, &params, sizeof(params))) {
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;

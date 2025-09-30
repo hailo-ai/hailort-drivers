@@ -6,7 +6,7 @@
 #include "integrated_nnc_fw_validation.h"
 #include <asm-generic/errno-base.h>
 
-#include "utils/logs.h"
+#include "logs.h"
 
 #define MAXIMUM_CORE_FIRMWARE_CODE_SIZE (0x200000)
 

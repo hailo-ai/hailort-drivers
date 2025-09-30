@@ -22,7 +22,7 @@
 #include "fw_operation.h"
 #include "fw_notification.h"
 #include "driver_down_notification.h"
-#include "utils/logs.h"
+#include "logs.h"
 #include "utils/compact.h"
 #include "utils/integrated_nnc_utils.h"
 #include "vdma/ioctl.h"
@@ -136,66 +136,11 @@ static int hailo_integrated_nnc_fops_release(struct inode *inode, struct file *f
     return ret;
 }
 
-static long hailo_memory_transfer_ioctl(struct hailo_board *board, unsigned long arg)
-{
-    long err = 0;
-    struct hailo_memory_transfer_params* transfer = &board->memory_transfer_params;
 
-    hailo_dbg(board, "Start memory transfer ioctl\n");
-
-    if (copy_from_user(transfer, (void __user*)arg, sizeof(*transfer))) {
-        hailo_err(board, "copy_from_user fail\n");
-        return -EFAULT;
-    }
-
-    if (transfer->count > ARRAY_SIZE(transfer->buffer)) {
-        hailo_err(board, "Transfer count too big %zu\n", transfer->count);
-        return -EINVAL;
-    }
-
-    switch (transfer->memory_type) {
-    case HAILO_TRANSFER_DEVICE_DIRECT_MEMORY:
-        err = direct_memory_transfer(board->pdev, transfer);
-        break;
-    case HAILO_TRANSFER_MEMORY_VDMA0:
-        err = hailo_resource_transfer(&board->vdma_engines_resources[0].channel_registers, transfer);
-        break;
-    case HAILO_TRANSFER_MEMORY_VDMA1:
-        err = hailo_resource_transfer(&board->vdma_engines_resources[1].channel_registers, transfer);
-        break;
-    case HAILO_TRANSFER_MEMORY_VDMA2:
-        err = hailo_resource_transfer(&board->vdma_engines_resources[2].channel_registers, transfer);
-        break;
-    case HAILO_TRANSFER_MEMORY_DMA_ENGINE0:
-        err = hailo_resource_transfer(&board->vdma_engines_resources[0].engine_registers, transfer);
-        break;
-    case HAILO_TRANSFER_MEMORY_DMA_ENGINE1:
-        err = hailo_resource_transfer(&board->vdma_engines_resources[1].engine_registers, transfer);
-        break;
-    case HAILO_TRANSFER_MEMORY_DMA_ENGINE2:
-        err = hailo_resource_transfer(&board->vdma_engines_resources[2].engine_registers, transfer);
-        break;
-    default:
-        hailo_err(board, "Memory type %d not supported\n", (int)transfer->memory_type);
-        err = -EINVAL;
-    }
-    if (err < 0) {
-        return err;
-    }
-
-    if (copy_to_user((void __user*)arg, transfer, sizeof(*transfer))) {
-        hailo_err(board, "copy_to_user fail\n");
-        return -EFAULT;
-    }
-
-    return err;
-}
 
 static long hailo_general_ioctl(struct hailo_board *board, unsigned int cmd, unsigned long arg)
 {
     switch (cmd) {
-    case HAILO_MEMORY_TRANSFER:
-        return hailo_memory_transfer_ioctl(board, arg);
     case HAILO_QUERY_DEVICE_PROPERTIES:
         return hailo_query_device_properties(board, arg);
     case HAILO_QUERY_DRIVER_INFO:
@@ -315,7 +260,7 @@ static long hailo_query_device_properties(struct hailo_board *board, unsigned lo
 
     if (copy_to_user((void __user*)arg, &props, sizeof(props))) {
         hailo_err(board, "HAILO_QUERY_DEVICE_PROPERTIES, copy_to_user failed\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;
@@ -334,7 +279,7 @@ static long hailo_query_driver_info(struct hailo_board *board, unsigned long arg
 
     if (copy_to_user((void __user*)arg, &info, sizeof(info))) {
         hailo_err(board, "HAILO_QUERY_DRIVER_INFO, copy_to_user failed\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;
@@ -347,7 +292,7 @@ static long hailo_read_log_ioctl(struct hailo_board *board, unsigned long arg)
 
     if (copy_from_user(&params, (void __user*)arg, sizeof(params))) {
         hailo_err(board, "HAILO_READ_LOG, copy_from_user fail\n");
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     if ((err = hailo_read_firmware_log(&board->fw_logger, &params) < 0)) {
@@ -356,7 +301,7 @@ static long hailo_read_log_ioctl(struct hailo_board *board, unsigned long arg)
     }
 
     if (copy_to_user((void*)arg, &params, sizeof(params))) {
-        return -ENOMEM;
+        return -EFAULT;
     }
 
     return 0;

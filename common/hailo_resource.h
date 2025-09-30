@@ -29,8 +29,6 @@ void hailo_resource_write8(struct hailo_resource *resource, size_t offset, u8 va
 void hailo_resource_read_buffer(struct hailo_resource *resource, size_t offset, size_t count, void *to);
 int hailo_resource_write_buffer(struct hailo_resource *resource, size_t offset, size_t count, const void *from);
 
-// Transfer (read/write) the given resource into/from transfer params.
-int hailo_resource_transfer(struct hailo_resource *resource, struct hailo_memory_transfer_params *transfer);
 
 #ifdef __cplusplus
 }

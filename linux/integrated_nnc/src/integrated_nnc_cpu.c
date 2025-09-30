@@ -14,7 +14,7 @@
 #include "integrated_nnc_cpu.h"
 #include "board.h"
 #include "utils/integrated_nnc_utils.h"
-#include "utils/logs.h"
+#include "logs.h"
 
 static int hailo_write_core_firmware(struct hailo_board *board, firmware_header_t *fw_header)
 {
