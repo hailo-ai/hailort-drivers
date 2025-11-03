@@ -222,8 +222,6 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
-
-
 static void firmware_notification_irq_handler(struct hailo_pcie_board *board)
 {
     struct hailo_notification_wait *notif_wait_cursor = NULL;
@@ -231,7 +229,7 @@ static void firmware_notification_irq_handler(struct hailo_pcie_board *board)
     unsigned long irq_saved_flags = 0;
 
     spin_lock_irqsave(&board->nnc.notification_read_spinlock, irq_saved_flags);
-    err = hailo_pcie_read_firmware_notification(&board->pcie_resources.fw_access, &board->nnc.notification_cache);
+    err = hailo_pcie_read_mailbox_notification(&board->pcie_resources.fw_access, &board->nnc.notification_cache);
     spin_unlock_irqrestore(&board->nnc.notification_read_spinlock, irq_saved_flags);
 
     if (err < 0) {

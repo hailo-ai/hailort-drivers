@@ -68,8 +68,8 @@ struct hailo_pcie_fw_boot_linux {
     struct hailo_pcie_fw_boot common;
     
     // Linux-specific descriptor buffers - one per channel
-    struct hailo_descriptors_list_buffer host_descriptors_buffers[HAILO_PCI_OVER_VDMA_NUM_CHANNELS];
-    struct hailo_descriptors_list_buffer device_descriptors_buffers[HAILO_PCI_OVER_VDMA_NUM_CHANNELS];
+    struct hailo_descriptors_list_buffer host_descriptors_buffers[HAILO_PCI_OVER_VDMA_MAX_CHANNELS];
+    struct hailo_descriptors_list_buffer device_descriptors_buffers[HAILO_PCI_OVER_VDMA_MAX_CHANNELS];
 
     // Linux-specific completion events
     struct completion fw_loaded_completion;

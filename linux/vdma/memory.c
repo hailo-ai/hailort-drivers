@@ -146,6 +146,12 @@ static int create_fd_from_vma(struct device *dev, struct vm_area_struct *vma) {
     return fd;
 }
 
+static inline void align_buffer_to_page(uintptr_t *address, size_t *size)
+{
+    *size = ALIGN(*size + (*address % PAGE_SIZE), PAGE_SIZE);
+    *address = ALIGN_DOWN(*address, PAGE_SIZE);
+}
+
 struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     uintptr_t addr_or_fd, size_t size, enum dma_data_direction direction,
     enum hailo_dma_buffer_type buffer_type)
@@ -218,9 +224,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
         // user_address is a standard 'struct page' backed memory address
 
         // Align buffer to PAGE_SIZE before map.
-        size += addr_or_fd % PAGE_SIZE;
-        addr_or_fd = ALIGN_DOWN(addr_or_fd, PAGE_SIZE);
-        size = ALIGN(size, PAGE_SIZE);
+        align_buffer_to_page(&addr_or_fd, &size);
 
         ret = prepare_sg_table(&sgt, addr_or_fd, size);
         if (ret < 0) {
@@ -361,13 +365,33 @@ struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_fd(struct hailo_vdma_
     }
     return NULL;
 }
+
 struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_address(struct hailo_vdma_file_context *context,
-    uintptr_t user_addres, size_t size, enum dma_data_direction direction)
+    uintptr_t user_address, size_t size, enum dma_data_direction direction)
 {
     struct hailo_vdma_buffer *cur = NULL;
     list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
-        if (cur->addr_or_fd <= user_addres &&
-            cur->addr_or_fd + cur->size >= user_addres + size &&
+        if (cur->addr_or_fd <= user_address &&
+            cur->addr_or_fd + cur->size >= user_address + size &&
+            cur->buffer_type == HAILO_DMA_USER_PTR_BUFFER &&
+            DMA_DIRECTION_EQUALS(cur->data_direction, direction)) {
+            return cur;
+        }
+    }
+    return NULL;
+}
+
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_exact_address(struct hailo_vdma_file_context *context,
+    uintptr_t user_address, size_t size, enum dma_data_direction direction)
+{
+    struct hailo_vdma_buffer *cur = NULL;
+
+    // Align to PAGE_SIZE like in hailo_vdma_buffer_map()
+    align_buffer_to_page(&user_address, &size);
+
+    list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
+        if (cur->addr_or_fd == user_address &&
+            cur->size == size &&
             cur->buffer_type == HAILO_DMA_USER_PTR_BUFFER &&
             DMA_DIRECTION_EQUALS(cur->data_direction, direction)) {
             return cur;

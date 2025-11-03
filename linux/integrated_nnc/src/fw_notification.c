@@ -3,40 +3,82 @@
  * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
  **/
 
+#include <asm/io.h>
+#include <linux/uaccess.h>
+#include <linux/of_address.h>
+#include <linux/scmi_protocol.h>
+#include <linux/slab.h>
+
+#include <linux/soc/hailo/scmi_hailo_protocol.h>
+#include <linux/soc/hailo/scmi_hailo_ops.h>
+
+#include "d2h_events.h"
 #include "fw_notification.h"
 #include "logs.h"
 #include "utils/integrated_nnc_utils.h"
 #include "utils/fw_common.h"
 #include "fw_operation.h"
 
-#include <linux/uaccess.h>
-#include <asm/io.h>
-#include <linux/of_address.h>
-#include <linux/slab.h>
-
-static void notification_rx_callback(struct mbox_client *cl, void *msg)
+static void complete_notification_wait_list(struct hailo_board *board)
 {
     struct hailo_notification_wait *notif_wait_cursor = NULL;
+
+    rcu_read_lock();
+    list_for_each_entry_rcu(notif_wait_cursor, &board->notification_wait_list, notification_wait_list)
+    {
+        complete(&notif_wait_cursor->notification_completion);
+    }
+    rcu_read_unlock();
+}
+
+static int scmi_rx_callback(struct notifier_block *nb, unsigned long event, void *report)
+{
+    D2H_EVENT_MESSAGE_t message = {};
+    struct fw_notification *notification = container_of(nb, struct fw_notification, scmi_notifier);
+    struct hailo_board *board = container_of(notification, struct hailo_board, fw_notification);
     unsigned long irq_saved_flags = 0;
     int err = 0;
 
-    struct fw_notification *notification = container_of(cl, struct fw_notification, mbox_client);
-    struct hailo_board *board = container_of(notification, struct hailo_board, fw_notification);
+    hailo_dbg(board, "Handling SCMI notification event");
+
+    if (SCMI_HAILO_CRC_ERROR_NOTIFICATION_ID != event) {
+        hailo_err(board, "Unrecognized SCMI notification event: %d", err);
+        return NOTIFY_BAD;
+    }
+
+    message.header.event_id = NN_CORE_CRC_ERROR_EVENT_ID;
+    message.header.parameter_count = 0;
+    message.header.payload_length = 0;
 
     spin_lock_irqsave(&board->notification_read_spinlock, irq_saved_flags);
-    err = hailo_read_firmware_notification(&notification->rx_shmem, &board->notification_cache);
+    err = hailo_read_scmi_notification(&message, sizeof(message), &board->notification_cache);
     spin_unlock_irqrestore(&board->notification_read_spinlock, irq_saved_flags);
-
     if (err < 0) {
-        hailo_err(board, "Failed reading firmware notification");
-    } else {
-        rcu_read_lock();
-        list_for_each_entry_rcu(notif_wait_cursor, &board->notification_wait_list, notification_wait_list)
-        {
-            complete(&notif_wait_cursor->notification_completion);
-        }
-        rcu_read_unlock();
+        hailo_err(board, "Failed reading firmware SCMI notification: %d", err);
+        return NOTIFY_BAD;
     }
+    complete_notification_wait_list(board);
+
+    return NOTIFY_OK;
+}
+
+static void mailbox_rx_callback(struct mbox_client *cl, void *msg)
+{
+    struct fw_notification *notification = container_of(cl, struct fw_notification, mbox_client);
+    struct hailo_board *board = container_of(notification, struct hailo_board, fw_notification);
+    unsigned long irq_saved_flags = 0;
+    int err = 0;
+
+    hailo_dbg(board, "Handling Mailbox notification event");
+
+    spin_lock_irqsave(&board->notification_read_spinlock, irq_saved_flags);
+    err = hailo_read_mailbox_notification(&notification->rx_shmem, &board->notification_cache);
+    spin_unlock_irqrestore(&board->notification_read_spinlock, irq_saved_flags);
+    if (err < 0) {
+        hailo_err(board, "Failed reading firmware mailbox notification: %d", err);
+        return;
+    }
+    complete_notification_wait_list(board);
 }
 
 long fw_notification_init(struct hailo_board *board)
@@ -46,9 +88,10 @@ long fw_notification_init(struct hailo_board *board)
     struct mbox_client *cl = &board->fw_notification.mbox_client;
     const size_t minimum_size = sizeof(board->fw_notification.notification.buffer_len) +
         sizeof(board->fw_notification.notification.buffer);
+    const struct scmi_hailo_ops *scmi_ops;
 
     cl->dev = &board->pdev->dev;
-    cl->rx_callback = notification_rx_callback;
+    cl->rx_callback = mailbox_rx_callback;
 
     chan = mbox_request_channel(cl, HAILO15_CORE_NOTIFICATION_MAILBOX_INDEX);
     if (IS_ERR(chan)) {
@@ -72,6 +115,20 @@ long fw_notification_init(struct hailo_board *board)
     }
 
     board->fw_notification.mbox_channel = chan;
+
+    board->fw_notification.scmi_notifier.notifier_call = scmi_rx_callback;
+    scmi_ops = scmi_hailo_get_ops();
+    if (IS_ERR(scmi_ops)) {
+        hailo_err(board, "Failed to get scmi ops\n");
+        err = PTR_ERR(scmi_ops);
+        goto l_free_channel;
+    }
+
+    err = scmi_ops->register_notifier(SCMI_HAILO_CRC_ERROR_NOTIFICATION_ID, &board->fw_notification.scmi_notifier);
+    if (err) {
+        hailo_err(board, "Failed to register SCMI CRC-error notifier\n");
+        goto l_free_channel;
+    }
 
     INIT_LIST_HEAD(&board->notification_wait_list);
 

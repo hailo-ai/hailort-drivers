@@ -27,6 +27,8 @@ struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_fd(struct hailo_vdma_
     uintptr_t fd, size_t total_size, enum dma_data_direction direction);
 struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_address(struct hailo_vdma_file_context *context,
     uintptr_t user_addres, size_t size, enum dma_data_direction direction);
+struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_exact_address(struct hailo_vdma_file_context *context,
+    uintptr_t user_addres, size_t size, enum dma_data_direction direction);
 struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_handle(struct hailo_vdma_file_context *context,
     size_t buffer_handle);
 void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *context,

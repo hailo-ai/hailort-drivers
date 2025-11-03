@@ -14,9 +14,11 @@
 extern "C" {
 #endif
 
-int hailo_read_firmware_notification(struct hailo_resource *resource, struct hailo_d2h_notification *notification);
+int hailo_read_scmi_notification(const void *message, uint16_t message_len, struct hailo_d2h_notification *notification);
 
-int hailo_pcie_read_firmware_notification(struct hailo_resource *resource, struct hailo_d2h_notification *notification);
+int hailo_read_mailbox_notification(struct hailo_resource *resource, struct hailo_d2h_notification *notification);
+
+int hailo_pcie_read_mailbox_notification(struct hailo_resource *resource, struct hailo_d2h_notification *notification);
 
 long hailo_read_firmware_log(struct hailo_resource *fw_logger_resource, struct hailo_read_log_params *params);
 
