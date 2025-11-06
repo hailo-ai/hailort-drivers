@@ -29,7 +29,6 @@ endif
 # Default is release folder
 TARGET_DIR:="$(BUILD_DIR)/release/$(ARCH)"
 
-DRIVER_NAME=hailo1x_pci.ko
 DRIVER_NAME_NO_EXT=hailo1x_pci
 
 VERSION_MAJOR=$(shell grep "\#define HAILO_DRV_VER_MAJOR" ../../common/hailo_ioctl_common.h | sed "s/\#define HAILO_DRV_VER_MAJOR //g")
@@ -97,7 +96,7 @@ print-versions:
 
 all: $(TARGET_DIR) print-versions
 	$(Q)$(MAKE)  -C $(KERNEL_DIR) M=$(PWD) $(GDB_FLAG) $(USER_FLAGS) modules
-	$(Q)cp $(DRIVER_NAME) $(TARGET_DIR)
+	$(Q)cp $(DRIVER_NAME_NO_EXT)* $(TARGET_DIR)
 
 $(TARGET_DIR):
 	$(Q)mkdir -p $@
@@ -113,7 +112,7 @@ install:
 
 uninstall: uninstall_all_dkms
 ifneq ($(wildcard $(MODULES)),)
-	$(Q)rm -f $(MODULES)kernel/drivers/misc/$(DRIVER_NAME)
+	$(Q)rm -f $(MODULES)kernel/drivers/misc/$(DRIVER_NAME_NO_EXT)*
 	$(Q)$(DEPMOD) -a
 endif
 
