@@ -22,7 +22,7 @@
 #define VDMA_DESCRIPTOR_LIST_ALIGN  (1 << 16)
 #define INVALID_VDMA_ADDRESS        (0)
 
-#define CHANNEL_BASE_OFFSET(channel_index) ((channel_index) << 5)
+#define CHANNEL_BASE_OFFSET(channel_index) ((u64)(channel_index) << 5)
 
 #define CHANNEL_CONTROL_OFFSET      (0x0)
 #define CHANNEL_DEPTH_ID_OFFSET     (0x1)
@@ -200,60 +200,26 @@ void hailo_vdma_program_descriptors_in_chunk(
  * @param desc_list descriptors list object to program
  * @param starting_desc index of the first descriptor to program. If the list
  *                      is circular, this function may wrap around the list.
- * @param buffer buffer to program to the descriptors list.
- * @param should_bind If false, assumes the buffer was already bound to the
- *                    desc list. Used for optimization.
+ * @param sgt scatter gather table to program to the descriptors list.
+ * @param sgt_offset offset in the scatter gather table to program from.
+ * @param transfer_size size of the transfer to program.
+ * @param transfers_count number of transfers to program.
  * @param channel_index channel index of the channel attached.
  * @param last_desc_interrupts - interrupts settings on last descriptor.
  * @param is_debug program descriptors for debug run.
- * @param stride stride of the buffer - affects the real descriptor program size.
- *               If the stride is 0 (default), the stride is calculated as the desc_page_size.
- *
  * @return On success - the amount of descriptors programmed, negative value on error.
  */
 int hailo_vdma_program_descriptors_list(
     struct hailo_vdma_hw *vdma_hw,
     struct hailo_vdma_descriptors_list *desc_list,
     u32 starting_desc,
-    struct hailo_vdma_mapped_transfer_buffer *buffer,
-    bool should_bind,
-    u8 channel_index,
-    enum hailo_vdma_interrupts_domain last_desc_interrupts,
-    bool is_debug,
-    u32 stride);
-
-/**
- * Program the given descriptors list to map a given buffer in a batch pattern.
- *
- * @param vdma_hw vdma hw object
- * @param desc_list descriptors list object to program
- * @param starting_desc index of the first descriptor to program. If the list
- *                     is circular, this function may wrap around the list.
- * @param base_buffer buffer to program to the descriptors list.
- * @param buffer_offset offset in the buffer to start the program from.
- * @param transfer_size size of each transfer in the batch to program.
- * @param batch_size amount of transfers to program.
- * @param should_bind If false, assumes the buffer was already bound to the desc list.
- *                    Used for optimization.
- * @param channel_index channel index of the channel attached.
- * @param last_desc_interrupts - interrupts settings on last descriptor of each transfer.
- * @param is_debug program descriptors for debug run.
- * @param stride stride of the buffer - affects the real descriptor program size.
- *               If the stride is 0 (default), the stride is calculated as the desc_page_size.
- */
-int hailo_vdma_program_descriptors_list_batch(
-    struct hailo_vdma_hw *vdma_hw,
-    struct hailo_vdma_descriptors_list *desc_list,
-    u32 starting_desc,
-    struct sg_table *base_buffer,
-    u32 buffer_offset,
+    struct sg_table *sgt,
+    u32 sgt_offset,
     u32 transfer_size,
-    u32 batch_size,
-    bool should_bind,
+    u32 transfers_count,
     u8 channel_index,
     enum hailo_vdma_interrupts_domain last_desc_interrupts,
-    bool is_debug,
-    u32 stride);
+    bool is_debug);
 
 void hailo_vdma_set_num_avail(u8 __iomem *regs, u16 num_avail);
 
@@ -271,7 +237,6 @@ u16 hailo_vdma_get_num_proc(u8 __iomem *regs);
  * @param starting_desc index of the first descriptor to program.
  * @param buffers_count amount of transfer mapped buffers to program.
  * @param buffers array of buffers to program to the descriptors list.
- * @param should_bind whether to bind the buffer to the descriptors list.
  * @param first_interrupts_domain - interrupts settings on first descriptor.
  * @param last_desc_interrupts - interrupts settings on last descriptor.
  * @param is_debug program descriptors for debug run, adds some overhead (for

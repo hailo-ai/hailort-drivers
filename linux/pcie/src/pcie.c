@@ -399,7 +399,7 @@ exit:
 /**
  * Release all boot resources.
  *
- * @param board - pointer to the board struct we are working on.
+ * @param fw_boot - pointer to the fw boot struct we are working on.
  * @param engine - pointer to the vdma engine struct.
  * @param dev - pointer to the device struct.
  */
@@ -407,15 +407,21 @@ static void pcie_platform_release_boot_resources(struct hailo_pcie_fw_boot_linux
     struct device *dev)
 {
     u8 channel_index = 0;
+    u8 allocated_channels = 0;
 
     if (!fw_boot) {
         return;
     }
 
-    hailo_dev_info(dev, "Releasing boot resources\n");
+    allocated_channels = fw_boot->common.boot_dma_state.allocated_channels;
 
-    // Release all the resources
-    for (channel_index = 0; channel_index < HAILO_PCI_OVER_VDMA_NUM_CHANNELS; channel_index++) {
+    hailo_dev_dbg(dev, "Releasing boot resources for %u channels\n", allocated_channels);
+
+    // Release any cached firmware first
+    hailo_pcie_release_firmware_cache(&fw_boot->common.boot_dma_state);
+
+    // Release resources for the allocated number of channels
+    for (channel_index = 0; channel_index < allocated_channels; channel_index++) {
         // Direct access to common channels and platform buffers
         struct hailo_pcie_boot_dma_channel_state *channel = &fw_boot->common.boot_dma_state.channels[channel_index];
         struct hailo_descriptors_list_buffer *host_buffer = &fw_boot->host_descriptors_buffers[channel_index];
@@ -446,7 +452,7 @@ static void pcie_platform_release_boot_resources(struct hailo_pcie_fw_boot_linux
         }
     }
 
-    hailo_dev_info(dev, "Boot resources release completed\n");
+    hailo_dev_dbg(dev, "Boot resources release completed\n");
 }
 
 /**
@@ -454,11 +460,12 @@ static void pcie_platform_release_boot_resources(struct hailo_pcie_fw_boot_linux
  *
  * @param pcie_fw_boot - pointer to the pcie fw boot struct.
  * @param desc_page_size - the size of the descriptor page.
+ * @param num_channels - number of channels to allocate for this stage.
  * @param board - pointer to the board struct.
  * @return 0 on success, negative error code on failure. in case of failure descriptor lists are released,
  *  boot vDMA channels are stopped and memory is released.
  */
-static long pcie_platform_allocate_boot_resources(struct hailo_pcie_fw_boot_linux *pcie_fw_boot, u32 desc_page_size, struct hailo_pcie_board *board)
+static long pcie_platform_allocate_boot_resources(struct hailo_pcie_fw_boot_linux *pcie_fw_boot, u32 desc_page_size, u8 num_channels, struct hailo_pcie_board *board)
 {
     struct hailo_vdma_engine *engine = &board->vdma.vdma_engines[PCI_VDMA_ENGINE_INDEX];
     long err = 0;
@@ -470,10 +477,15 @@ static long pcie_platform_allocate_boot_resources(struct hailo_pcie_fw_boot_linu
         return -EINVAL;
     }
 
-    hailo_info(board, "Linux: Allocating boot resources for all channels\n");
+    if (num_channels == 0 || num_channels > HAILO_PCI_OVER_VDMA_MAX_CHANNELS) {
+        hailo_err(board, "Invalid number of channels: %u (max: %u)\n", num_channels, HAILO_PCI_OVER_VDMA_MAX_CHANNELS);
+        return -EINVAL;
+    }
 
-    // Allocate resources for ALL channels upfront
-    for (channel_index = 0; channel_index < HAILO_PCI_OVER_VDMA_NUM_CHANNELS; channel_index++) {
+    hailo_dbg(board, "Linux: Allocating boot resources for %u channels\n", num_channels);
+
+    // Allocate resources for the calculated number of channels
+    for (channel_index = 0; channel_index < num_channels; channel_index++) {
         // Direct access to common channels and platform buffers
         struct hailo_pcie_boot_dma_channel_state *channel = &pcie_fw_boot->common.boot_dma_state.channels[channel_index];
         struct hailo_descriptors_list_buffer *host_buffer = &pcie_fw_boot->host_descriptors_buffers[channel_index];
@@ -532,10 +544,11 @@ release_all_resources:
  * Write FW boot files over vDMA using multiple channels for timing optimizations.
  * 
  * The function is divided into the following steps:
- * 1) Allocate resources for the boot process.
- * 2) Programs descriptors to point to the memory and start the vDMA.
- * 3) Waits until the vDMA is done and triggers the device to start the boot process.
- * 4) Releases all the resources.
+ * 1) Calculate the required number of channels for this stage.
+ * 2) Allocate resources for the boot process.
+ * 3) Programs descriptors to point to the memory and start the vDMA.
+ * 4) Waits until the vDMA is done and triggers the device to start the boot process.
+ * 5) Releases all the resources.
  *
  * @param board - pointer to the board struct.
  * @param stage - the stage of the boot process.
@@ -546,11 +559,22 @@ static long pcie_write_firmware_batch_over_dma(struct hailo_pcie_board *board, u
     struct hailo_vdma_engine *engine = &board->vdma.vdma_engines[PCI_VDMA_ENGINE_INDEX];
     long err = 0;
     u8 channel_index = 0;
+    u8 required_channels = 0;
     struct hailo_pcie_boot_dma_state *boot_dma_state = &board->fw_boot.common.boot_dma_state;
 
     hailo_info(board, "Starting common firmware batch loading for stage %u\n", stage);
 
-    err = pcie_platform_allocate_boot_resources(&board->fw_boot, HAILO_PCI_OVER_VDMA_PAGE_SIZE, board);
+    // Load firmware and calculate the required number of channels for this stage
+    err = hailo_pcie_load_and_cache_stage_firmware(&board->fw_boot.common, &board->pcie_resources, stage, &board->pdev->dev);
+    if (err < 0) {
+        hailo_err(board, "Failed to load and cache firmware for stage %u: %ld\n", stage, err);
+        return err;
+    }
+
+    required_channels = boot_dma_state->allocated_channels;
+    hailo_dbg(board, "Stage %u requires %u channels\n", stage, required_channels);
+
+    err = pcie_platform_allocate_boot_resources(&board->fw_boot, HAILO_PCI_OVER_VDMA_PAGE_SIZE, required_channels, board);
     if (err) {
         return err;
     }
@@ -566,13 +590,13 @@ static long pcie_write_firmware_batch_over_dma(struct hailo_pcie_board *board, u
     }
 
     // Sync the sg tables for the device before starting the vDMA
-    for (channel_index = 0; channel_index < HAILO_PCI_OVER_VDMA_NUM_CHANNELS; channel_index++) {
+    for (channel_index = 0; channel_index < required_channels; channel_index++) {
         struct hailo_pcie_boot_dma_channel_state *common_channel = &boot_dma_state->channels[channel_index];
         dma_sync_sgtable_for_device(&board->pdev->dev, &common_channel->sg_table, DMA_TO_DEVICE);
     }
 
-    // Start the vDMA transfer on all channels
-    for (channel_index = 0; channel_index < HAILO_PCI_OVER_VDMA_NUM_CHANNELS; channel_index++) {
+    // Start the vDMA transfer on all allocated channels
+    for (channel_index = 0; channel_index < required_channels; channel_index++) {
         struct hailo_pcie_boot_dma_channel_state *common_channel = &boot_dma_state->channels[channel_index];
         if (common_channel->desc_program_num > 0) {
             // Trigger the transfers (channels were started during descriptor allocation)
@@ -706,7 +730,9 @@ static int load_soc_firmware(struct hailo_pcie_board *board)
     err = write_firmware_and_wait_completion(board, SECOND_STAGE, STRATEGY_PCIE_BARS);
     if (err < 0) {
         hailo_dev_err(dev, "Failed writing SOC firmware on stage 2\n");
-        print_scu_log(board);
+        if (err != -EFBIG) {
+            print_scu_log(board);
+        }
         return err;
     }
 
@@ -714,7 +740,9 @@ static int load_soc_firmware(struct hailo_pcie_board *board)
     err = write_firmware_and_wait_completion(board, THIRD_STAGE, STRATEGY_DMA);
     if (err < 0) {
         hailo_dev_err(dev, "Failed writing SOC firmware on stage 3\n");
-        print_scu_log(board);
+        if (err != -EFBIG) {
+            print_scu_log(board);
+        }
         return err;
     }
 
@@ -1061,6 +1089,16 @@ static int hailo_pcie_probe(struct pci_dev* pdev, const struct pci_device_id* id
         goto probe_release_pcie_resources;
     }
 
+    // Initialize the boot DMA state
+    memset(&board->fw_boot, 0, sizeof(board->fw_boot));
+
+    // Initialize the boot channel bitmap to 1 since channel 0 is always used for boot
+    // (we will always use at least 1 channel which is LSB in the bitmap)
+    // Additional channels will be added dynamically as they get allocated
+    board->fw_boot.common.boot_used_channel_bitmap = (1 << 0);
+    board->fw_boot.common.boot_dma_state.curr_channel_index = 0;
+    board->fw_boot.common.boot_dma_state.allocated_channels = 0; // Will be calculated per stage
+    board->fw_boot.common.boot_dma_state.cached_firmware_count = 0; // Initialize firmware cache
     board->fw_boot.is_in_boot = false;
     init_completion(&board->fw_boot.fw_loaded_completion);
 
@@ -1081,16 +1119,6 @@ static int hailo_pcie_probe(struct pci_dev* pdev, const struct pci_device_id* id
         hailo_err(board, "Failed init vdma controller %d\n", err);
         goto probe_release_pcie_resources;
     }
-
-    // Initialize the boot channel bitmap to 1 since channel 0 is always used for boot
-    // (we will always use at least 1 channel which is LSB in the bitmap)
-    // Additional channels will be added dynamically as they get allocated
-    board->fw_boot.common.boot_used_channel_bitmap = (1 << 0);
-    board->fw_boot.common.boot_dma_state.curr_channel_index = 0;
-    board->fw_boot.is_in_boot = false;
-
-    // Initialize the boot DMA state
-    memset(&board->fw_boot, 0, sizeof(board->fw_boot));
 
     err = hailo_activate_board(board);
     if (err < 0) {
@@ -1277,6 +1305,7 @@ static void hailo_pci_reset_done(struct pci_dev *pdev)
         // Reset some board fields before reboot.
         board->fw_boot.common.boot_used_channel_bitmap = (1 << 0);
         memset(&board->fw_boot.common.boot_dma_state, 0, sizeof(board->fw_boot.common.boot_dma_state));
+        board->fw_boot.common.boot_dma_state.allocated_channels = 0;
 
         // Reboot the board.
         err = hailo_activate_board(board);

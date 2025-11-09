@@ -5,6 +5,7 @@
 
 #include "fw_operation.h"
 
+#include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -20,7 +21,20 @@ typedef struct {
 #define PCIE_APP_CPU_DEBUG_OFFSET           (8*1024)
 #define PCIE_CORE_CPU_DEBUG_OFFSET          (PCIE_APP_CPU_DEBUG_OFFSET + DEBUG_BUFFER_TOTAL_SIZE)
 
-int hailo_read_firmware_notification(struct hailo_resource *resource, struct hailo_d2h_notification *notification)
+
+int hailo_read_scmi_notification(const void *message, uint16_t message_len, struct hailo_d2h_notification *notification)
+{
+    if (sizeof(notification->buffer) < message_len) {
+        return -EINVAL;
+    }
+
+    notification->buffer_len = message_len;
+    memcpy(notification->buffer, message, message_len);
+
+    return 0;
+}
+
+int hailo_read_mailbox_notification(struct hailo_resource *resource, struct hailo_d2h_notification *notification)
 {
     hailo_d2h_buffer_details_t d2h_buffer_details = {0, 0};
     hailo_resource_read_buffer(resource, 0, sizeof(d2h_buffer_details),
@@ -38,7 +52,7 @@ int hailo_read_firmware_notification(struct hailo_resource *resource, struct hai
     return 0;
 }
 
-int hailo_pcie_read_firmware_notification(struct hailo_resource *resource,
+int hailo_pcie_read_mailbox_notification(struct hailo_resource *resource,
     struct hailo_d2h_notification *notification)
 {
     struct hailo_resource notification_resource;
@@ -50,7 +64,7 @@ int hailo_pcie_read_firmware_notification(struct hailo_resource *resource,
     notification_resource.address = resource->address + PCIE_D2H_NOTIFICATION_SRAM_OFFSET,
     notification_resource.size = sizeof(struct hailo_d2h_notification);
 
-    return hailo_read_firmware_notification(&notification_resource, notification);
+    return hailo_read_mailbox_notification(&notification_resource, notification);
 }
 
 static inline size_t calculate_log_ready_to_read(FW_DEBUG_BUFFER_HEADER_t *header)

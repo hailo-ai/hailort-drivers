@@ -343,9 +343,140 @@ void hailo_resolve_dtb_filename(char *filename, u32 sku_id, const char *file_nam
     if (HAILO_SKU_ID_DEFAULT == sku_id) {
         snprintf(filename, FW_FILENAME_MAX_LEN, file_name_template, "default");
     } else {
-        snprintf(sku_id_str, SKU_ID_MAX_LEN, "%d", sku_id);
+        snprintf(sku_id_str, SKU_ID_MAX_LEN, "%u", sku_id);
         snprintf(filename, FW_FILENAME_MAX_LEN, file_name_template, sku_id_str);
     }
+}
+
+/**
+ * Release all cached firmware files for a boot DMA state.
+ */
+void hailo_pcie_release_firmware_cache(struct hailo_pcie_boot_dma_state *boot_dma_state)
+{
+    u8 i = 0;
+
+    if (!boot_dma_state) {
+        return;
+    }
+
+    for (i = 0; i < boot_dma_state->cached_firmware_count; i++) {
+        if (boot_dma_state->firmware_cache[i]) {
+            release_firmware(boot_dma_state->firmware_cache[i]);
+            boot_dma_state->firmware_cache[i] = NULL;
+        }
+    }
+    boot_dma_state->cached_firmware_count = 0;
+}
+
+/**
+ * Add firmware to cache at specific index.
+ */
+static void pcie_cache_firmware(struct hailo_pcie_boot_dma_state *boot_dma_state,
+    u8 file_index, const struct firmware *firmware)
+{
+    boot_dma_state->firmware_cache[file_index] = firmware;
+
+    // Update cached count to be max of current count and file_index + 1
+    if (file_index + 1 > boot_dma_state->cached_firmware_count) {
+        boot_dma_state->cached_firmware_count = file_index + 1;
+    }
+}
+
+/**
+ * Load and cache firmware files for a stage, then calculate the number of channels
+ * required for the transfer based on actual file sizes.
+ *
+ * @param fw_boot Pointer to the firmware boot state structure (contains boot DMA state).
+ * @param resources Pointer to the PCIe resources (contains board type and SKU ID).
+ * @param stage The firmware loading stage to analyze.
+ * @param dev Pointer to the device for error reporting and logging.
+ * @return 0 on success, negative error code on failure.
+ */
+int hailo_pcie_load_and_cache_stage_firmware(struct hailo_pcie_fw_boot *fw_boot,
+    struct hailo_pcie_resources *resources, u32 stage, struct device *dev)
+{
+    const struct hailo_pcie_loading_stage *stage_info = hailo_pcie_get_loading_stage_info(resources->board_type, stage);
+    const struct hailo_file_batch *files_batch = stage_info->batch;
+    const u8 amount_of_files = stage_info->amount_of_files_in_stage;
+    struct hailo_pcie_boot_dma_state *boot_dma_state = &fw_boot->boot_dma_state;
+    u64 total_stage_size = 0;
+    u32 max_channel_capacity = 0;
+    u8 required_channels = 0;
+    u8 file_index = 0;
+    int err = 0;
+
+    if (!fw_boot || !resources || !dev) {
+        return -EINVAL;
+    }
+
+    // Clear any existing firmware cache before starting (defensive programming - ensures clean state)
+    hailo_pcie_release_firmware_cache(boot_dma_state);
+
+    // Calculate maximum capacity per channel: (MAX_SG_DESCS_COUNT - 1) * page_size
+    // We reserve 1 descriptor per channel for safety
+    max_channel_capacity = (MAX_SG_DESCS_COUNT - 1) * HAILO_PCI_OVER_VDMA_PAGE_SIZE;
+
+    // Sum up actual file sizes in the stage by loading each firmware file and caching them
+    for (file_index = 0; file_index < amount_of_files; file_index++) {
+        const struct hailo_file_batch *file = &files_batch[file_index];
+        char filename[FW_FILENAME_MAX_LEN] = {0};
+        const struct firmware *firmware = NULL;
+
+        // Handle dynamic filenames (like DTB files based on SKU ID)
+        if (file->flags & HAILO_FILE_F_DYNAMIC_NAME) {
+            hailo_resolve_dtb_filename(filename, resources->sku_id, file->filename);
+        } else {
+            strncpy(filename, file->filename, FW_FILENAME_MAX_LEN - 1);
+            filename[FW_FILENAME_MAX_LEN - 1] = '\0';
+        }
+
+        // Load firmware to get actual size
+        hailo_dev_notice(dev, "Reading firmware file %s\n", filename);
+        err = request_firmware_direct(&firmware, filename, dev);
+        if (err < 0) {
+            if (file->flags & HAILO_FILE_F_MANDATORY) {
+                hailo_dev_err(dev, "Failed to load mandatory firmware file %s, error: %d\n", filename, err);
+                goto cleanup_cache;
+            } else {
+                hailo_dev_info(dev, "Failed to load optional firmware file %s, error: %d, skipping\n", filename, err);
+                continue;
+            }
+        }
+
+        total_stage_size += firmware->size;
+        
+        hailo_dev_dbg(dev, "Stage %u file %d: %s, actual_size: %zu bytes\n", 
+            stage+1, file_index, filename, firmware->size);
+
+        // Cache the firmware for later use instead of releasing it
+        pcie_cache_firmware(boot_dma_state, file_index, firmware);
+    }
+
+    // Calculate required channels (DIV_ROUND_UP ensures at least 1 for non-zero size)
+    required_channels = (u8)DIV_ROUND_UP(total_stage_size, max_channel_capacity);
+    
+    // Check if firmware is too large for our maximum channel capacity
+    if (required_channels > VDMA_CHANNELS_PER_ENGINE_PER_DIRECTION) {
+        u64 max_total_capacity = (u64)VDMA_CHANNELS_PER_ENGINE_PER_DIRECTION * max_channel_capacity;
+        hailo_dev_err(dev, "Stage %u firmware image file is too large for this device: %llu bytes > max capacity %llu bytes (%u channels)\n",
+            stage+1, total_stage_size, max_total_capacity, VDMA_CHANNELS_PER_ENGINE_PER_DIRECTION);
+        err = -EFBIG;   // firmware file too large for this device
+        goto cleanup_cache;
+    }
+
+    hailo_dev_dbg(dev, "Stage %u: total_actual_size=%llu bytes, max_per_channel=%u bytes, required_channels=%u\n",
+        stage+1, total_stage_size, max_channel_capacity, required_channels);
+
+    // Update the boot DMA state with the calculated number of channels
+    fw_boot->boot_dma_state.allocated_channels = required_channels;
+    
+    hailo_dev_dbg(dev, "Calculated %u channels required for stage %u\n", required_channels, stage+1);
+    
+    return 0;
+
+cleanup_cache:
+    hailo_pcie_release_firmware_cache(boot_dma_state);
+    return err;
 }
 
 const struct hailo_pcie_loading_stage *hailo_pcie_get_loading_stage_info(enum hailo_board_type board_type,
@@ -898,29 +1029,27 @@ void hailo_pcie_soc_read_response(struct hailo_pcie_resources *resources,
  * Program one FW file descriptors to the vDMA engine.
  *
  * @param file_address - the address of the file in the device memory.
- * @param transfer_size - the size of the file to program.
+ * @param buffer_size - the size of the file to program.
  * @param channel_index - the index of the channel to program.
  * @param raise_int_on_completion - true if this is the last descriptors chunk in the specific channel in the boot flow, false otherwise. If true - will enable
  * an IRQ for the relevant channel when the transfer is finished.
  * @param channel - the channel to program.
- * @param transfer_buffer - the transfer buffer to use.
  * @param dev - the device to use.
  * @return the amount of descriptors programmed on success, negative error code on failure.
  */
 static int hailo_pcie_program_one_file_descriptors(
     u32 file_address,
-    u32 transfer_size,
+    u32 buffer_size,
     u8 channel_index,
     bool raise_int_on_completion,
     struct hailo_pcie_boot_dma_channel_state *channel,
-    struct hailo_vdma_mapped_transfer_buffer *transfer_buffer,
     struct device *dev)
 {
     enum hailo_vdma_interrupts_domain interrupts_domain = raise_int_on_completion ?
         HAILO_VDMA_INTERRUPTS_DOMAIN_HOST : HAILO_VDMA_INTERRUPTS_DOMAIN_NONE;
     const u64 masked_channel_id_for_encode_addr = HAILO_PCI_EP_HOST_DMA_DATA_ID;
 
-    if (!channel || !transfer_buffer || !channel->device_descriptors_list || !channel->host_descriptors_list) {
+    if (!channel || !channel->device_descriptors_list || !channel->host_descriptors_list) {
         hailo_dev_err(dev, "hailo_pcie_program_one_file_descriptors: Invalid parameters - received NULL pointer\n");
         return -EINVAL;
     }
@@ -928,10 +1057,10 @@ static int hailo_pcie_program_one_file_descriptors(
     // Program device descriptors
     hailo_vdma_program_descriptors_in_chunk(
         file_address | masked_channel_id_for_encode_addr,
-        transfer_size,
+        ALIGN(buffer_size, HAILO_PCI_OVER_VDMA_PAGE_SIZE),
         channel->device_descriptors_list,
         channel->desc_program_num,
-        HAILO_PCI_OVER_VDMA_PAGE_SIZE,
+        buffer_size,
         0);
 
     // Program host descriptors
@@ -939,45 +1068,37 @@ static int hailo_pcie_program_one_file_descriptors(
         &hailo_pcie_vdma_hw,
         channel->host_descriptors_list,
         channel->desc_program_num,
-        transfer_buffer,
-        true,
+        &channel->sg_table,
+        HAILO_PCI_OVER_VDMA_PAGE_SIZE * channel->desc_program_num,
+        buffer_size,
+        1,
         channel_index,
         interrupts_domain,
-        false,
-        HAILO_PCI_OVER_VDMA_PAGE_SIZE);
+        false);
 }
 
 /**
- * Program one FW file to the vDMA engine.
+ * Program one FW file to the vDMA engine using firmware data.
  *
  * @param fw_boot - pointer to the fw boot struct which includes all of the boot resources.
  * @param file_address - the address of the file in the device memory.
- * @param file - pointer to the file batch struct.
- * @param raise_int_on_completion - true if this is the last file in the boot flow, false otherwise. uses to enable an IRQ for the
- * relevant channel when the transfer is finished.
+ * @param firmware - pointer to the firmware data to program.
+ * @param raise_int_on_completion - true if this is the last file in the boot flow, false otherwise.
  * @param dev - the device to use.
- * @return 0 on success, negative error code on failure. at the end of the function the firmware is released.
+ * @return 0 on success, negative error code on failure.
  */
-static int hailo_pcie_program_one_file_common(struct hailo_pcie_fw_boot *fw_boot, u32 file_address,
-    const struct hailo_file_batch *file, bool raise_int_on_completion, struct device *dev)
+static int pcie_program_one_file_common(struct hailo_pcie_fw_boot *fw_boot, u32 file_address,
+    const struct firmware *firmware, bool raise_int_on_completion, struct device *dev)
 {
-    const struct firmware *firmware = NULL;
-    struct hailo_vdma_mapped_transfer_buffer transfer_buffer = {0};
     int desc_programmed = 0;
-    int err = 0;
     size_t remaining_size = 0, data_offset = 0, desc_num_left = 0, current_desc_to_program = 0;
     struct hailo_pcie_boot_dma_state *boot_dma_state = &fw_boot->boot_dma_state;
-    const char *filename = file->filename;
 
-    hailo_dev_notice(dev, "Programming file %s for DMA transfer\n", filename);
+    hailo_dev_dbg(dev, "Programming firmware file for DMA transfer\n");
 
-    // Load firmware directly without usermode helper for the relevant file
-    err = request_firmware_direct(&firmware, filename, dev);
-    if (err < 0) {
-        if (file->flags & HAILO_FILE_F_MANDATORY) {
-            hailo_dev_err(dev, "Failed to load firmware file %s\n", filename);
-        }
-        return err;
+    if (!firmware) {
+        hailo_dev_err(dev, "No firmware provided\n");
+        return -EINVAL;
     }
 
     // Set the remaining size as the whole file size to begin with
@@ -987,10 +1108,20 @@ static int hailo_pcie_program_one_file_common(struct hailo_pcie_fw_boot *fw_boot
         struct hailo_pcie_boot_dma_channel_state *channel = &boot_dma_state->channels[boot_dma_state->curr_channel_index];
         bool is_last_desc_chunk_of_curr_channel = false;
         bool raise_interrupt_on_last_chunk = false;
+        u32 channel_buffer_offset = 0;
+        u32 size_to_program = 0;
 
         // Increment the channel index if the current channel is full
         if ((MAX_SG_DESCS_COUNT - 1) == channel->desc_program_num) {
             boot_dma_state->curr_channel_index++;
+            
+            // Check if we have exceeded the allocated number of channels
+            if (boot_dma_state->curr_channel_index >= boot_dma_state->allocated_channels) {
+                hailo_dev_err(dev, "Channel index %u exceeded allocated channels %u\n", 
+                    boot_dma_state->curr_channel_index, boot_dma_state->allocated_channels);
+                return -EINVAL;
+            }
+            
             channel = &boot_dma_state->channels[boot_dma_state->curr_channel_index];
             fw_boot->boot_used_channel_bitmap |= (1 << boot_dma_state->curr_channel_index);
         }
@@ -999,19 +1130,16 @@ static int hailo_pcie_program_one_file_common(struct hailo_pcie_fw_boot *fw_boot
         desc_num_left = (MAX_SG_DESCS_COUNT - 1) - channel->desc_program_num;
 
         // prepare the transfer buffer to make sure all the fields are initialized
-        transfer_buffer.sg_table = &channel->sg_table;
-        transfer_buffer.size = (u32)min(remaining_size, (desc_num_left * HAILO_PCI_OVER_VDMA_PAGE_SIZE));
+        size_to_program = (u32)min(remaining_size, (desc_num_left * HAILO_PCI_OVER_VDMA_PAGE_SIZE));
         // no need to check for overflow since the variables are constant and always desc_program_num <= max u16 (65536)
         // & the buffer max size is 256 Mb << 4G (max u32)
-        transfer_buffer.offset = (channel->desc_program_num * HAILO_PCI_OVER_VDMA_PAGE_SIZE);
+        channel_buffer_offset = channel->desc_program_num * HAILO_PCI_OVER_VDMA_PAGE_SIZE;
 
         // Check if this is the last descriptor chunk to program in the whole boot flow
-        current_desc_to_program = (transfer_buffer.size / HAILO_PCI_OVER_VDMA_PAGE_SIZE);
-        // Validate that we have enough descriptors in the current channel's buffer
+        current_desc_to_program = (size_to_program / HAILO_PCI_OVER_VDMA_PAGE_SIZE);
         if (channel->desc_program_num + current_desc_to_program > channel->device_descriptors_list->desc_count) {
             hailo_dev_err(dev, "Invalid descriptors range: (desc_index + descs_to_program > max_desc_index + 1) where: desc_index=%u, descs_to_program=%zu, max_desc_index=%u\n",
                 channel->desc_program_num, current_desc_to_program, channel->device_descriptors_list->desc_count - 1);
-            release_firmware(firmware);
             return -EINVAL;
         }
 
@@ -1019,43 +1147,40 @@ static int hailo_pcie_program_one_file_common(struct hailo_pcie_fw_boot *fw_boot
         is_last_desc_chunk_of_curr_channel = ((MAX_SG_DESCS_COUNT - 1) ==
             (current_desc_to_program + channel->desc_program_num));
         raise_interrupt_on_last_chunk = (is_last_desc_chunk_of_curr_channel || (raise_int_on_completion &&
-            (remaining_size == transfer_buffer.size)));
+            (remaining_size == size_to_program)));
 
         // Copy firmware data to DMA buffer
         if (!channel->kernel_address || !channel->device_descriptors_list || !channel->host_descriptors_list) {
             hailo_dev_err(dev, "kernel_addresses is NULL or descriptor lists are NULL for channel %u\n",
                 boot_dma_state->curr_channel_index);
-            release_firmware(firmware);
             return -EINVAL;
         }
-        memcpy((uint8_t*)channel->kernel_address + transfer_buffer.offset,
-            &((const uint8_t*)firmware->data)[data_offset], transfer_buffer.size);
+        memcpy((uint8_t*)channel->kernel_address + channel_buffer_offset,
+            &((const uint8_t*)firmware->data)[data_offset], size_to_program);
 
         // Program the descriptors using common function
         desc_programmed = hailo_pcie_program_one_file_descriptors(
             file_address + (u32)data_offset,
-            (u32)transfer_buffer.size,
+            (u32)size_to_program,
             (u8)boot_dma_state->curr_channel_index,
             raise_interrupt_on_last_chunk,
             channel,
-            &transfer_buffer,
             dev);
         if (desc_programmed < 0) {
-            hailo_dev_err(dev, "Failed to program descriptors for file %s, on channel = %d\n", filename,
+            hailo_dev_err(dev, "Failed to program descriptors on channel = %d\n",
                 boot_dma_state->curr_channel_index);
-            release_firmware(firmware);
             return desc_programmed;
         }
+        hailo_dev_dbg(dev, "Programmed %d MB on channel = %d\n", size_to_program / 1024 / 1024,
+            boot_dma_state->curr_channel_index);
 
         // Update remaining size, data_offset and desc_program_num for the next iteration
-        remaining_size -= transfer_buffer.size;
-        data_offset += transfer_buffer.size;
+        remaining_size -= size_to_program;
+        data_offset += size_to_program;
         channel->desc_program_num += desc_programmed;
     }
 
-    hailo_dev_notice(dev, "File %s programmed successfully\n", filename);
-    release_firmware(firmware);
-
+    hailo_dev_notice(dev, "Firmware file programmed successfully\n");
     return desc_programmed;
 }
 
@@ -1072,7 +1197,7 @@ long hailo_pcie_program_firmware_batch_common(struct hailo_pcie_fw_boot *fw_boot
     struct hailo_pcie_resources *resources, u32 stage, struct device *dev)
 {
     long err = 0;
-    int file_index = 0;
+    u8 file_index = 0;
     const struct hailo_pcie_loading_stage *stage_info = hailo_pcie_get_loading_stage_info(resources->board_type, stage);
     const struct hailo_file_batch *files_batch = stage_info->batch;
     const u8 amount_of_files = stage_info->amount_of_files_in_stage;
@@ -1086,33 +1211,30 @@ long hailo_pcie_program_firmware_batch_common(struct hailo_pcie_fw_boot *fw_boot
 
     for (file_index = 0; file_index < amount_of_files; file_index++) {
         const struct hailo_file_batch *file = &files_batch[file_index];
-        char filename[FW_FILENAME_MAX_LEN] = {0};
+        const struct firmware *firmware = fw_boot->boot_dma_state.firmware_cache[file_index];
         u32 file_address = file->address;
         bool raise_int_on_completion = (file_index == (amount_of_files - 1));
 
-        // Handle dynamic filenames (like DTB files based on SKU ID)
-        if (file->flags & HAILO_FILE_F_DYNAMIC_NAME) {
-            hailo_resolve_dtb_filename(filename, resources->sku_id, file->filename);
-        } else {
-            strncpy(filename, file->filename, FW_FILENAME_MAX_LEN - 1);
-            filename[FW_FILENAME_MAX_LEN - 1] = '\0';
+        if (!firmware) {
+            // assuming not mandatory, continue to next file
+            hailo_dev_dbg(dev, "No cached firmware for file index %d, skipping\n", file_index);
+            continue;
         }
 
-        hailo_dev_dbg(dev, "Programming file %s (address: 0x%x, max_size: %zu)\n", 
-            filename, file_address, file->max_size);
-
-        err = hailo_pcie_program_one_file_common(fw_boot, file_address, file,
+        err = pcie_program_one_file_common(fw_boot, file_address, firmware,
             raise_int_on_completion, dev);
         if (err < 0) {
             if (file->flags & HAILO_FILE_F_MANDATORY) {
-                hailo_dev_err(dev, "Failed to program mandatory file %s (error: %ld)\n", filename, err);
-                return err;
+                hailo_dev_err(dev, "Failed to program mandatory firmware file index %d (error: %ld)\n", file_index, err);
+                goto exit;
             }
         } else {
-            hailo_dev_dbg(dev, "File %s programmed successfully (%ld descriptors)\n", filename, err);
+            hailo_dev_notice(dev, "Firmware file index %d programmed successfully\n", file_index);
         }
     }
 
     hailo_dev_notice(dev, "Firmware batch programming completed for stage %u\n", stage);
-    return 0;
+
+exit:
+    return err;
 }
