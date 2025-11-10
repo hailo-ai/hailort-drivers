@@ -29,7 +29,7 @@
 #define pci_dbg(pdev, fmt, arg...)	dev_dbg(&(pdev)->dev, fmt, ##arg)
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
 #define get_user_pages_compact get_user_pages
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
 #define get_user_pages_compact(start, nr_pages, gup_flags, pages) \
