@@ -781,12 +781,13 @@ long hailo_vdma_launch_transfer_ioctl(struct hailo_vdma_file_context *context, s
         channel,
         &descriptors_buffer->desc_list,
         &prepared_transfer);
-
     if (ret < 0) {
         // Usually buffer_put() is called in hailo_vdma_transfer_done().
         // If we got an error, then we release the buffers here
         // instead for proper cleanup.
+        hailo_dev_err(controller->dev, "Failed to launch transfer\n");
         hailo_vdma_transfer_done(controller->dev, &prepared_transfer);
     }
+
     return ret;
 }
