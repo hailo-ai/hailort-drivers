@@ -338,19 +338,26 @@ static bool channel_control_reg_is_active(u8 control)
     return (control & VDMA_CHANNEL_CONTROL_START_ABORT_BITMASK) == VDMA_CHANNEL_CONTROL_START;
 }
 
-static int validate_channel_state(struct hailo_vdma_channel *channel)
+static int validate_channel_state(struct hailo_vdma_channel *channel, struct hailo_vdma_descriptors_list *desc_list)
 {
-    u32 host_regs_value = ioread32(channel->host_regs);
-    const u8 control = READ_BITS_AT_OFFSET(BYTE_SIZE * BITS_IN_BYTE, CHANNEL_CONTROL_OFFSET * BITS_IN_BYTE, host_regs_value);
-    const u16 hw_num_avail = READ_BITS_AT_OFFSET(WORD_SIZE * BITS_IN_BYTE, CHANNEL_NUM_AVAIL_OFFSET * BITS_IN_BYTE, host_regs_value);
+    const u32 host_regs = ioread32(channel->host_regs);
+    const u8 control = READ_BITS_AT_OFFSET(BYTE_SIZE * BITS_IN_BYTE, CHANNEL_CONTROL_OFFSET * BITS_IN_BYTE, host_regs);
+    const u16 hw_num_avail = READ_BITS_AT_OFFSET(WORD_SIZE * BITS_IN_BYTE, CHANNEL_NUM_AVAIL_OFFSET * BITS_IN_BYTE, host_regs);
 
     if (!channel_control_reg_is_active(control)) {
+        pr_err("Channel %d connection reset\n", channel->index);
         return -ECONNRESET;
     }
 
-    if (hw_num_avail != channel->state.num_avail) {
-        pr_err("Channel %d hw state out of sync. num available is %d, expected %d\n",
-            channel->index, hw_num_avail, channel->state.num_avail);
+    if (channel->state.num_avail != hw_num_avail) {
+        pr_err("Channel %d num-available HW mismatch (%ud!=%ud)\n",
+            channel->index, channel->state.num_avail, hw_num_avail);
+        return -EIO;
+    }
+
+    if (channel->state.num_avail != desc_list->num_launched) {
+        pr_err("Channel %d num-available desc-list mismatch (%ud!=%ud)\n",
+            channel->index, channel->state.num_avail, desc_list->num_launched);
         return -EIO;
     }
 
@@ -457,15 +464,9 @@ int hailo_vdma_launch_transfer(
         return -EINVAL;
     }
 
-    ret = validate_channel_state(channel);
+    ret = validate_channel_state(channel, desc_list);
     if (ret < 0) {
         return ret;
-    }
-
-    if (channel->state.num_avail != (u16)desc_list->num_launched) {
-        pr_err("Channel %d state out of sync. num available is %d, expected %d\n",
-            channel->index, channel->state.num_avail, (u16)desc_list->num_launched);
-        return -EIO;
     }
 
     hailo_vdma_transfer_push(&channel->ongoing_transfers, ongoing_transfer);

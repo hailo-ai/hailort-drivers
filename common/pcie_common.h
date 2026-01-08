@@ -148,11 +148,6 @@ struct hailo_pcie_boot_dma_state {
     u8 curr_channel_index;          // Runtime pointer: which channel we're currently programming
     u8 allocated_channels;          // Pre-calculated capacity: how many channels we allocated
     // Note: At completion, allocated_channels should equal curr_channel_index + 1 (if all channels used)
-    
-    // Cache for firmware files to avoid loading them twice (for channel calculation and programming)
-    // Files are cached in the same order as they appear in the stage file batch
-    const struct firmware *firmware_cache[MAX_FILES_PER_STAGE];
-    u8 cached_firmware_count;
 };
 
 struct hailo_pcie_fw_boot {
@@ -238,45 +233,16 @@ int hailo_pcie_configure_atr_table(struct hailo_resource *bridge_config, u64 trs
 void hailo_pcie_read_atr_table(struct hailo_resource *bridge_config, struct hailo_atr_config *atr, u32 atr_index);
 
 /**
- * Program a batch of firmware files over vDMA.
- *
- * This function orchestrates the firmware loading process by iterating through the
- * files for a given stage, preparing DMA transfers, and programming the descriptors
- * using platform-specific data.
- *
- * @fw_boot Pointer to the common firmware boot state structure.
- * @resources Pointer to the PCIe hardware resources.
- * @stage The firmware loading stage to be programmed.
- * @dev Pointer to the device struct for logging and resource management.
- * @return Returns 0 on success, or a negative error code on failure.
- */
-long hailo_pcie_program_firmware_batch_common(struct hailo_pcie_fw_boot *fw_boot,
-    struct hailo_pcie_resources *resources, u32 stage, struct device *dev);
+ * Program a batch of firmware files over vDMA
+*/
+long hailo_pcie_vdma_program_firmware_batch(struct hailo_pcie_fw_boot *fw_boot, struct hailo_pcie_resources *resources,
+    u32 stage, struct device *dev, const struct firmware** fw_files);
 
-/**
- * Load and cache firmware files for a stage, then calculate the number of channels
- * required for the transfer based on actual file sizes.
- *
- * @param fw_boot Pointer to the firmware boot state structure.
- * @param resources Pointer to the PCIe hardware resources.
- * @param stage The firmware loading stage to analyze.
- * @param dev Pointer to the device struct for logging.
- * @return Returns 0 on success, or a negative error code on failure.
- *
- * This function loads each firmware file for the given stage, caches the firmware pointers
- * and sums their sizes to determine the number of vDMA channels required for the transfer.
- * The number of channels is based on the total size and the maximum channel capacity,
- * which is calculated using (MAX_SG_DESCS_COUNT - 1) * HAILO_PCI_OVER_VDMA_PAGE_SIZE.
- */
-int hailo_pcie_load_and_cache_stage_firmware(struct hailo_pcie_fw_boot *fw_boot,
-    struct hailo_pcie_resources *resources, u32 stage, struct device *dev);
+// Get amount of vdma channels needed for boot based on stages firmware files sizes
+int hailo_pcie_vdma_get_required_channels(struct hailo_pcie_fw_boot *fw_boot, struct hailo_pcie_resources *resources,
+    u32 stage, struct device *dev, u8* required_channels, const struct firmware** fw_files);
 
-/**
- * Release all cached firmware files for a boot DMA state.
- *
- * @param boot_dma_state Pointer to the boot DMA state structure.
- */
-void hailo_pcie_release_firmware_cache(struct hailo_pcie_boot_dma_state *boot_dma_state);
+void hailo_pcie_cleanup_firmware_files(const struct firmware** fw_files);
 
 void hailo_pcie_soc_write_request(struct hailo_pcie_resources *resources,
     const struct hailo_pcie_soc_request *request);

@@ -39,6 +39,7 @@
 static int force_desc_page_size = 0;
 static bool g_is_power_mode_enabled = true;
 static bool force_hailo10h_legacy_mode = false;
+static bool force_hailo_pcie_boot_mode_over_bars = false;
 static bool support_soft_reset = true;
 
 #define DEVICE_NODE_NAME "hailo"
@@ -417,16 +418,13 @@ static void pcie_platform_release_boot_resources(struct hailo_pcie_fw_boot_linux
 
     hailo_dev_dbg(dev, "Releasing boot resources for %u channels\n", allocated_channels);
 
-    // Release any cached firmware first
-    hailo_pcie_release_firmware_cache(&fw_boot->common.boot_dma_state);
-
     // Release resources for the allocated number of channels
     for (channel_index = 0; channel_index < allocated_channels; channel_index++) {
         // Direct access to common channels and platform buffers
         struct hailo_pcie_boot_dma_channel_state *channel = &fw_boot->common.boot_dma_state.channels[channel_index];
         struct hailo_descriptors_list_buffer *host_buffer = &fw_boot->host_descriptors_buffers[channel_index];
         struct hailo_descriptors_list_buffer *device_buffer = &fw_boot->device_descriptors_buffers[channel_index];
-        
+
         // Release Linux-specific descriptor buffers
         if (host_buffer->kernel_address != NULL) {
             hailo_desc_list_release(dev, host_buffer);
@@ -557,33 +555,30 @@ release_all_resources:
 static long pcie_write_firmware_batch_over_dma(struct hailo_pcie_board *board, u32 stage)
 {
     struct hailo_vdma_engine *engine = &board->vdma.vdma_engines[PCI_VDMA_ENGINE_INDEX];
-    long err = 0;
     u8 channel_index = 0;
     u8 required_channels = 0;
     struct hailo_pcie_boot_dma_state *boot_dma_state = &board->fw_boot.common.boot_dma_state;
-
-    hailo_info(board, "Starting common firmware batch loading for stage %u\n", stage);
+    const struct firmware* firmware_files[MAX_FILES_PER_STAGE] = {0};
 
     // Load firmware and calculate the required number of channels for this stage
-    err = hailo_pcie_load_and_cache_stage_firmware(&board->fw_boot.common, &board->pcie_resources, stage, &board->pdev->dev);
+    long err = hailo_pcie_vdma_get_required_channels(&board->fw_boot.common, &board->pcie_resources, stage,
+        &board->pdev->dev, &required_channels, firmware_files);
     if (err < 0) {
         hailo_err(board, "Failed to load and cache firmware for stage %u: %ld\n", stage, err);
         return err;
     }
 
-    required_channels = boot_dma_state->allocated_channels;
-    hailo_dbg(board, "Stage %u requires %u channels\n", stage, required_channels);
-
     err = pcie_platform_allocate_boot_resources(&board->fw_boot, HAILO_PCI_OVER_VDMA_PAGE_SIZE, required_channels, board);
-    if (err) {
-        return err;
+    if (err < 0) {
+        goto release_firmware;
     }
 
     // initialize the completion for the vDMA boot data completion
     reinit_completion(&board->fw_boot.vdma_boot_completion);
 
     // Pass the common structure to the common function
-    err = hailo_pcie_program_firmware_batch_common(&board->fw_boot.common, &board->pcie_resources, stage, &board->pdev->dev);
+    err = hailo_pcie_vdma_program_firmware_batch(&board->fw_boot.common, &board->pcie_resources, stage,
+        &board->pdev->dev, firmware_files);
     if (err < 0) {
         hailo_err(board, "Failed to program firmware batch for stage %u: %ld\n", stage, err);
         goto release_all;
@@ -618,8 +613,10 @@ static long pcie_write_firmware_batch_over_dma(struct hailo_pcie_board *board, u
     hailo_trigger_firmware_boot(&board->pcie_resources, stage);
 
 release_all:
-    // Always release boot resources, regardless of success or failure
+    // Always release boot resources and fw files regardless of success or failure
     pcie_platform_release_boot_resources(&board->fw_boot, engine, &board->pdev->dev);
+release_firmware:
+    hailo_pcie_cleanup_firmware_files(firmware_files);
     return err;
 }
 
@@ -688,7 +685,7 @@ static void print_scu_log(struct hailo_pcie_board *board)
             hailo_warn(board, "SCU log is empty\n");
         }
     } else {
-        hailo_err(board, "Cannot read SCU log\n");
+        hailo_err(board, "SCU log could not be read from device\n");
     }
 
     kfree(scu_log_buffer);
@@ -736,8 +733,12 @@ static int load_soc_firmware(struct hailo_pcie_board *board)
         return err;
     }
 
-    // Boot linux. Remaining files sent over DMA.
-    err = write_firmware_and_wait_completion(board, THIRD_STAGE, STRATEGY_DMA);
+    if (force_hailo_pcie_boot_mode_over_bars) {
+        hailo_notice(board, "Force Hailo image stage boot mode over PCIe BARs\n");
+    }
+
+    err = write_firmware_and_wait_completion(board, THIRD_STAGE,
+        force_hailo_pcie_boot_mode_over_bars ? STRATEGY_PCIE_BARS : STRATEGY_DMA);
     if (err < 0) {
         hailo_dev_err(dev, "Failed writing SOC firmware on stage 3\n");
         if (err != -EFBIG) {
@@ -1098,7 +1099,6 @@ static int hailo_pcie_probe(struct pci_dev* pdev, const struct pci_device_id* id
     board->fw_boot.common.boot_used_channel_bitmap = (1 << 0);
     board->fw_boot.common.boot_dma_state.curr_channel_index = 0;
     board->fw_boot.common.boot_dma_state.allocated_channels = 0; // Will be calculated per stage
-    board->fw_boot.common.boot_dma_state.cached_firmware_count = 0; // Initialize firmware cache
     board->fw_boot.is_in_boot = false;
     init_completion(&board->fw_boot.fw_loaded_completion);
 
@@ -1448,6 +1448,9 @@ MODULE_PARM_DESC(force_hailo10h_legacy_mode, "Forces work with Hailo10h in legac
 
 module_param(support_soft_reset, bool, S_IRUGO);
 MODULE_PARM_DESC(support_soft_reset, "enables driver reload to reload a new firmware as well");
+
+module_param(force_hailo_pcie_boot_mode_over_bars, bool, S_IRUGO);
+MODULE_PARM_DESC(force_hailo_pcie_boot_mode_over_bars, "Forces work with Hailo10h in boot mode over BARs instead over vDMA");
 
 MODULE_AUTHOR("Hailo Technologies Ltd.");
 MODULE_DESCRIPTION("Hailo PCIe driver");

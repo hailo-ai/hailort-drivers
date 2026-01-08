@@ -15,6 +15,17 @@
 #include "board.h"
 #include "utils/integrated_nnc_utils.h"
 #include "logs.h"
+#include "fw_control.h"
+
+#define INTEGRATED_NNC_CONTROL_MSG_SIZE     (20)
+#define INTEGRATED_NNC_CONTROL_MSG_TIEMOUT  (1000)
+#define INTEGRATED_NNC_CONTROL_IDENTIFY_MSG {0x0, 0x0, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,\
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
+#define INTEGRATED_NNC_CONTROL_IDENTIFY_MD5 {0x6a, 0x3d, 0x1c, 0x7f, 0xe8, 0x4c, 0xfe, 0x2f, 0x18,\
+    0x4d, 0x69, 0xc2, 0x37, 0x6d, 0xcc, 0x43}
+
+#define FIRMWARE_LOAD_WAIT_MAX_RETRIES (10)
+#define FIRMWARE_LOAD_SLEEP_MS         (10)
 
 static int hailo_write_core_firmware(struct hailo_board *board, firmware_header_t *fw_header)
 {
@@ -86,18 +97,27 @@ static int hailo_write_core_firmware(struct hailo_board *board, firmware_header_
 
 static bool hailo_wait_for_firmware(struct hailo_board *board)
 {
-    // TODO uncomment when hailo_is_firmware_loaded is implemented
-    return true;
-    // u32 retries = 0;
-    // for (retries = 0; retries < FIRMWARE_LOAD_WAIT_MAX_RETRIES; retries++) {
-    //     if (hailo_is_firmware_loaded(board)) {
-    //         return true;
-    //     }
+    // Send identify to fw to make sure fw is up and running
+    struct hailo_fw_control identify_struct = {
+        .expected_md5   = INTEGRATED_NNC_CONTROL_IDENTIFY_MD5,
+        .buffer_len     = INTEGRATED_NNC_CONTROL_MSG_SIZE,
+        .buffer         = INTEGRATED_NNC_CONTROL_IDENTIFY_MSG,
+        .timeout_ms     = INTEGRATED_NNC_CONTROL_MSG_TIEMOUT,
+        .cpu_id         = 0
+    };
 
-    //     msleep(FIRMWARE_LOAD_SLEEP_MS);
-    // }
+    u32 retries = 0;
 
-    // return false;
+    // Sleep to give fw time to init
+    msleep(FIRMWARE_LOAD_SLEEP_MS);
+
+    for (retries = 0; retries < FIRMWARE_LOAD_WAIT_MAX_RETRIES; retries++) {
+        if (0 == hailo_fw_control_impl(board, &identify_struct)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 int hailo_integrated_nnc_cpu_struct_init(struct hailo_board *board)

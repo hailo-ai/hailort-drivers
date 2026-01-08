@@ -412,7 +412,6 @@ long hailo_pcie_fops_unlockedioctl(struct file* filp, unsigned int cmd, unsigned
     }
 
     if (down_interruptible(&board->mutex)) {
-        pr_err(DRIVER_NAME ": fops_unlockedioctl down_interruptible failed\n");
         return -ERESTARTSYS;
     }
     BUG_ON(board->mutex.count != 0);

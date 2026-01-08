@@ -5,10 +5,7 @@ DEVICE_COMPONENTS="pci_ep integrated_nnc"
 
 source ../tools/scripts/hailo10_env_vars.sh
 
-if [ -z "$TOOLCHAIN_IMAGE_NAME" ]; then
-    echo "TOOLCHAIN_IMAGE_NAME is not set. Please set it before running this script."
-    exit 1
-fi
+TOOLCHAIN_IMAGE_NAME=source_1ADVXT89 # Taken from bkc-info.json. TODO: make this better.
 
 TOOLCHAIN_PATH=`realpath ../internals/toolchains/.toolchains/linux.hailo-kirkstone-a53/$TOOLCHAIN_IMAGE_NAME`
 
