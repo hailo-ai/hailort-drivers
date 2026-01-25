@@ -9,7 +9,6 @@
 #include <linux/scmi_protocol.h>
 #include <linux/slab.h>
 
-#include "d2h_events.h"
 #include "fw_notification.h"
 #include "logs.h"
 #include "utils/integrated_nnc_utils.h"
