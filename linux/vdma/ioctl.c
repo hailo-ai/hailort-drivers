@@ -36,8 +36,7 @@ long hailo_vdma_enable_channels_ioctl(struct hailo_vdma_controller *controller, 
 
     for_each_vdma_engine(controller, engine, engine_index) {
         channels_bitmap = input.channels_bitmap_per_engine[engine_index];
-        hailo_vdma_engine_enable_channels(engine, channels_bitmap,
-            input.enable_timestamps_measure);
+        hailo_vdma_engine_enable_channels(engine, channels_bitmap);
         hailo_vdma_update_interrupts_mask(controller, engine_index);
         hailo_dev_info(controller->dev, "Enabled interrupts for engine %u, channels bitmap 0x%llx\n",
             engine_index, channels_bitmap);
@@ -463,7 +462,7 @@ long hailo_desc_list_program_ioctl(struct hailo_vdma_file_context *context, stru
         configure_info.transfer_size,
         configure_info.transfers_count,
         configure_info.channel_index,
-        configure_info.last_interrupts_domain,
+        HAILO_VDMA_INTERRUPTS_DOMAIN_NONE,
         configure_info.is_debug
     );
 }
@@ -558,40 +557,6 @@ long hailo_vdma_continuous_buffer_free_ioctl(struct hailo_vdma_file_context *con
     return 0;
 }
 
-long hailo_vdma_interrupts_read_timestamps_ioctl(struct hailo_vdma_controller *controller, unsigned long arg)
-{
-    struct hailo_vdma_interrupts_read_timestamp_params *params = &controller->read_interrupt_timestamps_params;
-    struct hailo_vdma_engine *engine = NULL;
-    int err = -EINVAL;
-
-    hailo_dev_dbg(controller->dev, "Start read interrupt timestamps ioctl\n");
-
-    if (copy_from_user(params, (void __user*)arg, sizeof(*params))) {
-        hailo_dev_err(controller->dev, "copy_from_user fail\n");
-        return -EFAULT;
-    }
-
-    if (params->engine_index >= controller->vdma_engines_count) {
-        hailo_dev_err(controller->dev, "Invalid engine %u", params->engine_index);
-        return -EINVAL;
-    }
-    engine = &controller->vdma_engines[params->engine_index];
-
-    err = hailo_vdma_engine_read_timestamps(engine, params);
-    if (err < 0) {
-        hailo_dev_err(controller->dev, "Failed read engine interrupts for %u:%u",
-            params->engine_index, params->channel_index);
-        return err;
-    }
-
-    if (copy_to_user((void __user*)arg, params, sizeof(*params))) {
-        hailo_dev_err(controller->dev, "copy_to_user fail\n");
-        return -EFAULT;
-    }
-
-    return 0;
-}
-
 static long hailo_prepare_transfer(struct hailo_vdma_controller *controller, struct hailo_vdma_file_context *context,
     struct hailo_vdma_prepare_transfer_params *params, struct hailo_vdma_descriptors_list *desc_list,
     struct hailo_transfer *prepare_transfer, bool is_cyclic)
@@ -651,8 +616,6 @@ static long hailo_prepare_transfer(struct hailo_vdma_controller *controller, str
         params->channel_index,
         desc_list,
         params->buffers_count,
-        params->first_interrupts_domain,
-        params->last_interrupts_domain,
         params->is_debug,
         prepare_transfer,
         is_cyclic);

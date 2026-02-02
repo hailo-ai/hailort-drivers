@@ -54,11 +54,6 @@
 #define VDMA_CHANNEL_NUM_PROCESSED_MASK ((1 << VDMA_CHANNEL_NUM_PROCESSED_WIDTH) - 1)
 #define VDMA_CHANNEL_NUM_ONGOING_MASK VDMA_CHANNEL_NUM_PROCESSED_MASK
 
-#define TIMESTAMPS_CIRC_SPACE(timestamp_list) \
-    CIRC_SPACE((timestamp_list).head, (timestamp_list).tail, CHANNEL_IRQ_TIMESTAMPS_SIZE)
-#define TIMESTAMPS_CIRC_CNT(timestamp_list) \
-    CIRC_CNT((timestamp_list).head, (timestamp_list).tail, CHANNEL_IRQ_TIMESTAMPS_SIZE)
-
 #ifndef for_each_sgtable_dma_sg
 #define for_each_sgtable_dma_sg(sgt, sg, i)	\
     for_each_sg((sgt)->sgl, sg, (sgt)->nents, i)
@@ -195,9 +190,6 @@ static unsigned long get_interrupts_bitmask(struct hailo_vdma_hw *vdma_hw,
 {
     unsigned long bitmask = 0;
 
-    if (0 != (HAILO_VDMA_INTERRUPTS_DOMAIN_DEVICE & interrupts_domain)) {
-        bitmask |= vdma_hw->device_interrupts_bitmask;
-    }
     if (0 != (HAILO_VDMA_INTERRUPTS_DOMAIN_HOST & interrupts_domain)) {
         bitmask |= vdma_hw->host_interrupts_bitmask;
     }
@@ -381,8 +373,6 @@ int hailo_vdma_prepare_transfer(
     u8 channel_index,
     struct hailo_vdma_descriptors_list *desc_list,
     u8 buffers_count,
-    enum hailo_vdma_interrupts_domain first_desc_interrupts,
-    enum hailo_vdma_interrupts_domain last_desc_interrupts,
     bool is_debug,
     struct hailo_transfer *prepared_transfer,
     bool is_cyclic)
@@ -408,9 +398,10 @@ int hailo_vdma_prepare_transfer(
         int ret = (!is_cyclic) ?
             hailo_vdma_program_descriptors_list(vdma_hw, desc_list, starting_desc,
                 prepared_transfer->buffers[i].sg_table, prepared_transfer->buffers[i].offset,
-                prepared_transfer->buffers[i].size, transfers_count, channel_index, last_desc_interrupts, is_debug) :
+                prepared_transfer->buffers[i].size, transfers_count, channel_index, HAILO_VDMA_INTERRUPTS_DOMAIN_HOST,
+                is_debug) :
             program_last_desc(vdma_hw, desc_list, starting_desc, &prepared_transfer->buffers[i],
-                last_desc_interrupts, is_debug);
+                HAILO_VDMA_INTERRUPTS_DOMAIN_HOST, is_debug);
         if (ret < 0) {
             pr_err("Failed program descriptors list\n");
             return ret;
@@ -426,7 +417,7 @@ int hailo_vdma_prepare_transfer(
     prepared_transfer->last_desc = (u16)last_desc;
     prepared_transfer->is_debug = is_debug;
     desc_list->desc_list[first_desc].PageSize_DescControl |=
-        get_interrupts_bitmask(vdma_hw, first_desc_interrupts, is_debug);
+        get_interrupts_bitmask(vdma_hw, HAILO_VDMA_INTERRUPTS_DOMAIN_NONE, is_debug);
     return total_descs;
 }
 
@@ -479,51 +470,6 @@ int hailo_vdma_launch_transfer(
     return (int)total_descs;
 }
 
-static void hailo_vdma_push_timestamp(struct hailo_vdma_channel *channel)
-{
-    struct hailo_channel_interrupt_timestamp_list *timestamp_list = &channel->timestamp_list;
-    const u16 num_proc = hailo_vdma_get_num_proc(channel->host_regs);
-    if (TIMESTAMPS_CIRC_SPACE(*timestamp_list) != 0) {
-        timestamp_list->timestamps[timestamp_list->head].timestamp_ns = ktime_get_ns();
-        timestamp_list->timestamps[timestamp_list->head].desc_num_processed = num_proc;
-        timestamp_list->head = (timestamp_list->head + 1) & CHANNEL_IRQ_TIMESTAMPS_SIZE_MASK;
-    }
-}
-
-// Returns false if there are no items
-static bool hailo_vdma_pop_timestamp(struct hailo_channel_interrupt_timestamp_list *timestamp_list,
-    struct hailo_channel_interrupt_timestamp *out_timestamp)
-{
-    if (0 == TIMESTAMPS_CIRC_CNT(*timestamp_list)) {
-        return false;
-    }
-
-    *out_timestamp = timestamp_list->timestamps[timestamp_list->tail];
-    timestamp_list->tail = (timestamp_list->tail+1) & CHANNEL_IRQ_TIMESTAMPS_SIZE_MASK;
-    return true;
-}
-
-static void hailo_vdma_pop_timestamps_to_response(struct hailo_vdma_channel *channel,
-    struct hailo_vdma_interrupts_read_timestamp_params *result)
-{
-    const u32 max_timestamps = ARRAY_SIZE(result->timestamps);
-    u32 i = 0;
-
-    while (hailo_vdma_pop_timestamp(&channel->timestamp_list, &result->timestamps[i]) &&
-        (i < max_timestamps)) {
-        // Although the hw_num_processed should be a number between 0 and
-        // desc_count-1, if desc_count < 0x10000 (the maximum desc size),
-        // the actual hw_num_processed is a number between 1 and desc_count.
-        // Therefore the value can be desc_count, in this case we change it to
-        // zero.
-        result->timestamps[i].desc_num_processed = result->timestamps[i].desc_num_processed &
-            channel->state.desc_count_mask;
-        i++;
-    }
-
-    result->timestamps_count = i;
-}
-
 static void channel_state_init(struct hailo_vdma_channel_state *state)
 {
     state->num_avail = state->num_proc = 0;
@@ -560,7 +506,6 @@ void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
         channel->host_regs = get_channel_regs(regs_base, channel_index, true, src_channels_bitmask);
         channel->device_regs = get_channel_regs(regs_base, channel_index, false, src_channels_bitmask);
         channel->index = channel_index;
-        channel->timestamp_measure_enabled = false;
 
         channel_state_init(&channel->state);
         channel->last_desc_list = NULL;
@@ -576,19 +521,8 @@ void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
  * @param bitmap - channels bitmap to enable.
  * @param measure_timestamp - if set, allow interrupts timestamp measure.
  */
-void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bitmap,
-    bool measure_timestamp)
+void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bitmap)
 {
-    struct hailo_vdma_channel *channel = NULL;
-    u8 channel_index = 0;
-
-    for_each_vdma_channel(engine, channel, channel_index) {
-        if (hailo_test_bit_64(channel_index, &bitmap)) {
-            channel->timestamp_measure_enabled = measure_timestamp;
-            channel->timestamp_list.head = channel->timestamp_list.tail = 0;
-        }
-    }
-
     engine->enabled_channels |= bitmap;
 }
 
@@ -633,34 +567,6 @@ void hailo_vdma_engine_disable_channels(struct device *dev, struct hailo_vdma_en
             channel->last_desc_list = NULL;
         }
     }
-}
-
-void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u64 bitmap)
-{
-    struct hailo_vdma_channel *channel = NULL;
-    u8 channel_index = 0;
-
-    for_each_vdma_channel(engine, channel, channel_index) {
-        if (unlikely(hailo_test_bit_64(channel_index, &bitmap) &&
-                channel->timestamp_measure_enabled)) {
-            hailo_vdma_push_timestamp(channel);
-        }
-    }
-}
-
-int hailo_vdma_engine_read_timestamps(struct hailo_vdma_engine *engine,
-    struct hailo_vdma_interrupts_read_timestamp_params *params)
-{
-    struct hailo_vdma_channel *channel = NULL;
-
-    if (params->channel_index >= MAX_VDMA_CHANNELS_PER_ENGINE) {
-        pr_err("Failed to read timestamps, invalid channel index %u\n", params->channel_index);
-        return -EINVAL;
-    }
-
-    channel = &engine->channels[params->channel_index];
-    hailo_vdma_pop_timestamps_to_response(channel, params);
-    return 0;
 }
 
 static bool is_desc_between(u16 begin, u16 end, u16 desc)

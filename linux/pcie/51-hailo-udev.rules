@@ -1,3 +1,8 @@
-#Change mode rules for Hailo's PCIe driver
+# Change mode rules for Hailo's PCIe driver
 SUBSYSTEM=="hailo_chardev", MODE="0666"
 
+# Load USB Image
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0b05", ATTR{idProduct}=="1d6f", ATTR{product}=="ASUSTek Computer, Inc. Hailo Composite USB Gadget", RUN+="/usr/bin/systemd-run --no-block /opt/hailo/scripts/load_image.sh"
+
+# Add permissions for USB
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0b05", ATTR{idProduct}=="1d6f", MODE="0666"

@@ -117,9 +117,6 @@ struct hailo_vdma_controller {
 
     // Total amount of CMA memory allocated by descriptor list allocations
     atomic64_t desc_cma_in_use;
-
-    // Putting big IOCTL structures here to avoid stack allocation.
-    struct hailo_vdma_interrupts_read_timestamp_params read_interrupt_timestamps_params;
 };
 
 struct hailo_vdma_context_channels {

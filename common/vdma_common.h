@@ -117,12 +117,6 @@ struct hailo_vdma_descriptors_list {
 
 };
 
-struct hailo_channel_interrupt_timestamp_list {
-    int head;
-    int tail;
-    struct hailo_channel_interrupt_timestamp timestamps[CHANNEL_IRQ_TIMESTAMPS_SIZE];
-};
-
 struct hailo_vdma_channel_state {
     // vdma channel counters. num_avail should be synchronized with the hw
     // num_avail value. num_proc is the last num proc updated when the user
@@ -146,9 +140,6 @@ struct hailo_vdma_channel {
 
     struct hailo_vdma_channel_state state;
     struct transfer_list *ongoing_transfers;
-
-    bool timestamp_measure_enabled;
-    struct hailo_channel_interrupt_timestamp_list timestamp_list;
 };
 
 struct hailo_vdma_engine {
@@ -295,8 +286,6 @@ int hailo_vdma_prepare_transfer(
     u8 channel_index,
     struct hailo_vdma_descriptors_list *desc_list,
     u8 buffers_count,
-    enum hailo_vdma_interrupts_domain first_desc_interrupts,
-    enum hailo_vdma_interrupts_domain last_desc_interrupts,
     bool is_debug,
     struct hailo_transfer *prepared_transfer,
     bool is_cyclic);
@@ -313,15 +302,10 @@ int hailo_vdma_launch_transfer(
 void hailo_vdma_engine_init(struct hailo_vdma_engine *engine, u8 engine_index,
     const struct hailo_resource *channel_registers, u64 src_channels_bitmask, u16 channels_count);
 
-void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bitmap,
-    bool measure_timestamp);
+void hailo_vdma_engine_enable_channels(struct hailo_vdma_engine *engine, u64 bitmap);
 
 void hailo_vdma_engine_disable_channels(struct device *dev,
     struct hailo_vdma_engine *engine, u64 bitmap);
-
-void hailo_vdma_engine_push_timestamps(struct hailo_vdma_engine *engine, u64 bitmap);
-int hailo_vdma_engine_read_timestamps(struct hailo_vdma_engine *engine,
-    struct hailo_vdma_interrupts_read_timestamp_params *params);
 
 typedef void(*transfer_done_cb_t)(struct hailo_transfer *transfer, void *opaque);
 
