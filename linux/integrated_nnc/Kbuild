@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+# Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
 #
 
 COMMON_SRC_DIRECTORY=../../common
@@ -31,6 +31,7 @@ hailo_integrated_nnc-objs += $(UTILS_SRC_DIRECTORY)/integrated_nnc_utils.o
 
 hailo_integrated_nnc-objs += $(VDMA_SRC_DIRECTORY)/vdma.o
 hailo_integrated_nnc-objs += $(VDMA_SRC_DIRECTORY)/memory.o
+hailo_integrated_nnc-objs += $(VDMA_SRC_DIRECTORY)/monitor.o
 hailo_integrated_nnc-objs += $(VDMA_SRC_DIRECTORY)/ioctl.o
 
 ccflags-y      += -Werror

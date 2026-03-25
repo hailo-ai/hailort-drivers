@@ -5,7 +5,7 @@ DEVICE_COMPONENTS="pci_ep integrated_nnc"
 
 source ../tools/scripts/hailo10_env_vars.sh
 
-TOOLCHAIN_IMAGE_NAME=source_1ADVXT89 # Taken from bkc-info.json. TODO: make this better.
+TOOLCHAIN_IMAGE_NAME=source_SJ74FN0Y # Taken from bkc-info.json. TODO: make this better.
 
 TOOLCHAIN_PATH=`realpath ../internals/toolchains/.toolchains/linux.hailo-kirkstone-a53/$TOOLCHAIN_IMAGE_NAME`
 

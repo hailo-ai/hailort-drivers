@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include "pcie_common.h"
@@ -712,7 +712,7 @@ int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
 static int FW_VALIDATION__validate_fw_headers(uintptr_t firmware_base_address, size_t firmware_size,
     firmware_header_t **out_app_firmware_header, firmware_header_t **out_core_firmware_header,
     secure_boot_certificate_header_t **out_firmware_cert, enum hailo_board_type board_type,
-    enum hailo_accelerator_type accelerator_type)
+    enum hailo_dev_type device_type)
 {
     firmware_header_t *app_firmware_header = NULL;
     firmware_header_t *core_firmware_header = NULL;
@@ -734,8 +734,8 @@ static int FW_VALIDATION__validate_fw_headers(uintptr_t firmware_base_address, s
         goto exit;
     }
 
-    // Only validating with accelerator types of NNC since core firmware doesn't loaded over pcie
-    if (HAILO_ACCELERATOR_TYPE_NNC == accelerator_type) {
+    // Only validate with integrated devices since core firmware isn't loaded over PCIe.
+    if (HAILO_DEV_TYPE_INTEGRATED == device_type) {
         err = FW_VALIDATION__validate_fw_header(firmware_base_address, firmware_size, MAXIMUM_CORE_FIRMWARE_CODE_SIZE,
             &consumed_firmware_offset, &core_firmware_header, board_type);
         if (0 != err) {
@@ -786,7 +786,7 @@ static int write_single_file(struct hailo_pcie_resources *resources, const struc
 
     if (file_info->flags & HAILO_FILE_F_HAS_HEADER) {
         err = FW_VALIDATION__validate_fw_headers((uintptr_t)firmware->data, (u32)firmware->size, &app_firmware_header,
-            &core_firmware_header, &firmware_cert, resources->board_type, resources->accelerator_type);
+            &core_firmware_header, &firmware_cert, resources->board_type, resources->device_type);
         if (err < 0) {
             release_firmware(firmware);
             return err;
@@ -910,11 +910,11 @@ int hailo_set_device_type(struct hailo_pcie_resources *resources)
     switch(resources->board_type) {
     case HAILO_BOARD_TYPE_HAILO15H_ACCELERATOR_MODE:
     case HAILO_BOARD_TYPE_HAILO15L:
-        resources->accelerator_type = HAILO_ACCELERATOR_TYPE_NNC;
+        resources->device_type = HAILO_DEV_TYPE_INTEGRATED;
         break;
     case HAILO_BOARD_TYPE_HAILO10H:
     case HAILO_BOARD_TYPE_MARS:
-        resources->accelerator_type = HAILO_ACCELERATOR_TYPE_SOC;
+        resources->device_type = HAILO_DEV_TYPE_DISCRETE;
         break;
     default:
         return -EINVAL;

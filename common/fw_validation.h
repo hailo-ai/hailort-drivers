@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef PCIE_COMMON_FIRMWARE_HEADER_UTILS_H_

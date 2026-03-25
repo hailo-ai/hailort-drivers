@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_COMMON_PCIE_COMMON_H_
@@ -57,7 +57,7 @@ struct hailo_pcie_resources {
     struct hailo_resource vdma_registers;       // BAR2
     struct hailo_resource fw_access;            // BAR4
     enum hailo_board_type board_type;
-    enum hailo_accelerator_type accelerator_type;
+    enum hailo_dev_type device_type;
     u32 sku_id;
 };
 
