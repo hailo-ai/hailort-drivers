@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/version.h>
@@ -65,7 +65,7 @@ void hailo_pcie_finalize_file_context(struct hailo_file_context *context)
     context->is_valid = false;
     list_del(&context->open_files_list);
 
-    if (context->board->pcie_resources.accelerator_type == HAILO_ACCELERATOR_TYPE_NNC) {
+    if (context->board->pcie_resources.device_type == HAILO_DEV_TYPE_INTEGRATED) {
         hailo_nnc_file_context_finalize(context->board, context);
     } else {
         hailo_soc_file_context_finalize(context->board, context);
@@ -88,7 +88,7 @@ int hailo_pcie_fops_open(struct inode *inode, struct file *filp)
 
     board = hailo_pcie_get_board_by_index(minor);
     if (!board) {
-        pr_err(DRIVER_NAME ": fops_open: PCIe board not found for /dev/hailo%d node.\n", minor);
+        pr_err(DRIVER_NAME ": fops_open: PCIe board not found for /dev/%s-%d node.\n", HAILO_DEV_NAME, minor);
         err = -ENODEV;
         goto l_exit;
     }
@@ -109,7 +109,7 @@ int hailo_pcie_fops_open(struct inode *inode, struct file *filp)
     }
 
     if (!board->pdev) {
-        pr_err(DRIVER_NAME ": fops_open: PCIe device not connected for /dev/hailo%d node.\n", minor);
+        pr_err(DRIVER_NAME ": fops_open: PCIe device not connected for /dev/%s-%d node.\n", HAILO_DEV_NAME, minor);
         err = -ENXIO;
         goto l_unlock_board_mutex;
     }
@@ -142,7 +142,7 @@ int hailo_pcie_fops_open(struct inode *inode, struct file *filp)
         interrupts_enabled_by_filp = true;
     }
 
-    if (board->pcie_resources.accelerator_type == HAILO_ACCELERATOR_TYPE_NNC) {
+    if (board->pcie_resources.device_type == HAILO_DEV_TYPE_INTEGRATED) {
         err = hailo_nnc_file_context_init(board, context);
     } else {
         err = hailo_soc_file_context_init(board, context);
@@ -150,9 +150,6 @@ int hailo_pcie_fops_open(struct inode *inode, struct file *filp)
     if (err < 0) {
         goto l_release_irq;
     }
-
-    hailo_dbg(board, "(%d: %d-%d): fops_open: SUCCESS on /dev/hailo%d\n", current->tgid,
-        major, minor, minor);
 
     up(&board->mutex);
     return 0;
@@ -213,12 +210,10 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
             }
         }
     }
-    hailo_dbg(board, "(%d: %d-%d): fops_release: SUCCESS on /dev/hailo%d\n", current->tgid,
-        major, minor, minor);
 
     up(&board->mutex);
-
     hailo_pcie_put_board(board);
+
     return 0;
 }
 
@@ -323,12 +318,12 @@ irqreturn_t hailo_irqhandler(int irq, void *dev_id)
         if (board->fw_boot.is_in_boot) {
             boot_irq_handler(board, &irq_source);
         } else {
-            if (HAILO_ACCELERATOR_TYPE_NNC == board->pcie_resources.accelerator_type) {
+            if (HAILO_DEV_TYPE_INTEGRATED == board->pcie_resources.device_type) {
                 nnc_irq_handler(board, &irq_source);
-            } else if (HAILO_ACCELERATOR_TYPE_SOC == board->pcie_resources.accelerator_type) {
+            } else if (HAILO_DEV_TYPE_DISCRETE == board->pcie_resources.device_type) {
                 soc_irq_handler(board, &irq_source);
             } else {
-                hailo_err(board, "Invalid accelerator type %d\n", board->pcie_resources.accelerator_type);
+                hailo_err(board, "Invalid accelerator type %d\n", board->pcie_resources.device_type);
             }
 
             if (0 != irq_source.vdma_channels_bitmap) {
@@ -433,16 +428,16 @@ long hailo_pcie_fops_unlockedioctl(struct file* filp, unsigned int cmd, unsigned
             &should_up_board_mutex);
         break;
     case HAILO_SOC_IOCTL_MAGIC:
-        if (HAILO_ACCELERATOR_TYPE_SOC != board->pcie_resources.accelerator_type) {
-            hailo_err(board, "Ioctl %d is not supported on this accelerator type\n", _IOC_TYPE(cmd));
+        if (HAILO_DEV_TYPE_DISCRETE != board->pcie_resources.device_type) {
+            hailo_err(board, "Ioctl %d is not supported on discrete device type\n", _IOC_TYPE(cmd));
             err = -EINVAL;
         } else {
             err = hailo_soc_ioctl(board, context, &board->vdma, cmd, arg);
         }
         break;
     case HAILO_NNC_IOCTL_MAGIC:
-        if (HAILO_ACCELERATOR_TYPE_NNC != board->pcie_resources.accelerator_type) {
-            hailo_err(board, "Ioctl %d is not supported on this accelerator type\n", _IOC_TYPE(cmd));
+        if (HAILO_DEV_TYPE_INTEGRATED != board->pcie_resources.device_type) {
+            hailo_err(board, "Ioctl %d is not supported on integrated device type\n", _IOC_TYPE(cmd));
             err = -EINVAL;
         } else {
             err = hailo_nnc_ioctl(board, context, cmd, arg, filp, &should_up_board_mutex);

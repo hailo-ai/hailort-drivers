@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 /**
  * Hailo vdma engine definitions
@@ -11,6 +11,7 @@
 
 #include "hailo_ioctl_common.h"
 #include "hailo_resource.h"
+#include "monitor.h"
 #include "vdma_common.h"
 
 #include <linux/dma-mapping.h>
@@ -79,7 +80,6 @@ struct hailo_vdma_buffer {
 struct hailo_descriptors_list_buffer {
     struct list_head                   descriptors_buffer_list;
     uintptr_t                          handle;
-    void                               *kernel_address;
     dma_addr_t                         dma_address;
     u32                                buffer_size;
     struct hailo_vdma_descriptors_list desc_list;
@@ -118,8 +118,7 @@ struct hailo_vdma_controller {
     // Total amount of CMA memory allocated by descriptor list allocations
     atomic64_t desc_cma_in_use;
 
-    // Putting big IOCTL structures here to avoid stack allocation.
-    struct hailo_vdma_interrupts_read_timestamp_params read_interrupt_timestamps_params;
+    struct hailo_vdma_monitor monitor;
 };
 
 struct hailo_vdma_context_channels {
@@ -161,6 +160,7 @@ int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
     struct device *dev, struct hailo_vdma_hw *vdma_hw,
     struct hailo_vdma_controller_ops *ops,
     struct hailo_resource *channel_registers_per_engine, size_t engines_count);
+void hailo_vdma_controller_finalize(struct hailo_vdma_controller *controller);
 
 void hailo_vdma_update_interrupts_mask(struct hailo_vdma_controller *controller,
     size_t engine_index);

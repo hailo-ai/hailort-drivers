@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 /**
  * A Hailo PCIe NNC device is a device contains a full SoC over PCIe. The SoC contains NNC (neural network core) and
@@ -190,8 +190,8 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
         board->vdma.hw->ddr_data_id);
 
     // Store the input channels state in bitmap (open)
-    hailo_set_bit(params.input_channel_index, &context->soc_used_channels_bitmap);
-    hailo_set_bit(params.output_channel_index, &context->soc_used_channels_bitmap);
+    hailo_set_bit(params.input_channel_index, &context->context_channels_in_use_bitmap);
+    hailo_set_bit(params.output_channel_index, &context->context_channels_in_use_bitmap);
 
     if (copy_to_user((void *)arg, &params, sizeof(params))) {
         hailo_dev_err(&board->pdev->dev, "copy_to_user fail\n");
@@ -248,8 +248,8 @@ long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_con
     channels_bitmap = (1 << params.input_channel_index) | (1 << params.output_channel_index);
 
     // check if channels are from this bitmap
-    if (!hailo_test_bit(params.input_channel_index, &context->soc_used_channels_bitmap) ||
-        !hailo_test_bit(params.output_channel_index, &context->soc_used_channels_bitmap)) {
+    if (!hailo_test_bit(params.input_channel_index, &context->context_channels_in_use_bitmap) ||
+        !hailo_test_bit(params.output_channel_index, &context->context_channels_in_use_bitmap)) {
         hailo_dev_err(&board->pdev->dev, "Channels %u and %u are not connected\n",
             params.input_channel_index, params.output_channel_index);
         return -EINVAL;
@@ -264,8 +264,8 @@ long hailo_soc_close_ioctl(struct hailo_pcie_board *board, struct hailo_vdma_con
     }
 
     // Store the channel state in bitmap (closed)
-    hailo_clear_bit(params.input_channel_index, &context->soc_used_channels_bitmap);
-    hailo_clear_bit(params.output_channel_index, &context->soc_used_channels_bitmap);
+    hailo_clear_bit(params.input_channel_index, &context->context_channels_in_use_bitmap);
+    hailo_clear_bit(params.output_channel_index, &context->context_channels_in_use_bitmap);
 
     return err;
 }
@@ -279,9 +279,9 @@ int hailo_soc_file_context_init(struct hailo_pcie_board *board, struct hailo_fil
 void hailo_soc_file_context_finalize(struct hailo_pcie_board *board, struct hailo_file_context *context)
 {
     // close only channels connected by this (by bitmap)
-    if (context->soc_used_channels_bitmap != 0) {
-        hailo_info(board, "close_finalize: %x\n", context->soc_used_channels_bitmap);
-        close_channels(board, context->soc_used_channels_bitmap);
+    if (context->context_channels_in_use_bitmap != 0) {
+        hailo_info(board, "close_finalize: %x\n", context->context_channels_in_use_bitmap);
+        close_channels(board, context->context_channels_in_use_bitmap);
     }
 }
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_PCI_PCIE_H_
@@ -59,7 +59,7 @@ struct hailo_file_context {
     struct file *filp;
     struct hailo_vdma_file_context vdma_context;
     bool is_valid;
-    u32 soc_used_channels_bitmap;
+    u32 context_channels_in_use_bitmap;
 };
 
 // Linux-specific extensions to the common hailo_pcie_fw_boot structure
