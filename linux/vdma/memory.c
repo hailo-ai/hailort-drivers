@@ -426,47 +426,45 @@ int hailo_desc_list_create(struct device *dev, u32 descriptors_count, u16 desc_p
     uintptr_t desc_handle, bool is_circular, struct hailo_descriptors_list_buffer *descriptors)
 {
     size_t buffer_size = 0;
-    const u64 align = VDMA_DESCRIPTOR_LIST_ALIGN; //First addr must be aligned on 64 KB  (from the VDMA registers documentation)
+    void *kernel_address = NULL;
 
     if (MAX_POWER_OF_2_VALUE < descriptors_count) {
-        dev_err(dev, "Invalid descriptors count %u\n", descriptors_count);
+        dev_err(dev, "Invalid descriptors count: %u\n", descriptors_count);
         return -EINVAL;
     }
 
+    // First addr must be aligned on 64 KB (from the VDMA registers docs)
     buffer_size = descriptors_count * sizeof(struct hailo_vdma_descriptor);
-    buffer_size = ALIGN(buffer_size, align);
+    buffer_size = ALIGN(buffer_size, VDMA_DESCRIPTOR_LIST_ALIGN);
 
-    // Don't pass __GFP_ZERO since the buffer is used only in kernel, and is always initialized
-    // before starting dma transfer.
-    descriptors->kernel_address = dma_alloc_coherent(dev, buffer_size,
-        &descriptors->dma_address, GFP_KERNEL);
-    if (descriptors->kernel_address == NULL) {
-        dev_err(dev, "Failed to allocate descriptors list, desc_count 0x%x, buffer_size 0x%zx, This failure means there is not a sufficient amount of CMA memory "
-            "(contiguous physical memory), This usually is caused by lack of general system memory. Please check you have sufficient memory.\n",
-            descriptors_count, buffer_size);
+    // Don't pass __GFP_ZERO since the buffer is used only in kernel, and is always initialized before dma transfer.
+    kernel_address = dma_alloc_coherent(dev, buffer_size, &descriptors->dma_address, GFP_KERNEL);
+    if (kernel_address == NULL) {
+        dev_err(dev, "Failed to allocate descriptors list of size 0x%zx: out of CMA memory.\n", buffer_size);
         return -ENOBUFS;
     }
 
     descriptors->buffer_size = buffer_size;
     descriptors->handle = desc_handle;
-
-    descriptors->desc_list.desc_list = descriptors->kernel_address;
+    descriptors->desc_list.prepared_transfers = NULL;
+    descriptors->desc_list.descs = kernel_address;
     descriptors->desc_list.desc_count = descriptors_count;
-    // No need to check the return value of get_nearest_powerof_2 because we already checked the input
-    descriptors->desc_list.desc_count_mask = is_circular ? (descriptors_count - 1) : (get_nearest_powerof_2(descriptors_count) - 1);
+    descriptors->desc_list.desc_count_mask = (get_nearest_powerof_2(descriptors_count) - 1);
     descriptors->desc_list.desc_page_size = desc_page_size;
     descriptors->desc_list.is_circular = is_circular;
-    descriptors->desc_list.num_launched = 0;
-    descriptors->desc_list.num_programmed = 0;
-    descriptors->desc_list.prepared_transfers = NULL;
+    descriptors->desc_list.descs_programmed = 0;
+
     return 0;
 }
 
 void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list_buffer *descriptors)
 {
     hailo_vdma_transfer_list_free(&descriptors->desc_list.prepared_transfers);
-    
-    dma_free_coherent(dev, descriptors->buffer_size, descriptors->kernel_address, descriptors->dma_address);
+
+    if (descriptors->desc_list.descs != NULL) {
+        dma_free_coherent(dev, descriptors->buffer_size, descriptors->desc_list.descs, descriptors->dma_address);
+        descriptors->desc_list.descs = NULL;
+    }
 }
 
 struct hailo_descriptors_list_buffer* hailo_vdma_find_descriptors_buffer(struct hailo_vdma_file_context *context,

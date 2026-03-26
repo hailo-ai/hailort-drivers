@@ -425,14 +425,8 @@ static void pcie_platform_release_boot_resources(struct hailo_pcie_fw_boot_linux
         struct hailo_descriptors_list_buffer *device_buffer = &fw_boot->device_descriptors_buffers[channel_index];
 
         // Release Linux-specific descriptor buffers
-        if (host_buffer->kernel_address != NULL) {
-            hailo_desc_list_release(dev, host_buffer);
-            host_buffer->kernel_address = NULL;
-        }
-        if (device_buffer->kernel_address != NULL) {
-            hailo_desc_list_release(dev, device_buffer);
-            device_buffer->kernel_address = NULL;
-        }
+        hailo_desc_list_release(dev, host_buffer);
+        hailo_desc_list_release(dev, device_buffer);
 
         // Clear the pointers in the common structure
         channel->host_descriptors_list = NULL;

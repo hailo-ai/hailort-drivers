@@ -94,4 +94,8 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 #endif
 
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0)
+#define timer_delete_sync(t) del_timer_sync(t)
+#endif
+
 #endif /* _HAILO_PCI_COMPACT_H_ */

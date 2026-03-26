@@ -5,6 +5,7 @@
 
 #include "logs.h"
 #include "vdma.h"
+#include "utils/compact.h"
 
 #include "monitor.h"
 
@@ -50,5 +51,5 @@ long hailo_vdma_monitor_start(struct hailo_vdma_monitor *monitor)
 
 void hailo_vdma_monitor_stop(struct hailo_vdma_monitor *monitor)
 {
-    del_timer_sync(&monitor->timer);
+    timer_delete_sync(&monitor->timer);
 }
