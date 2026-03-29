@@ -1,4 +1,4 @@
-# Hailo 10H — Third-Party Dependency Report
+# Hailo-10H — Firmware Image
 
 ## Third-Party Dependencies
 
@@ -98,7 +98,7 @@
 | shadow-securetty | 4.6 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | slang | 2.3.2 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [slang-2.3.2.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/slang/2.3.2/slang-2.3.2.tar.bz2) |
 | spdlog | 1.14.1 | [MIT](https://spdx.org/licenses/MIT.html) | [spdlog](https://github.com/gabime/spdlog) |
-| sqlite3 | 3.38.5 | PD | Permissive |
+| sqlite3 | 3.38.5 | PD (Public Domain) | Permissive |
 | stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
 | sysvinit | 3.01 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [sysvinit-3.01.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/sysvinit/3.01/sysvinit-3.01.tar.xz) |
 | sysvinit-inittab | 2.88dsf | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [sysvinit-inittab](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/sysvinit) |
@@ -109,41 +109,41 @@
 | util-linux-libuuid | 2.37.4 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | Permissive |
 | valgrind | 3.18.1 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) & [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [valgrind-3.18.1.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/valgrind/3.18.1/valgrind-3.18.1.tar.bz2) |
 | xxHash | 0.8.2 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [xxHash](https://github.com/Cyan4973/xxHash) |
-| xz | 5.2.6 | PD | Permissive |
+| xz | 5.2.6 | PD (Public Domain) | Permissive |
 | zlib | 1.2.11 | [Zlib](https://spdx.org/licenses/Zlib.html) | Permissive |
 | zstd | 1.5.2 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) \| [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [zstd-1.5.2-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/zstd/1.5.2/zstd-1.5.2-r0.tar.xz) |
 
 ---
 
-## Hailo / CLOSED Packages (excluded from bundle)
+## Hailo Packages
 
-| Package | Version | License                                              |
-|---------|---------|------------------------------------------------------|
-| debalex | 1.0 | CLOSED |
-| hailo-base-config | 0.1 | CLOSED |
-| hailo-cma-usage | 1.0 | CLOSED |
-| hailo-dma-usage | 1.0 | CLOSED |
-| hailo-integrated-nnc | 5.3.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |
-| hailo-linux-init | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| hailo-noc-measurement-script | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| hailo-pci-ep | 5.3.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |
-| hailo-thermal-engine | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |
-| hailo-thermal-service | 1.0 | CLOSED |
-| hailo15-nnc-fw | 5.3.0 | Proprietary |
-| hailort-server | 5.3.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| hailortcli | 5.3.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| infra-tools | 1.0 | CLOSED |
-| libhailo-throttling | 1.7.0 | CLOSED |
-| libhailopp | 1.0.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| libhailort | 5.3.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |
-| linux-yocto-hailo | 5.15.32 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |
-| loopback-server | 1.0 | CLOSED |
-| packagegroup-hailo-bsp | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| packagegroup-hailo-hailort | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| packagegroup-hailo-integrated-nnc | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| packagegroup-hailo-linux | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |
-| pcie-tunnel | 1.0 | CLOSED |
-| recovery-fw | 1.0 | Proprietary |
-| scu-bl | 1.0 | Proprietary |
-| scu-fw | 1.0 | Proprietary |
+| Package | Version | License                                              | Reference                                                    |
+|---------|---------|------------------------------------------------------|--------------------------------------------------------------|
+| debalex | 1.0 | Proprietary |  |
+| hailo-base-config | 0.1 | Proprietary |  |
+| hailo-cma-usage | 1.0 | Proprietary |  |
+| hailo-dma-usage | 1.0 | Proprietary |  |
+| hailo-integrated-nnc | 5.3.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [hailo-integrated-nnc-5.3.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/hailo-integrated-nnc/5.3.0/hailo-integrated-nnc-5.3.0-r0.tar.xz) |
+| hailo-linux-init | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| hailo-noc-measurement-script | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| hailo-pci-ep | 5.3.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [hailo-pci-ep-5.3.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/hailo-pci-ep/5.3.0/hailo-pci-ep-5.3.0-r0.tar.xz) |
+| hailo-thermal-engine | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |  |
+| hailo-thermal-service | 1.0 | Proprietary |  |
+| hailo15-nnc-fw | 5.3.0 | Proprietary |  |
+| hailort-server | 5.3.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| hailortcli | 5.3.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| infra-tools | 1.0 | Proprietary |  |
+| libhailo-throttling | 1.7.0 | Proprietary |  |
+| libhailopp | 1.0.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| libhailort | 5.3.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |  |
+| linux-yocto-hailo | 5.15.32 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0-cfg.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0-cfg.tar.xz) |
+| loopback-server | 1.0 | Proprietary |  |
+| packagegroup-hailo-bsp | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| packagegroup-hailo-hailort | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| packagegroup-hailo-integrated-nnc | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| packagegroup-hailo-linux | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| pcie-tunnel | 1.0 | Proprietary |  |
+| recovery-fw | 1.0 | Proprietary |  |
+| scu-bl | 1.0 | Proprietary |  |
+| scu-fw | 1.0 | Proprietary |  |
