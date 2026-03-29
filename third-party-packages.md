@@ -7,7 +7,7 @@
 | acl | 2.3.1 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [acl-2.3.1.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/acl/2.3.1/acl-2.3.1.tar.gz) |
 | attr | 2.5.1 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [attr-2.5.1.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/attr/2.5.1/attr-2.5.1.tar.gz) |
 | avahi | 0.8 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [avahi-0.8.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/avahi/0.8/avahi-0.8.tar.gz) |
-| base-files | 3.0.14 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [base-files (Poky)](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/base-files) |
+| base-files | 3.0.14 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [base-files](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/base-files) |
 | base-passwd | 3.5.29 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [base-passwd_3.5.29.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/base-passwd/3.5.29/base-passwd_3.5.29.tar.gz) |
 | bash | 5.1.16 | [GPL-3.0-or-later](https://spdx.org/licenses/GPL-3.0-or-later.html) | [bash-5.1.16.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/bash/5.1.16/bash-5.1.16.tar.gz) |
 | benchmark | 1.6.0 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [benchmark](https://github.com/google/benchmark.git) |
@@ -32,9 +32,9 @@
 | glibc | 2.35 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) & [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [glibc-2.35-r0-glibc.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/glibc/2.35/glibc-2.35-r0-glibc.tar.xz) |
 | gmp | 6.2.1 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) \| [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) | [gmp-6.2.1.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gmp/6.2.1/gmp-6.2.1.tar.bz2) |
 | gnutls | 3.7.4 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [gnutls-3.7.4.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gnutls/3.7.4/gnutls-3.7.4.tar.xz) |
-| init-ifupdown | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [init-ifupdown (Poky)](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/init-ifupdown) |
+| init-ifupdown | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [init-ifupdown](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/init-ifupdown) |
 | init-system-helpers | 1.62 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) & [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [init-system-helpers-1.62-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/init-system-helpers/1.62/init-system-helpers-1.62-r0.tar.xz) |
-| initscripts | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [initscripts (Poky)](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/initscripts) |
+| initscripts | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [initscripts](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/initscripts) |
 | kmod | 29 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [kmod-29-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/kmod/29/kmod-29-r0.tar.xz) |
 | libaio | 0.3.112 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libaio-0.3.112-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libaio/0.3.112/libaio-0.3.112-r0.tar.xz) |
 | libarchive | 3.6.2 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | Permissive |
@@ -66,7 +66,6 @@
 | libxdmcp | 1.1.3 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | libxml2 | 2.9.14 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | libyaml | 0.2.5 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | **Source not archived** |
 | lmsensors | 3.6.0 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [lmsensors-3.6.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/lmsensors/3.6.0/lmsensors-3.6.0-r0.tar.xz) |
 | lmsensors-config | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | lzo | 2.10 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [lzo-2.10.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/lzo/2.10/lzo-2.10.tar.gz) |
@@ -85,7 +84,7 @@
 | os-release | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | packagegroup-core-boot | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | packagegroup-core-ssh-openssh | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| perf | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [perf (Poky)](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-kernel/perf) |
+| perf | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [perf](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-kernel/perf) |
 | perl | 5.34.3 | [Artistic-1.0](https://spdx.org/licenses/Artistic-1.0.html) \| [GPL-1.0-or-later](https://spdx.org/licenses/GPL-1.0-or-later.html) | [perl-5.34.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/perl/5.34.3/perl-5.34.3.tar.gz) |
 | pevents | master | [MIT](https://spdx.org/licenses/MIT.html) | [pevents](https://github.com/neosmart/pevents.git) |
 | protobuf | 21.12 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [protobuf](https://github.com/protocolbuffers/protobuf) |
@@ -102,7 +101,7 @@
 | sqlite3 | 3.38.5 | PD | Permissive |
 | stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
 | sysvinit | 3.01 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [sysvinit-3.01.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/sysvinit/3.01/sysvinit-3.01.tar.xz) |
-| sysvinit-inittab | 2.88dsf | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [sysvinit-inittab (Poky)](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/sysvinit) |
+| sysvinit-inittab | 2.88dsf | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [sysvinit-inittab](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/sysvinit) |
 | tokenizers_cpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [tokenizers-cpp](https://github.com/mlc-ai/tokenizers-cpp.git) |
 | u-boot | 2022.01 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [u-boot-1_2022.01-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/u-boot/2022.01/u-boot-1_2022.01-r0.tar.xz) |
 | update-rc.d | 0.8 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [update-rc.d-0.8-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/update-rc.d/0.8/update-rc.d-0.8-r0.tar.xz) |
@@ -137,6 +136,7 @@
 | libhailo-throttling | 1.7.0 | CLOSED |
 | libhailopp | 1.0.0 | [MIT](https://spdx.org/licenses/MIT.html) |
 | libhailort | 5.3.0 | [MIT](https://spdx.org/licenses/MIT.html) |
+| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |
 | linux-yocto-hailo | 5.15.32 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |
 | loopback-server | 1.0 | CLOSED |
 | packagegroup-hailo-bsp | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |
