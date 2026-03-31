@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _BOARD_H_
@@ -81,6 +81,8 @@ struct fw_notification
     struct mbox_chan *mbox_channel;
     // hailo resource of the rx shmem buffer
     struct hailo_resource rx_shmem;
+    // notifier-block for scmi messages
+    struct notifier_block scmi_notifier;
 };
 
 struct driver_down_notification

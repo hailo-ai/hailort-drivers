@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_PCI_COMPACT_H_
@@ -93,5 +93,9 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 #define kvfree vfree
 #endif
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0)
+#define timer_delete_sync(t) del_timer_sync(t)
+#endif
 
 #endif /* _HAILO_PCI_COMPACT_H_ */

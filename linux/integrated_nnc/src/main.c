@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/err.h>
@@ -26,7 +26,6 @@
 #include "vdma/memory.h"
 
 #define DRIVER_NAME "hailo_integrated_nnc"
-#define DEVICE_NODE_NAME "hailo_integrated_nnc"
 #define INTEGRATED_DEVICE_TREE_MEMORY_REGION_NAME "memory-region"
 
 #define CONTEXT_SWITCH_DEFS__START_M4_MAPPED_DDR_ADDRESS (0x80000000)
@@ -132,22 +131,13 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
     },
 };
 
-static ssize_t board_location_show(struct device *dev, struct device_attribute *_attr,
-    char *buf)
+static ssize_t device_id_show(struct device *dev, struct device_attribute *_attr, char *buf)
 {
     return sprintf(buf, "%s", "[integrated]");
 }
-static DEVICE_ATTR_RO(board_location);
+static DEVICE_ATTR_RO(device_id);
 
-static ssize_t accelerator_type_show(struct device *dev, struct device_attribute *_attr,
-    char *buf)
-{
-    return sprintf(buf, "%d", HAILO_ACCELERATOR_TYPE_NNC);
-}
-static DEVICE_ATTR_RO(accelerator_type);
-
-static ssize_t cma_in_use_show(struct device *dev, struct device_attribute *_attr,
-    char *buf)
+static ssize_t cma_in_use_show(struct device *dev, struct device_attribute *_attr, char *buf)
 {
     struct hailo_board *board = (struct hailo_board *)dev_get_drvdata(dev);
     u64 total_cma = atomic64_read(&board->vdma.cma_in_use);
@@ -155,8 +145,7 @@ static ssize_t cma_in_use_show(struct device *dev, struct device_attribute *_att
 }
 static DEVICE_ATTR_RO(cma_in_use);
 
-static ssize_t desc_cma_in_use_show(struct device *dev, struct device_attribute *_attr,
-    char *buf)
+static ssize_t desc_cma_in_use_show(struct device *dev, struct device_attribute *_attr, char *buf)
 {
     struct hailo_board *board = (struct hailo_board *)dev_get_drvdata(dev);
     u64 total_desc_cma = atomic64_read(&board->vdma.desc_cma_in_use);
@@ -164,11 +153,18 @@ static ssize_t desc_cma_in_use_show(struct device *dev, struct device_attribute 
 }
 static DEVICE_ATTR_RO(desc_cma_in_use);
 
+static ssize_t vdma_monitor_show(struct device *dev, struct device_attribute *_attr, char *buf)
+{
+    struct hailo_board *board = (struct hailo_board *)dev_get_drvdata(dev);
+    return hailo_vdma_monitor_show(&board->vdma.monitor, buf);
+}
+static DEVICE_ATTR_RO(vdma_monitor);
+
 static struct attribute *hailo_dev_attrs[] = {
-    &dev_attr_board_location.attr,
-    &dev_attr_accelerator_type.attr,
+    &dev_attr_device_id.attr,
     &dev_attr_cma_in_use.attr,
     &dev_attr_desc_cma_in_use.attr,
+    &dev_attr_vdma_monitor.attr,
     NULL
 };
 
@@ -409,7 +405,7 @@ static int driver_probe(struct platform_device *pdev)
     }
 
     /* Creating struct class */
-    class = class_create_compat("hailo_chardev");
+    class = class_create_compat("hailo1x_integrated");
     if (IS_ERR(class)) {
         err = PTR_ERR(class);
         hailo_err(board, "Failed creating class. err: %d", err);
@@ -418,8 +414,7 @@ static int driver_probe(struct platform_device *pdev)
     board->class = class;
 
     /* Creating device */
-    device = device_create_with_groups(class, &pdev->dev, dev, board, hailo_dev_groups,
-        DEVICE_NODE_NAME);
+    device = device_create_with_groups(class, &pdev->dev, dev, board, hailo_dev_groups, HAILO_DEV_NAME);
     if (IS_ERR(device)) {
         err = PTR_ERR(device);
         hailo_err(board, "Failed creating dynamic device. err: %d\n", err);
@@ -457,9 +452,10 @@ l_exit:
 static void driver_remove(struct platform_device *pdev)
 {
     struct hailo_board *board = NULL;
-    dev_notice(&pdev->dev, "Exit module.\n");
-    board = platform_get_drvdata(pdev);
 
+    dev_notice(&pdev->dev, "Exit module.\n");
+
+    board = platform_get_drvdata(pdev);
     if (!board) {
         return;
     }
@@ -467,6 +463,7 @@ static void driver_remove(struct platform_device *pdev)
     if (NNC_FW_SHARED_MEM_TYPE_CONTINOUS_BUFFER == board->nnc_fw_shared_mem_info.type) {
         hailo_vdma_continuous_buffer_free(&pdev->dev, &board->nnc_fw_shared_memory_continuous_buffer);
     }
+    hailo_integrated_nnc_vdma_controller_finalize(board);
     device_destroy(board->class, board->dev);
     class_destroy(board->class);
     cdev_del(&board->cdev);

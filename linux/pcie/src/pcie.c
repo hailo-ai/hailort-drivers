@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <linux/version.h>
@@ -42,7 +42,6 @@ static bool force_hailo10h_legacy_mode = false;
 static bool force_hailo_pcie_boot_mode_over_bars = false;
 static bool support_soft_reset = true;
 
-#define DEVICE_NODE_NAME "hailo"
 static int char_major = 0;
 static struct class *g_chrdev_class = NULL;
 
@@ -253,7 +252,7 @@ static long hailo_pcie_insert_board(struct hailo_pcie_board* board)
     down(&g_hailo_add_board_mutex);
 
     if (!g_chrdev_class) {
-        g_chrdev_class = class_create_compat("hailo_chardev");
+        g_chrdev_class = class_create_compat("hailo1x");
         if (IS_ERR(g_chrdev_class)) {
             hailo_err(board, "Failed to create class for chrdev");
             return PTR_ERR(g_chrdev_class);
@@ -426,14 +425,8 @@ static void pcie_platform_release_boot_resources(struct hailo_pcie_fw_boot_linux
         struct hailo_descriptors_list_buffer *device_buffer = &fw_boot->device_descriptors_buffers[channel_index];
 
         // Release Linux-specific descriptor buffers
-        if (host_buffer->kernel_address != NULL) {
-            hailo_desc_list_release(dev, host_buffer);
-            host_buffer->kernel_address = NULL;
-        }
-        if (device_buffer->kernel_address != NULL) {
-            hailo_desc_list_release(dev, device_buffer);
-            device_buffer->kernel_address = NULL;
-        }
+        hailo_desc_list_release(dev, host_buffer);
+        hailo_desc_list_release(dev, device_buffer);
 
         // Clear the pointers in the common structure
         channel->host_descriptors_list = NULL;
@@ -811,13 +804,13 @@ static int load_nnc_firmware(struct hailo_pcie_board *board)
 
 static int load_firmware(struct hailo_pcie_board *board)
 {
-    switch (board->pcie_resources.accelerator_type) {
-    case HAILO_ACCELERATOR_TYPE_SOC:
+    switch (board->pcie_resources.device_type) {
+    case HAILO_DEV_TYPE_DISCRETE:
         return load_soc_firmware(board);
-    case HAILO_ACCELERATOR_TYPE_NNC:
+    case HAILO_DEV_TYPE_INTEGRATED:
         return load_nnc_firmware(board);
     default:
-        hailo_err(board, "Invalid board type %d\n", board->pcie_resources.accelerator_type);
+        hailo_err(board, "Invalid board type %d\n", board->pcie_resources.device_type);
         return -EINVAL;
     }
 }
@@ -852,7 +845,7 @@ static int hailo_activate_board(struct hailo_pcie_board *board)
 
     hailo_notice(board, "Firmware loaded in %lld ms\n", ktime_to_ms(ktime_sub(end_time, start_time)));
 
-    if (HAILO_ACCELERATOR_TYPE_SOC == board->pcie_resources.accelerator_type) {
+    if (HAILO_DEV_TYPE_DISCRETE == board->pcie_resources.device_type) {
         err = hailo_soc_get_driver_info(board);
         if (err < 0) {
             hailo_err(board, "hailo_soc_get_driver_info has failed with err %d\n", err);
@@ -1075,7 +1068,7 @@ static int hailo_pcie_probe(struct pci_dev* pdev, const struct pci_device_id* id
         pci_err(pdev, "Probing: Failed calling pci_enable_device %d\n", err);
         goto probe_free_board;
     }
-    pci_notice(pdev, "Probing: Device enabled\n");
+    pci_notice(pdev, "Probing: Device enabled %0x:%0x enabled\n", pdev->vendor, pdev->device);
 
     pci_set_master(pdev);
 
@@ -1135,18 +1128,16 @@ static int hailo_pcie_probe(struct pci_dev* pdev, const struct pci_device_id* id
     }
 
     /* Create dynamically the device node*/
-    char_device = device_create_with_groups(g_chrdev_class, &pdev->dev,
-                                            MKDEV(char_major, board->board_index),
-                                            board,
-                                            g_hailo_dev_groups,
-                                            DEVICE_NODE_NAME"%d", board->board_index);
+    char_device = device_create_with_groups(g_chrdev_class, &pdev->dev, MKDEV(char_major, board->board_index), board,
+        g_hailo_dev_groups, "%s-%d", HAILO_DEV_NAME, board->board_index);
+
     if (IS_ERR(char_device)) {
-        hailo_err(board, "Failed creating dynamic device %d\n", board->board_index);
+        hailo_err(board, "Failed creating device /dev/%s-%d\n", HAILO_DEV_NAME, board->board_index);
         err = PTR_ERR(char_device);
         goto probe_remove_board;
     }
 
-    hailo_notice(board, "Probing: Added board %0x-%0x, /dev/hailo%d\n", pdev->vendor, pdev->device, board->board_index);
+    hailo_notice(board, "Device created at /dev/%s-%d\n", HAILO_DEV_NAME, board->board_index);
 
     return 0;
 
@@ -1204,7 +1195,7 @@ static void hailo_pcie_remove(struct pci_dev* pdev)
 
     pci_set_drvdata(pdev, NULL);
 
-    if (board->pcie_resources.accelerator_type == HAILO_ACCELERATOR_TYPE_NNC) {
+    if (board->pcie_resources.device_type == HAILO_DEV_TYPE_INTEGRATED) {
         hailo_nnc_finalize(&board->nnc);
     }
 

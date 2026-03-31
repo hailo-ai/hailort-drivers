@@ -23,6 +23,7 @@ hailo1x_pci-objs += $(UTILS_SRC_DIRECTORY)/logs.o
 
 hailo1x_pci-objs += $(VDMA_SRC_DIRECTORY)/vdma.o
 hailo1x_pci-objs += $(VDMA_SRC_DIRECTORY)/memory.o
+hailo1x_pci-objs += $(VDMA_SRC_DIRECTORY)/monitor.o
 hailo1x_pci-objs += $(VDMA_SRC_DIRECTORY)/ioctl.o
 
 ccflags-y      += -Werror
@@ -30,7 +31,7 @@ ccflags-y      += -I$(src)/include
 ccflags-y      += -I$(src)/$(COMMON_SRC_DIRECTORY)
 ccflags-y      += -I$(src)/$(BASE_INCLUDE_DIRECTORY)
 
-clean-files := $(hailo_pci-objs)
+clean-files := $(hailo1x_pci-objs)
 
 UNAME_STR=$(shell uname -a)
 ifneq (,$(findstring raspi, $(UNAME_STR)))

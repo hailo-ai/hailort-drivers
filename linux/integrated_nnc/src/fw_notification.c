@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include <asm/io.h>
@@ -9,11 +9,19 @@
 #include <linux/scmi_protocol.h>
 #include <linux/slab.h>
 
+#include <linux/soc/hailo/scmi_hailo_protocol.h>
+#include <linux/soc/hailo/scmi_hailo_ops.h>
+
+#include "d2h_events.h"
 #include "fw_notification.h"
 #include "logs.h"
 #include "utils/integrated_nnc_utils.h"
 #include "utils/fw_common.h"
 #include "fw_operation.h"
+
+/* SCMI Generic Notifcation IDs match definitions in SCU */
+#define SCMI_GENERIC_NOTIFICATION_ID_CRC_ERR          (0)
+#define SCMI_GENERIC_NOTIFICATION_ID_THROTTLING_STATE (1)
 
 static void complete_notification_wait_list(struct hailo_board *board)
 {
@@ -25,6 +33,54 @@ static void complete_notification_wait_list(struct hailo_board *board)
         complete(&notif_wait_cursor->notification_completion);
     }
     rcu_read_unlock();
+}
+
+static int scmi_rx_callback(struct notifier_block *nb, unsigned long event, void *report)
+{
+    D2H_EVENT_MESSAGE_t message = {};
+    struct scmi_hailo_rt_generic_notification *scmi_generic_notif = (struct scmi_hailo_rt_generic_notification *)report;
+    struct fw_notification *notification = container_of(nb, struct fw_notification, scmi_notifier);
+    struct hailo_board *board = container_of(notification, struct hailo_board, fw_notification);
+    unsigned long irq_saved_flags = 0;
+    int err = 0;
+
+    hailo_dbg(board, "Handling SCMI notification event");
+
+    if (SCMI_HAILO_RT_GENERIC_NOTIFICATION_ID != event) {
+        hailo_err(board, "Unrecognized SCMI notification event: %lu", event);
+        return NOTIFY_OK;
+    }
+
+    switch (scmi_generic_notif->message_id) {
+
+    case (SCMI_GENERIC_NOTIFICATION_ID_CRC_ERR):
+        message.header.event_id = NN_CORE_CRC_ERROR_EVENT_ID;
+        message.header.parameter_count = 0;
+        message.header.payload_length = 0;
+        break;
+
+    case (SCMI_GENERIC_NOTIFICATION_ID_THROTTLING_STATE):
+        message.header.event_id = THROTTLING_STATE_CHANGE_EVENT_ID;
+        message.header.parameter_count = D2H_EVENT_THROTTLING_STATE_CHANGE_PARAMETER_COUNT;
+        message.header.payload_length = sizeof(D2H_EVENT_throttling_state_change_message_t);
+        message.message_parameters.throttling_state_change.throttling_state = scmi_generic_notif->arg;
+        break;
+
+    default:
+        hailo_err(board, "Unrecognized SCMI HRT notification ID: %u", scmi_generic_notif->message_id);
+        return NOTIFY_OK;
+    }
+
+    spin_lock_irqsave(&board->notification_read_spinlock, irq_saved_flags);
+    err = hailo_read_scmi_notification(&message, sizeof(message), &board->notification_cache);
+    spin_unlock_irqrestore(&board->notification_read_spinlock, irq_saved_flags);
+    if (err < 0) {
+        hailo_err(board, "Failed reading firmware SCMI notification: %d", err);
+        return NOTIFY_OK;
+    }
+    complete_notification_wait_list(board);
+
+    return NOTIFY_OK;
 }
 
 static void mailbox_rx_callback(struct mbox_client *cl, void *msg)
@@ -53,6 +109,7 @@ long fw_notification_init(struct hailo_board *board)
     struct mbox_client *cl = &board->fw_notification.mbox_client;
     const size_t minimum_size = sizeof(board->fw_notification.notification.buffer_len) +
         sizeof(board->fw_notification.notification.buffer);
+    const struct scmi_hailo_ops *scmi_ops;
 
     cl->dev = &board->pdev->dev;
     cl->rx_callback = mailbox_rx_callback;
@@ -80,6 +137,20 @@ long fw_notification_init(struct hailo_board *board)
 
     board->fw_notification.mbox_channel = chan;
 
+    board->fw_notification.scmi_notifier.notifier_call = scmi_rx_callback;
+    scmi_ops = scmi_hailo_get_ops();
+    if (IS_ERR(scmi_ops)) {
+        hailo_err(board, "Failed to get scmi ops\n");
+        err = PTR_ERR(scmi_ops);
+        goto l_free_channel;
+    }
+
+    err = scmi_ops->register_notifier(SCMI_HAILO_RT_GENERIC_NOTIFICATION_ID, &board->fw_notification.scmi_notifier);
+    if (err) {
+        hailo_err(board, "Failed to register SCMI HRT-generic notifier\n");
+        goto l_free_channel;
+    }
+
     INIT_LIST_HEAD(&board->notification_wait_list);
 
     err = 0;
@@ -93,8 +164,24 @@ l_exit:
 
 void fw_notification_release(struct hailo_board *board)
 {
+    const struct scmi_hailo_ops *scmi_ops;
+    long err = -EINVAL;
+
     /* Free message-box channel. */
     mbox_free_channel(board->fw_notification.mbox_channel);
+
+    /* Unregister SCMI notifier. */
+    scmi_ops = scmi_hailo_get_ops();
+    if (IS_ERR(scmi_ops)) {
+        hailo_crit(board, "Failed to get SCMI-ops on unregister\n");
+        return;
+    }
+
+    err = scmi_ops->unregister_notifier(SCMI_HAILO_RT_GENERIC_NOTIFICATION_ID, &board->fw_notification.scmi_notifier);
+    if (err) {
+        hailo_crit(board, "Failed to unregister SCMI-ops notifier\n");
+        return;
+    }
 }
 
 int hailo_add_notification_wait(struct hailo_board *board, struct file *filp)
