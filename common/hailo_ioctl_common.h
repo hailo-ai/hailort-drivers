@@ -482,7 +482,7 @@ struct hailo_pci_ep_close_params {
     uint8_t output_channel_index;   // in
 };
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 struct tCompatibleHailoIoctlData
 {
     tCompatibleHailoIoctlParam Parameters;
