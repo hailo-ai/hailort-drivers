@@ -686,6 +686,8 @@ u32 hailo_get_boot_status(struct hailo_pcie_resources *resources)
     return boot_status;
 }
 
+#define CORRUPTED_SCU_SANITY_STR_LEN (5)
+
 int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
     void *buffer, u32 *size)
 {
@@ -695,8 +697,16 @@ int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
     }
     *size = min(*size, HAILO_SCU_LOG_MAX_SIZE);
     read_memory(resources, fw_addresses->scu_log_address, buffer, *size);
-    if (((u32*)buffer)[0] == 0xFFFFFFFF) {
-        return -EIO;
+    if (*size >= CORRUPTED_SCU_SANITY_STR_LEN * sizeof(u32)) {
+        u32 i = 0;
+        for (i = 0; i < CORRUPTED_SCU_SANITY_STR_LEN; i++) {
+            if (((u32*)buffer)[i] != 0xFFFFFFFF) {
+                break;
+            }
+        }
+        if (i == CORRUPTED_SCU_SANITY_STR_LEN) {
+            return -EIO;
+        }
     }
     return 0;
 }
