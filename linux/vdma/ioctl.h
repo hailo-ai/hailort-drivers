@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #ifndef _HAILO_VDMA_IOCTL_H_
@@ -26,8 +26,6 @@ long hailo_mark_as_in_use(struct hailo_vdma_controller *controller, unsigned lon
 
 long hailo_vdma_continuous_buffer_alloc_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
 long hailo_vdma_continuous_buffer_free_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller, unsigned long arg);
-
-long hailo_vdma_interrupts_read_timestamps_ioctl(struct hailo_vdma_controller *controller, unsigned long arg);
 
 long hailo_vdma_prepare_transfer_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma_controller *controller,
     unsigned long arg);

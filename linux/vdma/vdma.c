@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #define pr_fmt(fmt) "hailo: " fmt
@@ -219,6 +219,8 @@ int hailo_vdma_controller_init(struct hailo_vdma_controller *controller,
     INIT_LIST_HEAD(&controller->file_context_list);
     spin_lock_init(&controller->file_context_list_lock);
 
+    hailo_vdma_monitor_init(&controller->monitor);
+
     return 0;
 }
 
@@ -286,8 +288,6 @@ void hailo_vdma_irq_handler(struct hailo_vdma_controller *controller, size_t eng
     BUG_ON(engine_index >= controller->vdma_engines_count);
     engine = &controller->vdma_engines[engine_index];
 
-    hailo_vdma_engine_push_timestamps(engine, channels_bitmap);
-
     hailo_vdma_wakeup_interrupts(controller, engine_index, channels_bitmap);
 }
 
@@ -296,7 +296,7 @@ void hailo_vdma_disable_channels_per_engine(struct hailo_vdma_controller *contro
     u8 engine_index, u64 channels_bitmap)
 {
     struct hailo_vdma_engine *engine = &controller->vdma_engines[engine_index];
-    hailo_vdma_engine_disable_channels(controller->dev, engine, channels_bitmap);
+    hailo_vdma_engine_disable_channels(engine, channels_bitmap);
     hailo_vdma_update_interrupts_mask(controller, engine_index);
     hailo_vdma_context_clear_channel_interrupts(context, engine_index, channels_bitmap);
 
@@ -316,8 +316,6 @@ long hailo_vdma_ioctl(struct hailo_vdma_file_context *context, struct hailo_vdma
         return hailo_vdma_disable_channels_ioctl(controller, arg, context);
     case HAILO_VDMA_INTERRUPTS_WAIT:
         return hailo_vdma_interrupts_wait_ioctl(context, controller, arg, mutex, should_up_board_mutex);
-    case HAILO_VDMA_INTERRUPTS_READ_TIMESTAMPS:
-        return hailo_vdma_interrupts_read_timestamps_ioctl(controller, arg);
     case HAILO_VDMA_BUFFER_MAP:
         return hailo_vdma_buffer_map_ioctl(context, controller, arg);
     case HAILO_VDMA_BUFFER_UNMAP:
