@@ -2,7 +2,7 @@
 @ECHO OFF
 
 set BASE_URI=https://hailo-hailort.s3.eu-west-2.amazonaws.com
-set HRT_VERSION=5.2.0
+set HRT_VERSION=5.3.0
 set FW_AWS_DIR=Hailo10H/%HRT_VERSION%/FW
 set FW_FILE=hailo10h_fw.tar.gz
 set FW_DIR=hailo10h_fw_%HRT_VERSION%

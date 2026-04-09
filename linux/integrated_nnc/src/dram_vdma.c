@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /**
- * Copyright (c) 2019-2025 Hailo Technologies Ltd. All rights reserved.
+ * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
 #include "board.h"
@@ -281,6 +281,15 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
         return err;
     }
 
+    hailo_vdma_monitor_start(&board->vdma.monitor);
+
     hailo_notice(board, "vDMA controller is initialized\n");
+
     return 0;
+}
+
+void hailo_integrated_nnc_vdma_controller_finalize(struct hailo_board *board)
+{
+    hailo_vdma_monitor_stop(&board->vdma.monitor);
+    hailo_notice(board, "vDMA controller filnalized\n");
 }
