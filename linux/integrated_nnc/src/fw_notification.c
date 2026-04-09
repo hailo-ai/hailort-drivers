@@ -12,7 +12,6 @@
 #include <linux/soc/hailo/scmi_hailo_protocol.h>
 #include <linux/soc/hailo/scmi_hailo_ops.h>
 
-#include "d2h_events.h"
 #include "fw_notification.h"
 #include "logs.h"
 #include "utils/integrated_nnc_utils.h"
