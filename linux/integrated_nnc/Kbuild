@@ -37,7 +37,8 @@ ccflags-y      += -I$(src)/include
 ccflags-y      += -I$(src)/$(COMMON_SRC_DIRECTORY)
 ccflags-y      += -I$(src)/$(BASE_INCLUDE_DIRECTORY)
 
-ifeq ($(shell (test $(VERSION) -ge 6 && test $(PATCHLEVEL) -ge 9) && echo 1 || echo 0), 0)
+ifeq ($(shell (test $(VERSION) -gt 6) && echo 1 || echo 0), 1)
+else ifeq ($(shell (test $(VERSION) -eq 6 && test $(PATCHLEVEL) -ge 9) && echo 1 || echo 0), 0)
 # MMIO_DMA_MAPPING is not supported on kernels above 6.9 (since follow_pfn was removed).
 ccflags-y      += -DHAILO_SUPPORT_MMIO_DMA_MAPPING
 endif
