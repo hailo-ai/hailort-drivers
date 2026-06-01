@@ -8,6 +8,11 @@
 
 #include "monitor.h"
 
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
+#define del_timer_sync timer_delete_sync
+#endif
+
 static void mon_timer_callback(struct timer_list *timer)
 {
     struct hailo_vdma_monitor *monitor = container_of(timer, struct hailo_vdma_monitor, timer);
