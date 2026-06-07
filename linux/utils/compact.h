@@ -93,5 +93,15 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 #define kvfree vfree
 #endif
 
+// del_timer_sync() was renamed to timer_delete_sync() in kernel 6.2, and the
+// legacy del_timer_sync() wrapper was removed entirely in kernel 6.16. Use the
+// new name where it exists so the module builds on >= 6.16 kernels (e.g. the
+// Raspberry Pi 6.18 kernel) while remaining compatible with older ones.
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+#define del_timer_sync_compat timer_delete_sync
+#else
+#define del_timer_sync_compat del_timer_sync
+#endif
+
 
 #endif /* _HAILO_PCI_COMPACT_H_ */
