@@ -886,6 +886,9 @@ static int hailo_activate_board(struct hailo_pcie_board *board)
     ktime_t start_time = 0, end_time = 0;
 
     (void)hailo_pcie_disable_aspm(board, PCIE_LINK_STATE_L0S, false);
+    // Also disable L1 — on Allwinner A733 the PCIe link enters L1 after ~40s of
+    // idle, which blocks MSI delivery and causes fw_control to time out.
+    (void)hailo_pcie_disable_aspm(board, PCIE_LINK_STATE_L1, false);
 
     err = hailo_enable_interrupts(board);
     if (err < 0) {
@@ -916,8 +919,8 @@ static int hailo_activate_board(struct hailo_pcie_board *board)
         }
     }
 
-    hailo_disable_interrupts(board);
     if (power_mode_enabled()) {
+        hailo_disable_interrupts(board);
         // Setting the device to low power state, until the user opens the device
         hailo_info(board, "Power change state  to PCI_D3hot\n");
         err = pci_set_power_state(board->pDev, PCI_D3hot);
@@ -926,6 +929,9 @@ static int hailo_activate_board(struct hailo_pcie_board *board)
             return err;
         }
     }
+    // When power modes are disabled: keep interrupts enabled after probe
+    // so fops_open reuses the same MSI IRQ vector instead of reallocating.
+    // Re-allocation after pci_disable_msi breaks fw_control on Allwinner A733.
 
     return 0;
 }

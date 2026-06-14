@@ -214,15 +214,18 @@ int hailo_pcie_fops_release(struct inode *inode, struct file *filp)
         release_file_context(context);
 
         if (atomic_dec_and_test(&board->ref_count)) {
-            // Disable interrupts
-            hailo_disable_interrupts(board);
-
             if (power_mode_enabled()) {
+                // Disable interrupts before power state change
+                hailo_disable_interrupts(board);
                 hailo_info(board, "Power change state to PCI_D3hot\n");
                 if (board->pDev && pci_set_power_state(board->pDev, PCI_D3hot) < 0) {
                     hailo_err(board, "Failed setting power state to D3hot");
                 }
             }
+            // When power modes are disabled: keep interrupts enabled at last close
+            // so the next fops_open reuses the same MSI IRQ vector instead of
+            // re-registering a new one. Re-registration after pci_disable_msi
+            // breaks fw_control on Allwinner A733.
 
             // deallocate board if already removed
             if (!board->pDev) {
