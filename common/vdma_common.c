@@ -862,7 +862,7 @@ void hailo_vdma_start_channel(u8 __iomem *regs, uint64_t desc_dma_address, uint3
     u16 dma_address_l = 0;
     u32 dma_address_h = 0;
     u32 desc_depth_data_id = 0;
-    u8 desc_depth = ceil_log2(desc_count);
+    u8 desc_depth = order_base_2(desc_count);
 
     if (((desc_dma_address & 0xFFFF) != 0) ||
          (desc_depth > DESCRIPTOR_LIST_MAX_DEPTH)) {

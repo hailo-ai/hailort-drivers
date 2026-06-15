@@ -5,7 +5,7 @@
 
 #include "hailo_resource.h"
 
-#include "utils.h"
+#include "driver_utils.h"
 
 #include <linux/io.h>
 #include <linux/errno.h>

@@ -87,8 +87,8 @@ static int hailo_get_desc_page_size(struct pci_dev *pdev, u32 *out_page_size)
 {
     u16 pcie_device_control = 0;
     int err = 0;
-    // The default page size must be smaller/equal to 32K (due to PLDA registers limit).
-    const u32 max_page_size = 32u * 1024u;
+    // The default page size must be smaller/equal to 4096 (due to FW assumptions).
+    const u32 max_page_size = 4096u;
     const u32 defualt_page_size = min((u32)PAGE_SIZE, max_page_size);
 
     if (force_desc_page_size != 0) {
