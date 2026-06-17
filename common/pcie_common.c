@@ -64,6 +64,12 @@
 #define PCIE_CONFIG_PCIE_CFG_QM_ROUTING_MODE_SET(reg_offset)\
 	(reg_offset) = (((reg_offset) & ~0x00000004L) | ((uint32_t)(1) << 2))
 
+static CPU_ID_t g_fw_control__cpu_id[HAILO_CONTROL_OPCODE_COUNT] = {
+#define CONTROL_PROTOCOL__OPCODE_X(name, is_critical, cpu_id) cpu_id,
+    CONTROL_PROTOCOL__OPCODES_VARIABLES
+#undef CONTROL_PROTOCOL__OPCODE_X
+};
+
 struct hailo_fw_addresses {
     u32 boot_fw_header;
     u32 app_fw_code_ram_base;
@@ -454,46 +460,50 @@ int hailo_pcie_write_firmware_control(struct hailo_pcie_resources *resources, co
 {
     int err = 0;
     u32 request_size = 0;
-    u8 fw_access_value = FW_ACCESS_APP_CPU_CONTROL_MASK;
+    u32 opcode = command->request.opcode;
+    u8 access_bit = FW_ACCESS_APP_CPU_CONTROL_MASK;
     const struct hailo_fw_addresses *fw_addresses = &(compat[resources->board_type].fw_addresses);
 
     if (!hailo_pcie_is_firmware_loaded(resources)) {
         return -ENODEV;
     }
 
-    // Copy md5 + buffer_len + buffer
-    request_size = sizeof(command->expected_md5) + sizeof(command->buffer_len) + command->buffer_len;
-    err = hailo_resource_write_buffer(&resources->fw_access, 0, PO2_ROUND_UP(request_size, FW_CODE_SECTION_ALIGNMENT),
-        command);
+    if (opcode >= HAILO_CONTROL_OPCODE_COUNT) {
+        return -EINVAL;
+    }
+
+    if (command->request_len > CONTROL_PROTOCOL__MAX_CONTROL_LENGTH) {
+        return -EINVAL;
+    }
+
+    request_size = PO2_ROUND_UP(sizeof(command->request_len) + command->request_len, FW_CODE_SECTION_ALIGNMENT);
+    err = hailo_resource_write_buffer(&resources->fw_access, 0, request_size, command);
     if (err < 0) {
         return err;
     }
 
-    // Raise the bit for the CPU that will handle the control
-    fw_access_value = (command->cpu_id == HAILO_CPU_ID_CPU1) ? FW_ACCESS_CORE_CPU_CONTROL_MASK :
-        FW_ACCESS_APP_CPU_CONTROL_MASK;
-    
-    // Raise ready flag to FW
-    hailo_resource_write32(&resources->fw_access, fw_addresses->raise_ready_offset, (u32)fw_access_value);
+    access_bit = (g_fw_control__cpu_id[opcode] == CPU_ID_APP_CPU) ?
+        FW_ACCESS_APP_CPU_CONTROL_MASK : FW_ACCESS_CORE_CPU_CONTROL_MASK ;
+    hailo_resource_write32(&resources->fw_access, fw_addresses->raise_ready_offset, (u32)access_bit);
+
     return 0;
 }
 
 int hailo_pcie_read_firmware_control(struct hailo_pcie_resources *resources, struct hailo_fw_control *command)
 {
-    u32 response_header_size = 0;
+    /* Read the response-length */
+    size_t read_offset = PCIE_REQUEST_SIZE_OFFSET;
+    size_t read_size = sizeof(command->response_len);
 
-    // Copy response md5 + buffer_len
-    response_header_size = sizeof(command->expected_md5) + sizeof(command->buffer_len);
-
-    hailo_resource_read_buffer(&resources->fw_access, PCIE_REQUEST_SIZE_OFFSET, response_header_size, command);
-
-    if (sizeof(command->buffer) < command->buffer_len) {
+    hailo_resource_read_buffer(&resources->fw_access, read_offset, read_size, &command->response_len);
+    if (sizeof(command->response) < command->response_len) {
         return -EINVAL;
     }
 
-    // Copy response buffer
-    hailo_resource_read_buffer(&resources->fw_access, PCIE_REQUEST_SIZE_OFFSET + (size_t)response_header_size,
-        command->buffer_len, &command->buffer);
+    /* Read the response-buffer */
+    read_offset += sizeof(command->response_len);
+    read_size = command->response_len;
+    hailo_resource_read_buffer(&resources->fw_access, read_offset, command->response_len, &command->response);
 
     return 0;
 }

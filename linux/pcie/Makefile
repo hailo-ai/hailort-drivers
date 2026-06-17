@@ -5,6 +5,8 @@ ifeq ($(Q),)
 	Q=@
 endif
 
+COMMON_INCLUDE_DIRECTORY=../../../../common/include
+PCIE_SRC_DIRECTORY=../pcie
 COMMON_SRC_DIRECTORY=../../common
 VDMA_SRC_DIRECTORY=../vdma
 UTILS_SRC_DIRECTORY=../utils
@@ -29,7 +31,6 @@ endif
 # Default is release folder
 TARGET_DIR:="$(BUILD_DIR)/release/$(ARCH)"
 
-DRIVER_NAME=hailo_pci.ko
 DRIVER_NAME_NO_EXT=hailo_pci
 
 VERSION_MAJOR=$(shell grep "\#define HAILO_DRV_VER_MAJOR" ../../common/hailo_ioctl_common.h | sed "s/\#define HAILO_DRV_VER_MAJOR //g")
@@ -74,7 +75,7 @@ help:
 	$(Q)echo "*            gdb debugging.                                                   "
 	$(Q)echo "*   Q=     : Activate makefile verbose mode                                   "
 	$(Q)echo "*                                                                             "
-	$(Q)echo "* target:                                                                     " 
+	$(Q)echo "* target:                                                                     "
 	$(Q)echo "*   all          Generate the ko file in $(BUILD_DIR)/[release|debug]/$(ARCH) "
 	$(Q)echo "*                                                                             "
 	$(Q)echo "*   clean        Delete the generated files                                   "
@@ -97,7 +98,7 @@ print-versions:
 
 all: $(TARGET_DIR) print-versions
 	$(Q)$(MAKE)  -C $(KERNEL_DIR) M=$(PWD) $(GDB_FLAG) $(USER_FLAGS) modules
-	$(Q)cp $(DRIVER_NAME) $(TARGET_DIR)
+	$(Q)cp $(DRIVER_NAME_NO_EXT)* $(TARGET_DIR)
 
 $(TARGET_DIR):
 	$(Q)mkdir -p $@
@@ -113,7 +114,7 @@ install:
 
 uninstall: uninstall_all_dkms
 ifneq ($(wildcard $(MODULES)),)
-	$(Q)rm -f $(MODULES)kernel/drivers/misc/$(DRIVER_NAME)
+	$(Q)rm -f $(MODULES)kernel/drivers/misc/$(DRIVER_NAME_NO_EXT)*
 	$(Q)$(DEPMOD) -a
 endif
 
@@ -121,29 +122,35 @@ install_dkms: uninstall
 ifneq ($(shell id -u),0)
 	@echo "make install_dkms should run as root"
 	exit 1
-endif 
+endif
 ifeq ($(strip $(shell which dkms)),)
 	@echo "make install_dkms requires dkms to be installed"
 	exit 1
-endif 
-# build DKMS
-	$(Q)mkdir -p /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/linux
-	$(Q)cp -r . /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/linux/pcie
-	$(Q)cp -r $(COMMON_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/
-	$(Q)cp -r $(VDMA_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/linux
-	$(Q)cp -r $(UTILS_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/linux
+endif
+
+# Copy driver sources
+	$(Q)mkdir -p /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
+	$(Q)cp -r $(PCIE_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
+	$(Q)cp -r $(COMMON_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers
+	$(Q)cp -r $(VDMA_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
+	$(Q)cp -r $(UTILS_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
+
+# Copy common headers
+	$(Q)mkdir -p /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/common
+	$(Q)cp -r $(COMMON_INCLUDE_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/common
+
 	$(Q)sed 's/@PCIE_DRIVER_VERSION@/$(DRIVER_VERSION)/g' dkms.conf.in > /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/dkms.conf
 	$(Q)dkms add -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION)
 	$(Q)dkms build -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION) || (cat /var/lib/dkms/$(DRIVER_NAME_NO_EXT)/$(DRIVER_VERSION)/build/make.log; exit 1)
 
-# install DKMS
+# Install DKMS
 	$(Q)dkms install -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION) --force
 
-uninstall_all_dkms: 
+uninstall_all_dkms:
 ifneq ($(shell id -u),0)
 	@echo "make uninstall_all_dkms should run as root"
 	exit 1
-endif 
+endif
 # Uninstall driver from dkms, if dkms is installed
 # If the driver wasn't installed with dkms, the following commands won't do anything
 ifneq ($(strip $(shell which dkms)),)

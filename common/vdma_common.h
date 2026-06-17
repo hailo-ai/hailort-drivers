@@ -7,7 +7,7 @@
 #define _HAILO_COMMON_VDMA_COMMON_H_
 
 #include "hailo_resource.h"
-#include "utils.h"
+#include "driver_utils.h"
 
 #include <linux/types.h>
 #include <linux/scatterlist.h>

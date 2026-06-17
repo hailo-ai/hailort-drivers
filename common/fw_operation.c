@@ -125,12 +125,10 @@ long hailo_pcie_read_firmware_log(struct hailo_resource *resource, struct hailo_
     long err = 0;
     struct hailo_resource log_resource = {resource->address, DEBUG_BUFFER_TOTAL_SIZE};
 
-    if (HAILO_CPU_ID_CPU0 == params->cpu_id) {
+    if (params->is_app_cpu) {
         log_resource.address += PCIE_APP_CPU_DEBUG_OFFSET;
-    } else if (HAILO_CPU_ID_CPU1 == params->cpu_id) {
-        log_resource.address += PCIE_CORE_CPU_DEBUG_OFFSET;
     } else {
-        return -EINVAL;
+        log_resource.address += PCIE_CORE_CPU_DEBUG_OFFSET;
     }
 
     if (0 == params->buffer_size) {

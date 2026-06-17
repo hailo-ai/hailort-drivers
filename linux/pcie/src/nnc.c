@@ -12,6 +12,7 @@
 
 #include "utils/logs.h"
 #include "utils/compact.h"
+#include "vdma/memory.h"
 
 #include <linux/uaccess.h>
 
@@ -43,7 +44,43 @@ void hailo_nnc_finalize(struct hailo_pcie_nnc *nnc)
     rcu_read_unlock();
 }
 
-static int hailo_fw_control(struct hailo_pcie_board *board, unsigned long arg, bool* should_up_board_mutex)
+/* This function has only one purpose: to populate the dma-address translation-table for fw-commands that
+ * write the action list to the FW.
+ * The translation table allows the FW to translate between desc-list-handles and their real dma-addresses. */
+static int hailo_fw_control_preprocess(struct hailo_file_context *context, struct hailo_pcie_board *board,
+    CONTROL_PROTOCOL__request_t *request)
+{
+    CONTROL_PROTOCOL__context_switch_dma_addr_translation_table_t *translation_table = NULL;
+    struct hailo_descriptors_list_buffer *desc_list = NULL;
+    uint64_t dma_addr_handle = 0;
+    uint8_t i = 0;
+
+    if (BYTE_ORDER__dtohl(request->opcode) != HAILO_CONTROL_OPCODE_CONTEXT_SWITCH_SET_CONTEXT_INFO) {
+        return 0;
+    }
+
+    translation_table = &request->parameters.context_switch_set_context_info_request.translation_table;
+    if (translation_table->handle_count > CONTROL_PROTOCOL__MAX_VDMA_CHANNELS_PER_ENGINE) {
+        hailo_err(board, "hailo_fw_control: invalid translation-table length");
+        return -EINVAL;
+    }
+
+    for (i = 0; i < translation_table->handle_count; i++) {
+        dma_addr_handle = BYTE_ORDER__dtohll(translation_table->handles[i]);
+        desc_list = hailo_vdma_find_descriptors_buffer(&context->vdma_context, dma_addr_handle);
+        if (desc_list == NULL) {
+            hailo_err(board, "hailo_fw_control: failed to find descriptor list for translation-table");
+            return -EINVAL;
+        }
+
+        translation_table->dma_addrs[i] = BYTE_ORDER__htodll(desc_list->dma_address);
+    }
+
+    return 0;
+}
+
+static int hailo_fw_control(struct hailo_file_context *context, struct hailo_pcie_board *board, unsigned long arg,
+    bool* should_up_board_mutex)
 {
     struct hailo_fw_control *command = &board->nnc.fw_control.command;
     long completion_result = 0;
@@ -63,6 +100,12 @@ static int hailo_fw_control(struct hailo_pcie_board *board, unsigned long arg, b
         goto l_exit;
     }
 
+    err = hailo_fw_control_preprocess(context, board, &command->request);
+    if (err < 0) {
+        hailo_err(board, "hailo_fw_control: failed to preprocess command\n");
+        goto l_exit;
+    }
+
     reinit_completion(&board->nnc.fw_control.completion);
 
     err = hailo_pcie_write_firmware_control(&board->pcie_resources, command);
@@ -72,10 +115,11 @@ static int hailo_fw_control(struct hailo_pcie_board *board, unsigned long arg, b
     }
 
     // Wait for response
-    completion_result = wait_for_completion_interruptible_timeout(&board->nnc.fw_control.completion, msecs_to_jiffies(command->timeout_ms));
+    completion_result = wait_for_completion_interruptible_timeout(
+        &board->nnc.fw_control.completion, msecs_to_jiffies(FW_CONTROL_DEFAULT_TIMEOUT_MS));
     if (completion_result <= 0) {
         if (0 == completion_result) {
-            hailo_err(board, "hailo_fw_control, timeout waiting for control (timeout_ms=%d)\n", command->timeout_ms);
+            hailo_err(board, "hailo_fw_control, timeout waiting for control (%d ms)\n", FW_CONTROL_DEFAULT_TIMEOUT_MS);
             err = -ETIMEDOUT;
         } else {
             hailo_info(board, "hailo_fw_control, wait for completion failed with err=%ld (process was interrupted or killed)\n", completion_result);
@@ -210,12 +254,12 @@ static long hailo_read_log_ioctl(struct hailo_pcie_board *board, unsigned long a
     return 0;
 }
 
-long hailo_nnc_ioctl(struct hailo_pcie_board *board, unsigned int cmd, unsigned long arg,
-    struct file *filp, bool *should_up_board_mutex)
+long hailo_nnc_ioctl(struct hailo_file_context *context, struct hailo_pcie_board *board, unsigned int cmd,
+    unsigned long arg, struct file *filp, bool *should_up_board_mutex)
 {
     switch (cmd) {
     case HAILO_FW_CONTROL:
-        return hailo_fw_control(board, arg, should_up_board_mutex);
+        return hailo_fw_control(context, board, arg, should_up_board_mutex);
     case HAILO_READ_NOTIFICATION:
         return hailo_read_notification_ioctl(board, arg, filp, should_up_board_mutex);
     case HAILO_DISABLE_NOTIFICATION:

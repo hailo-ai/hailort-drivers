@@ -1,5 +1,5 @@
 PACKAGE_NAME=hailo_pci
-KBUILD_PATH=linux/pcie
+KBUILD_PATH=hailort/drivers/linux/pcie
 PACKAGE_VERSION=@PCIE_DRIVER_VERSION@
 BUILD_DIRECTORY=${dkms_tree}/${PACKAGE_NAME}/${PACKAGE_VERSION}/build
 MAKE="make -C ${kernel_source_dir} M=${BUILD_DIRECTORY}/${KBUILD_PATH} modules"

@@ -334,9 +334,8 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
 
     next_handle = hailo_get_next_vdma_handle(context);
 
-    err = hailo_desc_list_create(controller->dev, params.desc_count,
-        params.desc_page_size, next_handle, params.is_circular,
-        descriptors_buffer);
+    err = hailo_desc_list_create(controller->dev, params.desc_count, params.desc_page_size, next_handle,
+        params.is_circular, descriptors_buffer);
     if (err < 0) {
         hailo_dev_err(controller->dev, "failed to allocate descriptors buffer\n");
         kfree(descriptors_buffer);
@@ -345,9 +344,6 @@ long hailo_desc_list_create_ioctl(struct hailo_vdma_file_context *context, struc
 
     list_add(&descriptors_buffer->descriptors_buffer_list, &context->descriptors_buffer_list);
 
-    // Note: The physical address is required for CONTEXT_SWITCH firmware controls
-    BUILD_BUG_ON(sizeof(params.dma_address) < sizeof(descriptors_buffer->dma_address));
-    params.dma_address = descriptors_buffer->dma_address;
     params.desc_handle = descriptors_buffer->handle;
 
     if(copy_to_user((void __user*)arg, &params, sizeof(params))){

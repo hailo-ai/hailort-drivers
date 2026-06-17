@@ -486,7 +486,7 @@ long hailo_pcie_fops_unlockedioctl(struct file* filp, unsigned int cmd, unsigned
             hailo_err(board, "Ioctl %d is not supported on this accelerator type\n", _IOC_TYPE(cmd));
             err = -EINVAL;
         } else {
-            err = hailo_nnc_ioctl(board, cmd, arg, filp, &should_up_board_mutex);
+            err = hailo_nnc_ioctl(context, board, cmd, arg, filp, &should_up_board_mutex);
         }
         break;
     default:

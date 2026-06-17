@@ -10,7 +10,7 @@
 #include "hailo_ioctl_common.h"
 #include "fw_validation.h"
 #include "fw_operation.h"
-#include "utils.h"
+#include "driver_utils.h"
 #include "vdma_common.h"
 #include "soc_structs.h"
 
