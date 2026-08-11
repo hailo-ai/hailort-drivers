@@ -81,6 +81,8 @@ struct fw_notification
     struct mbox_chan *mbox_channel;
     // hailo resource of the rx shmem buffer
     struct hailo_resource rx_shmem;
+    // notifier-block for scmi messages
+    struct notifier_block scmi_notifier;
 };
 
 struct driver_down_notification

@@ -470,8 +470,8 @@ int hailo_pcie_write_firmware_control(struct hailo_pcie_resources *resources, co
         return -ENODEV;
     }
 
-    // Copy md5 + buffer_len + buffer
-    request_size = sizeof(command->expected_md5) + sizeof(command->buffer_len) + command->buffer_len;
+    // Copy buffer_len + buffer
+    request_size = sizeof(command->buffer_len) + command->buffer_len;
     err = hailo_resource_write_buffer(&resources->fw_access, 0, PO2_ROUND_UP(request_size, FW_CODE_SECTION_ALIGNMENT),
         command);
     if (err < 0) {
@@ -491,8 +491,8 @@ int hailo_pcie_read_firmware_control(struct hailo_pcie_resources *resources, str
 {
     u32 response_header_size = 0;
 
-    // Copy response md5 + buffer_len
-    response_header_size = sizeof(command->expected_md5) + sizeof(command->buffer_len);
+    // Copy response buffer_len
+    response_header_size = sizeof(command->buffer_len);
 
     hailo_resource_read_buffer(&resources->fw_access, PCIE_REQUEST_SIZE_OFFSET, response_header_size, command);
 
@@ -686,6 +686,8 @@ u32 hailo_get_boot_status(struct hailo_pcie_resources *resources)
     return boot_status;
 }
 
+#define CORRUPTED_SCU_SANITY_STR_LEN (5)
+
 int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
     void *buffer, u32 *size)
 {
@@ -695,8 +697,16 @@ int hailo_pcie_read_scu_log(struct hailo_pcie_resources *resources,
     }
     *size = min(*size, HAILO_SCU_LOG_MAX_SIZE);
     read_memory(resources, fw_addresses->scu_log_address, buffer, *size);
-    if (((u32*)buffer)[0] == 0xFFFFFFFF) {
-        return -EIO;
+    if (*size >= CORRUPTED_SCU_SANITY_STR_LEN * sizeof(u32)) {
+        u32 i = 0;
+        for (i = 0; i < CORRUPTED_SCU_SANITY_STR_LEN; i++) {
+            if (((u32*)buffer)[i] != 0xFFFFFFFF) {
+                break;
+            }
+        }
+        if (i == CORRUPTED_SCU_SANITY_STR_LEN) {
+            return -EIO;
+        }
     }
     return 0;
 }

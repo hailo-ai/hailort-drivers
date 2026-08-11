@@ -80,7 +80,6 @@ struct hailo_vdma_buffer {
 struct hailo_descriptors_list_buffer {
     struct list_head                   descriptors_buffer_list;
     uintptr_t                          handle;
-    void                               *kernel_address;
     dma_addr_t                         dma_address;
     u32                                buffer_size;
     struct hailo_vdma_descriptors_list desc_list;

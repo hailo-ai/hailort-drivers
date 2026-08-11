@@ -26,41 +26,39 @@ long hailo_fw_control_impl(struct hailo_board *board, struct hailo_fw_control *c
         return -EINVAL;
     }
 
-    request_size = sizeof(command->expected_md5) + sizeof(command->buffer_len) + command->buffer_len;
+    request_size = sizeof(command->buffer_len) + command->buffer_len;
     memcpy_toio((void*)tx_control.address, command, request_size);
 
     reinit_completion(&board->fw_control.response_ready);
 
-    board->fw_control.mbox_client.tx_tout = command->timeout_ms;
+    board->fw_control.mbox_client.tx_tout = FW_CONTROL_DEFAULT_TIMEOUT_MS;
 
     err = mbox_send_message(board->fw_control.mbox_channel, (void*)tx_control.address);
+    if (-ETIME == err) {
+        hailo_err(board, "hailo_fw_control, mbox_send_message timed out.\n");
+        return err;
+    }
     if (err < 0) {
-        if (-ETIME == err) {
-            hailo_err(board, "hailo_fw_control, mbox_send_message timed out. timeout setting was %d ms\n", command->timeout_ms);
-        } else {
-            hailo_err(board, "hailo_fw_control, mbox_send_message failed with errno: %ld\n", err);
-        }
+        hailo_err(board, "hailo_fw_control, mbox_send_message failed with errno: %ld\n", err);
         return err;
     }
 
     completion_result = wait_for_completion_interruptible_timeout(&board->fw_control.response_ready,
-        msecs_to_jiffies(command->timeout_ms));
+        msecs_to_jiffies(FW_CONTROL_DEFAULT_TIMEOUT_MS));
+    if (0 == completion_result) {
+        hailo_err(board, "hailo_fw_control, timeout waiting for control\n");
+        return -ETIMEDOUT;
+    }
     if (completion_result <= 0) {
-        if (0 == completion_result) {
-            hailo_err(board, "hailo_fw_control, timeout waiting for control (timeout_ms=%d)\n", command->timeout_ms);
-            return -ETIMEDOUT;
-        } else {
-            hailo_info(board, "hailo_fw_control, wait for completion failed with err=%ld (process was interrupted or killed)\n", completion_result);
-            return -EINTR;
-        }
+        hailo_info(board, "hailo_fw_control, wait for control failed with err=%ld\n", completion_result);
+        return completion_result;
     }
 
-    response_header_size = sizeof(command->expected_md5) + sizeof(command->buffer_len);
+    response_header_size = sizeof(command->buffer_len);
     memcpy_fromio(command, (void*)rx_control.address, response_header_size);
 
     if (sizeof(command->buffer) < command->buffer_len) {
-        hailo_err(board, "hailo_fw_control, response length(%u bytes) is larger than maximum(%lu)\n",
-            command->buffer_len, sizeof(command->buffer));
+        hailo_err(board, "hailo_fw_control, response length is larger than maximum\n");
         return -EINVAL;
     }
 
@@ -116,7 +114,7 @@ long fw_control_init(struct hailo_board *board)
     long err = -EINVAL;
     struct mbox_chan *chan = NULL;
     struct mbox_client *cl = &board->fw_control.mbox_client;
-    const size_t minimum_size = sizeof(board->fw_control.command.expected_md5) + sizeof(board->fw_control.command.buffer_len) 
+    const size_t minimum_size = sizeof(board->fw_control.command.buffer_len)
         + sizeof(board->fw_control.command.buffer);
 
     cl->dev = &board->pdev->dev;

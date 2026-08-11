@@ -7,15 +7,11 @@
 #include "logs.h"
 #include "utils/integrated_nnc_utils.h"
 
+#include "driver_timeouts.h"
+
 #include <linux/uaccess.h>
 #include <asm/io.h>
 #include <linux/of_address.h>
-
-#if !defined(HAILO_EMULATOR)
-#define DEFAULT_SHUTDOWN_TIMEOUT_MS (5)
-#else /* !defined(HAILO_EMULATOR) */
-#define DEFAULT_SHUTDOWN_TIMEOUT_MS (1000)
-#endif /* !defined(HAILO_EMULATOR) */
 
 long hailo_driver_down_notification(struct hailo_board *board)
 {
@@ -32,8 +28,6 @@ long hailo_driver_down_notification(struct hailo_board *board)
         if (-ETIME == err) {
             hailo_err(board, "hailo_driver_down_notification, mbox_send_message timed out. timeout setting was %d ms\n",
                 DEFAULT_SHUTDOWN_TIMEOUT_MS);
-        } else {
-            hailo_err(board, "hailo_driver_down_notification, mbox_send_message failed with errno: %ld\n", err);
         }
         goto l_exit;
     }
@@ -41,16 +35,9 @@ long hailo_driver_down_notification(struct hailo_board *board)
     completion_result =
         wait_for_completion_timeout(&board->driver_down_notification.response_ready, msecs_to_jiffies(DEFAULT_SHUTDOWN_TIMEOUT_MS));
     if (completion_result <= 0) {
-        if (0 == completion_result) {
-            hailo_err(board, "hailo_driver_down_notification, timeout waiting for control (timeout_ms=%d)\n",
-                DEFAULT_SHUTDOWN_TIMEOUT_MS);
-            err = -ETIMEDOUT;
-        } else {
-            hailo_info(board, "hailo_driver_down_notification, wait for completion failed with err=%ld (process was interrupted or killed)\n",
-                completion_result);
-            err = -EINTR;
-        }
-        goto l_exit;
+        hailo_err(board, "hailo_driver_down_notification, timeout waiting for control (timeout_ms=%d)\n",
+            DEFAULT_SHUTDOWN_TIMEOUT_MS);
+        return -ETIMEDOUT;
     }
 
 l_exit:

@@ -125,10 +125,12 @@ long hailo_read_firmware_log(struct hailo_resource *fw_logger_resource, struct h
     /* size_to_read may become 0 if the read reached DEBUG_BUFFER_DATA_SIZE exactly */
     hailo_resource_read_buffer(fw_logger_resource, read_offset, size_to_read, (void*)user_buffer);
 
-    /* Change current_offset to represent the new host offset. */
-    read_offset += size_to_read;
-    hailo_resource_write32(fw_logger_resource, offsetof(FW_DEBUG_BUFFER_HEADER_t, host_offset),
-        (u32)(read_offset - sizeof(debug_buffer_header)));
+    if (params->should_clear) {
+        /* Change current_offset to represent the new host offset. */
+        read_offset += size_to_read;
+        hailo_resource_write32(fw_logger_resource, offsetof(FW_DEBUG_BUFFER_HEADER_t, host_offset),
+            (u32)(read_offset - sizeof(debug_buffer_header)));
+    }
     
     params->read_bytes = ready_to_read;
     return 0;

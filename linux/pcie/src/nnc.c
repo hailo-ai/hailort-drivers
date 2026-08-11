@@ -11,15 +11,11 @@
 #include "hailo_ioctl_common.h"
 
 #include "logs.h"
-#include "utils/compact.h"
+#include "utils/compat.h"
+
+#include "driver_timeouts.h"
 
 #include <linux/uaccess.h>
-
-#if !defined(HAILO_EMULATOR)
-#define DEFAULT_SHUTDOWN_TIMEOUT_MS (5)
-#else /* !defined(HAILO_EMULATOR) */
-#define DEFAULT_SHUTDOWN_TIMEOUT_MS (1000)
-#endif /* !defined(HAILO_EMULATOR) */
 
 void hailo_nnc_init(struct hailo_pcie_nnc *nnc)
 {
@@ -71,7 +67,7 @@ static int hailo_fw_control(struct hailo_pcie_board *board, struct hailo_file_co
 
     // Wait for response
     up(&board->mutex);
-    completion_result = wait_for_completion_interruptible_timeout(&board->nnc.fw_control.completion, msecs_to_jiffies(command->timeout_ms));
+    completion_result = wait_for_completion_interruptible_timeout(&board->nnc.fw_control.completion, msecs_to_jiffies(FW_CONTROL_DEFAULT_TIMEOUT_MS));
     if (down_interruptible(&board->mutex)) {
         pr_info(DRIVER_NAME ": hailo_fw_control down_interruptible fail tgid:%d (process was interrupted or killed)\n", current->tgid);
         *should_up_board_mutex = false;
@@ -87,7 +83,7 @@ static int hailo_fw_control(struct hailo_pcie_board *board, struct hailo_file_co
 
     if (completion_result <= 0) {
         if (0 == completion_result) {
-            hailo_err(board, "hailo_fw_control, timeout waiting for control (timeout_ms=%d)\n", command->timeout_ms);
+            hailo_err(board, "hailo_fw_control, timeout waiting for control (timeout_ms=%d)\n", FW_CONTROL_DEFAULT_TIMEOUT_MS);
             err = -ETIMEDOUT;
         } else {
             hailo_info(board, "hailo_fw_control, wait for completion failed with err=%ld (process was interrupted or killed)\n", completion_result);
@@ -210,7 +206,7 @@ static long hailo_disable_notification(struct hailo_pcie_board *board, struct fi
 static long hailo_read_log_ioctl(struct hailo_pcie_board *board, unsigned long arg)
 {
     long err = 0;
-    struct hailo_read_log_params params;
+    struct hailo_read_log_params params = {0};
 
     if (copy_from_user(&params, (void __user*)arg, sizeof(params))) {
         hailo_err(board, "HAILO_READ_LOG, copy_from_user fail\n");

@@ -12,6 +12,7 @@
 #include "fw_operation.h"
 #include "utils.h"
 #include "vdma_common.h"
+#include "driver_timeouts.h"
 #include "soc_structs.h"
 
 #include <linux/types.h>
@@ -181,16 +182,6 @@ extern "C" {
 
 #define TIME_COUNT_FOR_BOOTLOADER_MS (1)
 
-#ifndef HAILO_EMULATOR
-#define COUNT_UNTIL_REACH_BOOTLOADER (10)
-#define PCI_EP_WAIT_TIMEOUT_MS   (40000)
-#define FIRMWARE_WAIT_TIMEOUT_MS (5000)
-#else /* ifndef HAILO_EMULATOR */
-#define COUNT_UNTIL_REACH_BOOTLOADER (10000)
-// PCI EP timeout is defined to 50000000 because on Emulator the boot time + linux init time can be very long (4+ hours)
-#define PCI_EP_WAIT_TIMEOUT_MS   (50000000)
-#define FIRMWARE_WAIT_TIMEOUT_MS (5000000)
-#endif /* ifndef HAILO_EMULATOR */
 
 #define HAILO_SCU_LOG_MAX_SIZE (0x1000u)
 

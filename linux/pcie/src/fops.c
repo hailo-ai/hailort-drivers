@@ -24,7 +24,7 @@
 #include "logs.h"
 #include "vdma/memory.h"
 #include "vdma/ioctl.h"
-#include "utils/compact.h"
+#include "utils/compat.h"
 #include "nnc.h"
 #include "soc.h"
 
