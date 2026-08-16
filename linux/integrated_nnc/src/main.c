@@ -22,7 +22,7 @@
 #include "fw_logger.h"
 #include "dram_vdma.h"
 #include "logs.h"
-#include "utils/compact.h"
+#include "utils/compat.h"
 #include "vdma/memory.h"
 
 #define DRIVER_NAME "hailo_integrated_nnc"

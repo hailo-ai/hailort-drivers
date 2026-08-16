@@ -23,7 +23,7 @@
 #include "fw_notification.h"
 #include "driver_down_notification.h"
 #include "logs.h"
-#include "utils/compact.h"
+#include "utils/compat.h"
 #include "utils/integrated_nnc_utils.h"
 #include "vdma/ioctl.h"
 #include "vdma/memory.h"
@@ -288,7 +288,7 @@ static long hailo_query_driver_info(struct hailo_board *board, unsigned long arg
 static long hailo_read_log_ioctl(struct hailo_board *board, unsigned long arg)
 {
     long err = 0;
-    struct hailo_read_log_params params;
+    struct hailo_read_log_params params = {0};
 
     if (copy_from_user(&params, (void __user*)arg, sizeof(params))) {
         hailo_err(board, "HAILO_READ_LOG, copy_from_user fail\n");

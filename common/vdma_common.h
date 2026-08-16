@@ -8,6 +8,7 @@
 
 #include "hailo_resource.h"
 #include "utils.h"
+#include "driver_timeouts.h"
 
 #include <linux/circ_buf.h>
 #include <linux/types.h>
@@ -33,19 +34,6 @@
 
 #define DEFAULT_STRIDE              (0)
 
-#ifndef HAILO_EMULATOR
-#ifdef WINDOWS
-#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS          (10000)
-#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS    (2000)
-#else
-#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS          (1000)
-#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS    (200)
-#endif
-#else
-#define PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS          (1000000)
-#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS    (1000)
-#endif /* ifndef HAILO_EMULATOR */
-#define PCI_EP_CONTROL_CONNECT_TIMEOUT_MS           (PCI_SOC_CONTROL_CONNECT_TIMEOUT_MS - PCI_EP_CONTROL_CONNECT_TIMEOUT_MARGIN_MS)
 
 #define TRANSFERS_CIRC_SPACE(transfers_list) \
     CIRC_SPACE((transfers_list).head, (transfers_list).tail, HAILO_VDMA_MAX_ONGOING_TRANSFERS)
@@ -106,44 +94,20 @@ struct transfer_list {
 };
 
 struct hailo_vdma_descriptors_list {
-    struct hailo_vdma_descriptor *desc_list;
-    // Must be power of 2 if is_circular is set.
-    u32                           desc_count;
-    // The nearest power of 2 to desc_count (including desc_count), minus 1.
-    // * If the list is circular, then 'index & desc_count_mask' can be used instead of modulo.
-    // * Otherwise, we can't wrap around the list anyway. However, for any index < desc_count, 'index & desc_count_mask'
-    //   will return the same value.
-    u32                           desc_count_mask;
-    u16                           desc_page_size;
-    bool                          is_circular;
-    u32                           num_launched; // Count of launched descriptors
-    u32                           num_programmed; //Count of programmed descriptors
-    struct transfer_list          *prepared_transfers;
-
-};
-
-struct hailo_vdma_channel_state {
-    // vdma channel counters. num_avail should be synchronized with the hw
-    // num_avail value. num_proc is the last num proc updated when the user
-    // reads interrupts.
-    u16 num_avail;
-    u16 num_proc;
-
-    // Mask of the num-avail/num-proc counters.
+    struct transfer_list *prepared_transfers;
+    struct hailo_vdma_descriptor *descs;
+    bool is_circular;
+    u16 desc_page_size;
+    u32 desc_count;
     u32 desc_count_mask;
+    u32 descs_programmed;
 };
 
 struct hailo_vdma_channel {
     u8 index;
-
     u8 __iomem *host_regs;
     u8 __iomem *device_regs;
-
-    // Last descriptors list attached to the channel. When it changes,
-    // assumes that the channel got reset.
-    struct hailo_vdma_descriptors_list *last_desc_list;
-
-    struct hailo_vdma_channel_state state;
+    struct hailo_vdma_descriptors_list *desc_list;
     struct transfer_list *ongoing_transfers;
 };
 
@@ -210,7 +174,7 @@ int hailo_vdma_program_descriptors_list(
     struct hailo_vdma_descriptors_list *desc_list,
     u32 starting_desc,
     struct sg_table *sgt,
-    u32 sgt_offset,
+    u64 sgt_offset,
     u32 transfer_size,
     u32 transfers_count,
     u8 channel_index,
@@ -218,16 +182,6 @@ int hailo_vdma_program_descriptors_list(
     bool is_debug);
 
 void hailo_vdma_set_num_avail(u8 __iomem *regs, u16 num_avail);
-
-u16 hailo_vdma_get_num_proc(u8 __iomem *regs);
-
-static inline void hailo_vdma_transfer_list_free(struct transfer_list **transfers)
-{
-    if (transfers && *transfers) {
-        kfree(*transfers);
-        *transfers = NULL;
-    }
-}
 
 static inline int hailo_vdma_transfer_push(struct transfer_list **transfers, struct hailo_transfer *prepared_transfer)
 {
@@ -265,6 +219,20 @@ static inline int hailo_vdma_transfer_pop(struct transfer_list **transfers, stru
     (*transfers)->tail = ((*transfers)->tail + 1) & HAILO_VDMA_MAX_ONGOING_TRANSFERS_MASK;
 
     return 0;
+}
+
+static inline void hailo_vdma_transfer_list_free(struct transfer_list **transfers)
+{
+    if (transfers && *transfers) {
+        kfree(*transfers);
+        *transfers = NULL;
+    }
+}
+
+static inline void hailo_vdma_descriptors_list_reset(struct hailo_vdma_descriptors_list *desc_list)
+{
+    hailo_vdma_transfer_list_free(&desc_list->prepared_transfers);
+    desc_list->descs_programmed = 0;
 }
 
 int hailo_vdma_prepare_transfer(

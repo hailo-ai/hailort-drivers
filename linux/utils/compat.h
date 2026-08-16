@@ -3,8 +3,8 @@
  * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
-#ifndef _HAILO_PCI_COMPACT_H_
-#define _HAILO_PCI_COMPACT_H_
+#ifndef _HAILO_PCI_COMPAT_H_
+#define _HAILO_PCI_COMPAT_H_
 
 #include <linux/version.h>
 #include <linux/scatterlist.h>
@@ -30,15 +30,15 @@
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
-#define get_user_pages_compact get_user_pages
+#define compat_get_user_pages get_user_pages
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
-#define get_user_pages_compact(start, nr_pages, gup_flags, pages) \
+#define compat_get_user_pages(start, nr_pages, gup_flags, pages) \
     get_user_pages(start, nr_pages, gup_flags, pages, NULL)
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 168)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
-#define get_user_pages_compact(start, nr_pages, gup_flags, pages) \
+#define compat_get_user_pages(start, nr_pages, gup_flags, pages) \
     get_user_pages(current, current->mm, start, nr_pages, gup_flags, pages, NULL)
 #else
-static inline long get_user_pages_compact(unsigned long start, unsigned long nr_pages,
+static inline long compat_get_user_pages(unsigned long start, unsigned long nr_pages,
     unsigned int gup_flags, struct page **pages)
 {
     int write = !!((gup_flags & FOLL_WRITE) == FOLL_WRITE);
@@ -94,4 +94,8 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 #endif
 
 
-#endif /* _HAILO_PCI_COMPACT_H_ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0)
+#define timer_delete_sync(t) del_timer_sync(t)
+#endif
+
+#endif /* _HAILO_PCI_COMPAT_H_ */

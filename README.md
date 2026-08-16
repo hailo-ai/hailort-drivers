@@ -11,11 +11,11 @@ device's firmware when using this interface. The driver is responsible for manag
 
 ## Usage and Compilation
 
-See [**hailo.ai developer zone documentation**](https://hailo.ai/developer-zone/documentation/hailort/latest/?sp_referrer=drivers/pcie_linux.html) (registration is required for  full documentation access).
+See [**hailo.ai developer zone documentation**](https://hailo.ai/developer-zone/documentation/hailort/latest/?sp_referrer=drivers/pcie_linux.html).
 
 ## Changelog
 
-See [**hailo.ai developer zone - HailoRT changelog**](https://hailo.ai/developer-zone/documentation/hailort/latest/?sp_referrer=changelog/changelog.html) (registration required).
+See [**hailo.ai developer zone - HailoRT changelog**](https://hailo.ai/developer-zone/documentation/hailort/latest/?sp_referrer=changelog/changelog.html).
 
 ## License
 
