@@ -1,7 +1,6 @@
 # Hailo-10H — Firmware Image
 
 ## Third-Party Dependencies
-
 | Package | Version | License                                              | Reference                                                    |
 |---------|---------|------------------------------------------------------|--------------------------------------------------------------|
 | acl | 2.3.1 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [acl-2.3.1.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/acl/2.3.1/acl-2.3.1.tar.gz) |
@@ -11,34 +10,16 @@
 | base-passwd | 3.5.29 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [base-passwd_3.5.29.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/base-passwd/3.5.29/base-passwd_3.5.29.tar.gz) |
 | bash | 5.1.16 | [GPL-3.0-or-later](https://spdx.org/licenses/GPL-3.0-or-later.html) | [bash-5.1.16.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/bash/5.1.16/bash-5.1.16.tar.gz) |
 | benchmark | 1.6.0 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [benchmark](https://github.com/google/benchmark.git) |
-| benchmark | 1.6.0 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [benchmark](https://github.com/google/benchmark.git) |
-| benchmark | 1.6.0 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [benchmark](https://github.com/google/benchmark.git) |
-| benchmark | 1.6.0 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [benchmark](https://github.com/google/benchmark.git) |
 | binutils | 2.38 | [GPL-3.0-only](https://spdx.org/licenses/GPL-3.0-only.html) | [binutils-2.38-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/binutils/2.38/binutils-2.38-r0.tar.xz) |
 | busybox | 1.35.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) & [bzip2-1.0.4](https://spdx.org/licenses/bzip2-1.0.4.html) | [busybox-1.35.0.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/busybox/1.35.0/busybox-1.35.0.tar.bz2) |
 | bzip2 | 1.0.8 | [bzip2-1.0.6](https://spdx.org/licenses/bzip2-1.0.6.html) | Permissive |
 | ca-certificates | 20211016 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [MPL-2.0](https://spdx.org/licenses/MPL-2.0.html) | [ca-certificates-20211016-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/ca-certificates/20211016/ca-certificates-20211016-r0.tar.xz) |
 | Catch2 | 2.13.7 | [BSL-1.0](https://spdx.org/licenses/BSL-1.0.html) | [Catch2](https://github.com/catchorg/Catch2) |
-| Catch2 | 2.13.7 | [BSL-1.0](https://spdx.org/licenses/BSL-1.0.html) | [Catch2](https://github.com/catchorg/Catch2) |
-| Catch2 | 2.13.7 | [BSL-1.0](https://spdx.org/licenses/BSL-1.0.html) | [Catch2](https://github.com/catchorg/Catch2) |
-| Catch2 | 2.13.7 | [BSL-1.0](https://spdx.org/licenses/BSL-1.0.html) | [Catch2](https://github.com/catchorg/Catch2) |
 | CLI11 | 2.2.0 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [CLI11](https://github.com/hailo-ai/CLI11) |
-| CLI11 | 2.2.0 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [CLI11](https://github.com/hailo-ai/CLI11) |
-| CLI11 | 2.2.0 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [CLI11](https://github.com/hailo-ai/CLI11) |
-| CLI11 | 2.2.0 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [CLI11](https://github.com/hailo-ai/CLI11) |
-| cpp-httplib | v0.18.2 | [MIT](https://spdx.org/licenses/MIT.html) | [cpp-httplib](https://github.com/yhirose/cpp-httplib.git) |
-| cpp-httplib | v0.18.2 | [MIT](https://spdx.org/licenses/MIT.html) | [cpp-httplib](https://github.com/yhirose/cpp-httplib.git) |
-| cpp-httplib | v0.18.2 | [MIT](https://spdx.org/licenses/MIT.html) | [cpp-httplib](https://github.com/yhirose/cpp-httplib.git) |
 | cpp-httplib | v0.18.2 | [MIT](https://spdx.org/licenses/MIT.html) | [cpp-httplib](https://github.com/yhirose/cpp-httplib.git) |
 | curl | 7.82.0 | [curl](https://spdx.org/licenses/curl.html) | Permissive |
 | dbus | 1.14.8 | [AFL-2.1](https://spdx.org/licenses/AFL-2.1.html) \| [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [dbus-1.14.8.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/dbus/1.14.8/dbus-1.14.8.tar.xz) |
 | DotWriter | master | [MIT](https://spdx.org/licenses/MIT.html) | [DotWriter](https://github.com/hailo-ai/DotWriter) |
-| DotWriter | master | [MIT](https://spdx.org/licenses/MIT.html) | [DotWriter](https://github.com/hailo-ai/DotWriter) |
-| DotWriter | master | [MIT](https://spdx.org/licenses/MIT.html) | [DotWriter](https://github.com/hailo-ai/DotWriter) |
-| DotWriter | master | [MIT](https://spdx.org/licenses/MIT.html) | [DotWriter](https://github.com/hailo-ai/DotWriter) |
-| eigen | 3.4.0 | [MPL-2.0](https://spdx.org/licenses/MPL-2.0.html) | [eigen](https://gitlab.com/libeigen/eigen) |
-| eigen | 3.4.0 | [MPL-2.0](https://spdx.org/licenses/MPL-2.0.html) | [eigen](https://gitlab.com/libeigen/eigen) |
-| eigen | 3.4.0 | [MPL-2.0](https://spdx.org/licenses/MPL-2.0.html) | [eigen](https://gitlab.com/libeigen/eigen) |
 | eigen | 3.4.0 | [MPL-2.0](https://spdx.org/licenses/MPL-2.0.html) | [eigen](https://gitlab.com/libeigen/eigen) |
 | elfutils | 0.186 | [GPL-3.0-or-later](https://spdx.org/licenses/GPL-3.0-or-later.html) | [elfutils-0.186.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/elfutils/0.186/elfutils-0.186.tar.bz2) |
 | eudev | 3.2.10 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [eudev-3.2.10.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/eudev/3.2.10/eudev-3.2.10.tar.gz) |
@@ -66,17 +47,11 @@
 | libpam | 1.5.2 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) \| [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [Linux-PAM-1.5.2.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libpam/1.5.2/Linux-PAM-1.5.2.tar.xz) |
 | libpcre | 8.45 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | Permissive |
 | LibrosaCpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [LibrosaCpp](https://github.com/ewan-xu/LibrosaCpp) |
-| LibrosaCpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [LibrosaCpp](https://github.com/ewan-xu/LibrosaCpp) |
-| LibrosaCpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [LibrosaCpp](https://github.com/ewan-xu/LibrosaCpp) |
-| LibrosaCpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [LibrosaCpp](https://github.com/ewan-xu/LibrosaCpp) |
 | libserialport | 0.1.1 | [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) | [libserialport-0.1.1.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libserialport/0.1.1/libserialport-0.1.1.tar.gz) |
 | libsolv | 0.7.22 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | Permissive |
 | libubootenv | 0.3.5 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libubootenv-0.3.5-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libubootenv/0.3.5/libubootenv-0.3.5-r0.tar.xz) |
 | libunistring | 1.0 | [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) \| [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [libunistring-1.0.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libunistring/1.0/libunistring-1.0.tar.gz) |
 | libunwind | 1.6.2 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| libusb | 1.0.29 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libusb](https://github.com/libusb/libusb) |
-| libusb | 1.0.29 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libusb](https://github.com/libusb/libusb) |
-| libusb | 1.0.29 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libusb](https://github.com/libusb/libusb) |
 | libusb | 1.0.29 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libusb](https://github.com/libusb/libusb) |
 | libusb1 | 1.0.26 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libusb-1.0.26.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libusb1/1.0.26/libusb-1.0.26.tar.bz2) |
 | libx11 | 1.7.3.1 | [MIT](https://spdx.org/licenses/MIT.html) & [MIT](https://spdx.org/licenses/MIT.html) & [BSD-1-Clause](https://spdx.org/licenses/BSD-1-Clause.html) & [HPND](https://spdx.org/licenses/HPND.html) & [HPND-sell-variant](https://spdx.org/licenses/HPND-sell-variant.html) | Permissive |
@@ -90,24 +65,12 @@
 | lmsensors-config | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | lzo | 2.10 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [lzo-2.10.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/lzo/2.10/lzo-2.10.tar.gz) |
 | md5 | - | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [md5](http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5) |
-| md5 | - | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [md5](http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5) |
-| md5 | - | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [md5](http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5) |
-| md5 | - | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [md5](http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5) |
-| minja | main | [MIT](https://spdx.org/licenses/MIT.html) | [minja](https://github.com/google/minja) |
-| minja | main | [MIT](https://spdx.org/licenses/MIT.html) | [minja](https://github.com/google/minja) |
-| minja | main | [MIT](https://spdx.org/licenses/MIT.html) | [minja](https://github.com/google/minja) |
 | minja | main | [MIT](https://spdx.org/licenses/MIT.html) | [minja](https://github.com/google/minja) |
 | modutils-initscripts | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| Montserrat | v31 | [SIL](https://spdx.org/licenses/SIL.html) [Open](https://spdx.org/licenses/Open.html) [Font](https://spdx.org/licenses/Font.html) [License](https://spdx.org/licenses/License.html) [1.1](https://spdx.org/licenses/1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
-| Montserrat | v31 | [SIL](https://spdx.org/licenses/SIL.html) [Open](https://spdx.org/licenses/Open.html) [Font](https://spdx.org/licenses/Font.html) [License](https://spdx.org/licenses/License.html) [1.1](https://spdx.org/licenses/1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
-| Montserrat | v31 | [SIL](https://spdx.org/licenses/SIL.html) [Open](https://spdx.org/licenses/Open.html) [Font](https://spdx.org/licenses/Font.html) [License](https://spdx.org/licenses/License.html) [1.1](https://spdx.org/licenses/1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
 | Montserrat | v31 | [SIL](https://spdx.org/licenses/SIL.html) [Open](https://spdx.org/licenses/Open.html) [Font](https://spdx.org/licenses/Font.html) [License](https://spdx.org/licenses/License.html) [1.1](https://spdx.org/licenses/1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
 | ncurses | 6.3+20220423 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | netbase | 6.3 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [netbase_6.3.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/netbase/6.3/netbase_6.3.tar.xz) |
 | nettle | 3.7.3 | [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) \| [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [nettle-3.7.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/nettle/3.7.3/nettle-3.7.3.tar.gz) |
-| nlohmann_json | v3.11.3 | [MIT](https://spdx.org/licenses/MIT.html) | [json](https://github.com/nlohmann/json) |
-| nlohmann_json | v3.11.3 | [MIT](https://spdx.org/licenses/MIT.html) | [json](https://github.com/nlohmann/json) |
-| nlohmann_json | v3.11.3 | [MIT](https://spdx.org/licenses/MIT.html) | [json](https://github.com/nlohmann/json) |
 | nlohmann_json | v3.11.3 | [MIT](https://spdx.org/licenses/MIT.html) | [json](https://github.com/nlohmann/json) |
 | openssl | 3.0.15 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | Permissive |
 | opkg | 0.5.0 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [opkg-utils-0.5.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/opkg/0.5.0/opkg-utils-0.5.0-r0.tar.xz) |
@@ -118,21 +81,9 @@
 | perf | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [perf](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-kernel/perf) |
 | perl | 5.34.3 | [Artistic-1.0](https://spdx.org/licenses/Artistic-1.0.html) \| [GPL-1.0-or-later](https://spdx.org/licenses/GPL-1.0-or-later.html) | [perl-5.34.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/perl/5.34.3/perl-5.34.3.tar.gz) |
 | pevents | master | [MIT](https://spdx.org/licenses/MIT.html) | [pevents](https://github.com/neosmart/pevents.git) |
-| pevents | master | [MIT](https://spdx.org/licenses/MIT.html) | [pevents](https://github.com/neosmart/pevents.git) |
-| pevents | master | [MIT](https://spdx.org/licenses/MIT.html) | [pevents](https://github.com/neosmart/pevents.git) |
-| pevents | master | [MIT](https://spdx.org/licenses/MIT.html) | [pevents](https://github.com/neosmart/pevents.git) |
 | protobuf | 21.12 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [protobuf](https://github.com/protocolbuffers/protobuf) |
-| protobuf | 21.12 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [protobuf](https://github.com/protocolbuffers/protobuf) |
-| protobuf | 21.12 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [protobuf](https://github.com/protocolbuffers/protobuf) |
-| protobuf | 21.12 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [protobuf](https://github.com/protocolbuffers/protobuf) |
-| pybind11 | 2.13.6 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [pybind11](https://github.com/pybind/pybind11) |
-| pybind11 | 2.13.6 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [pybind11](https://github.com/pybind/pybind11) |
-| pybind11 | 2.13.6 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [pybind11](https://github.com/pybind/pybind11) |
 | pybind11 | 2.13.6 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [pybind11](https://github.com/pybind/pybind11) |
 | python3 | 3.10.15 | [PSF-2.0](https://spdx.org/licenses/PSF-2.0.html) | Permissive |
-| readerwriterqueue | 1.0.3 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) |
-| readerwriterqueue | 1.0.3 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) |
-| readerwriterqueue | 1.0.3 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) |
 | readerwriterqueue | 1.0.3 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) |
 | run-postinsts | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | sensors-config-file | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
@@ -140,46 +91,23 @@
 | shadow-securetty | 4.6 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | slang | 2.3.2 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [slang-2.3.2.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/slang/2.3.2/slang-2.3.2.tar.bz2) |
 | Slint | 1.15.1 | [MIT](https://spdx.org/licenses/MIT.html) | [slint.dev](https://slint.dev) |
-| Slint | 1.15.1 | [MIT](https://spdx.org/licenses/MIT.html) | [slint.dev](https://slint.dev) |
-| Slint | 1.15.1 | [MIT](https://spdx.org/licenses/MIT.html) | [slint.dev](https://slint.dev) |
-| Slint | 1.15.1 | [MIT](https://spdx.org/licenses/MIT.html) | [slint.dev](https://slint.dev) |
-| spdlog | 1.14.1 | [MIT](https://spdx.org/licenses/MIT.html) | [spdlog](https://github.com/gabime/spdlog) |
-| spdlog | 1.14.1 | [MIT](https://spdx.org/licenses/MIT.html) | [spdlog](https://github.com/gabime/spdlog) |
-| spdlog | 1.14.1 | [MIT](https://spdx.org/licenses/MIT.html) | [spdlog](https://github.com/gabime/spdlog) |
 | spdlog | 1.14.1 | [MIT](https://spdx.org/licenses/MIT.html) | [spdlog](https://github.com/gabime/spdlog) |
 | sqlite3 | 3.38.5 | PD (Public Domain) | Permissive |
-| stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
-| stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
-| stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
 | stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
 | sysvinit | 3.01 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [sysvinit-3.01.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/sysvinit/3.01/sysvinit-3.01.tar.xz) |
 | sysvinit-inittab | 2.88dsf | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [sysvinit-inittab](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/sysvinit) |
 | tl-expected | v1.3.1 | [CC0](https://spdx.org/licenses/CC0.html) [1.0](https://spdx.org/licenses/1.0.html) [Universal](https://spdx.org/licenses/Universal.html) | [expected](https://github.com/TartanLlama/expected) |
-| tl-expected | v1.3.1 | [CC0](https://spdx.org/licenses/CC0.html) [1.0](https://spdx.org/licenses/1.0.html) [Universal](https://spdx.org/licenses/Universal.html) | [expected](https://github.com/TartanLlama/expected) |
-| tl-expected | v1.3.1 | [CC0](https://spdx.org/licenses/CC0.html) [1.0](https://spdx.org/licenses/1.0.html) [Universal](https://spdx.org/licenses/Universal.html) | [expected](https://github.com/TartanLlama/expected) |
-| tl-expected | v1.3.1 | [CC0](https://spdx.org/licenses/CC0.html) [1.0](https://spdx.org/licenses/1.0.html) [Universal](https://spdx.org/licenses/Universal.html) | [expected](https://github.com/TartanLlama/expected) |
-| tokenizers_cpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [tokenizers-cpp](https://github.com/mlc-ai/tokenizers-cpp.git) |
-| tokenizers_cpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [tokenizers-cpp](https://github.com/mlc-ai/tokenizers-cpp.git) |
-| tokenizers_cpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [tokenizers-cpp](https://github.com/mlc-ai/tokenizers-cpp.git) |
 | tokenizers_cpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [tokenizers-cpp](https://github.com/mlc-ai/tokenizers-cpp.git) |
 | u-boot | 2022.01 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [u-boot-1_2022.01-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/u-boot/2022.01/u-boot-1_2022.01-r0.tar.xz) |
 | update-rc.d | 0.8 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [update-rc.d-0.8-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/update-rc.d/0.8/update-rc.d-0.8-r0.tar.xz) |
 | util-linux | 2.37.4 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) & [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) & [BSD-4-Clause](https://spdx.org/licenses/BSD-4-Clause.html) | [util-linux-2.37.4.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/util-linux/2.37.4/util-linux-2.37.4.tar.xz) |
 | util-linux-libuuid | 2.37.4 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | Permissive |
 | xxHash | 0.8.2 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [xxHash](https://github.com/Cyan4973/xxHash) |
-| xxHash | 0.8.2 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [xxHash](https://github.com/Cyan4973/xxHash) |
-| xxHash | 0.8.2 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [xxHash](https://github.com/Cyan4973/xxHash) |
-| xxHash | 0.8.2 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [xxHash](https://github.com/Cyan4973/xxHash) |
 | xz | 5.2.6 | PD (Public Domain) | Permissive |
 | zlib | 1.2.11 | [Zlib](https://spdx.org/licenses/Zlib.html) | Permissive |
 | zstd | 1.5.2 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) \| [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [zstd-1.5.2-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/zstd/1.5.2/zstd-1.5.2-r0.tar.xz) |
-
 ---
-
 ## Hailo Packages
-
-| Package | Version | License                                              | Reference                                                    |
-|---------|---------|------------------------------------------------------|--------------------------------------------------------------|
 | hailo-base-config | 0.1 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo-cma-usage | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo-dma-usage | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
