@@ -12,7 +12,7 @@
 | bash | 5.1.16 | [GPL-3.0-or-later](https://spdx.org/licenses/GPL-3.0-or-later.html) | [bash-5.1.16.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/bash/5.1.16/bash-5.1.16.tar.gz) |
 | benchmark | 1.6.0 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [benchmark](https://github.com/google/benchmark.git) |
 | binutils | 2.38 | [GPL-3.0-only](https://spdx.org/licenses/GPL-3.0-only.html) | [binutils-2.38-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/binutils/2.38/binutils-2.38-r0.tar.xz) |
-| busybox | 1.35.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) & [bzip2-1.0.4](https://spdx.org/licenses/bzip2-1.0.4.html) | [busybox-1.35.0.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/busybox/1.35.0/busybox-1.35.0.tar.bz2) |
+| busybox | 1.35.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) & [bzip2-1.0.4](https://github.com/yoctoproject/poky/blob/kirkstone-4.0.23/meta/files/common-licenses/bzip2-1.0.4) | [busybox-1.35.0.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/busybox/1.35.0/busybox-1.35.0.tar.bz2) |
 | bzip2 | 1.0.8 | [bzip2-1.0.6](https://spdx.org/licenses/bzip2-1.0.6.html) | Permissive |
 | ca-certificates | 20211016 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [MPL-2.0](https://spdx.org/licenses/MPL-2.0.html) | [ca-certificates-20211016-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/ca-certificates/20211016/ca-certificates-20211016-r0.tar.xz) |
 | Catch2 | 2.13.7 | [BSL-1.0](https://spdx.org/licenses/BSL-1.0.html) | [Catch2](https://github.com/catchorg/Catch2) |
@@ -25,7 +25,7 @@
 | elfutils | 0.186 | [GPL-3.0-or-later](https://spdx.org/licenses/GPL-3.0-or-later.html) | [elfutils-0.186.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/elfutils/0.186/elfutils-0.186.tar.bz2) |
 | eudev | 3.2.10 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [eudev-3.2.10.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/eudev/3.2.10/eudev-3.2.10.tar.gz) |
 | expat | 2.5.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| gcc-runtime | 11.5.0 | [GPL-3.0-with-GCC-exception](https://spdx.org/licenses/GPL-3.0-with-GCC-exception.html) | [gcc-11.5.0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gcc-runtime/11.5.0/gcc-11.5.0.tar.xz) |
+| gcc-runtime | 11.5.0 | [GPL-3.0-with-GCC-exception](https://spdx.org/licenses/GPL-3.0-with-GCC-exception.html) | [gcc-11.5.0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gcc-source-11.5.0/11.5.0/gcc-11.5.0.tar.xz) |
 | glibc | 2.35 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) & [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [glibc-2.35-r0-glibc.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/glibc/2.35/glibc-2.35-r0-glibc.tar.xz) |
 | gmp | 6.2.1 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) \| [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) | [gmp-6.2.1.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gmp/6.2.1/gmp-6.2.1.tar.bz2) |
 | gnutls | 3.7.4 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [gnutls-3.7.4.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gnutls/3.7.4/gnutls-3.7.4.tar.xz) |
@@ -38,7 +38,7 @@
 | libcap | 2.66 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) \| [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [libcap-2.66.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libcap/2.66/libcap-2.66.tar.xz) |
 | libcap-ng | 0.8.2 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) & [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libcap-ng-0.8.2.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libcap-ng/0.8.2/libcap-ng-0.8.2.tar.gz) |
 | libconfig | 1.7.3 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libconfig-1.7.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libconfig/1.7.3/libconfig-1.7.3.tar.gz) |
-| libgcc | 11.5.0 | [GPL-3.0-with-GCC-exception](https://spdx.org/licenses/GPL-3.0-with-GCC-exception.html) | [gcc-11.5.0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libgcc/11.5.0/gcc-11.5.0.tar.xz) |
+| libgcc | 11.5.0 | [GPL-3.0-with-GCC-exception](https://spdx.org/licenses/GPL-3.0-with-GCC-exception.html) | [gcc-11.5.0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gcc-source-11.5.0/11.5.0/gcc-11.5.0.tar.xz) |
 | libgpiod | 1.6.3 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libgpiod-1.6.3.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libgpiod/1.6.3/libgpiod-1.6.3.tar.xz) |
 | libhailo-throttling | 1.7.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | libidn2 | 2.3.2 | ([GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) \| [LGPL-3.0-only](https://spdx.org/licenses/LGPL-3.0-only.html)) & [Unicode-DFS-2016](https://spdx.org/licenses/Unicode-DFS-2016.html) | [libidn2-2.3.2.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libidn2/2.3.2/libidn2-2.3.2.tar.gz) |
@@ -73,7 +73,7 @@
 | nettle | 3.7.3 | [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) \| [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [nettle-3.7.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/nettle/3.7.3/nettle-3.7.3.tar.gz) |
 | nlohmann_json | v3.11.3 | [MIT](https://spdx.org/licenses/MIT.html) | [json](https://github.com/nlohmann/json) |
 | openssl | 3.0.15 | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | Permissive |
-| opkg | 0.5.0 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [opkg-utils-0.5.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/opkg/0.5.0/opkg-utils-0.5.0-r0.tar.xz) |
+| opkg | 0.5.0 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [opkg-0.5.0.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/opkg/0.5.0/opkg-0.5.0.tar.gz) |
 | opkg-arch-config | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | opkg-utils | 0.5.0 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [opkg-utils-0.5.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/opkg-utils/0.5.0/opkg-utils-0.5.0-r0.tar.xz) |
 | os-release | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
@@ -119,15 +119,15 @@
 | hailo-linux-init | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo-noc-measurement-script | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo-pci-ep | 5.4.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [hailo-pci-ep-5.4.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/hailo-pci-ep/5.4.0/hailo-pci-ep-5.4.0-r0.tar.xz) |
-| hailo-thermal-engine | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |  |
+| hailo-thermal-engine | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0.tar.xz) |
 | hailo-thermal-service | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo15-nnc-fw | 5.4.0 | Proprietary |  |
 | hailort-server | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailortcli | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | libhailopp | 1.0.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | libhailort | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
-| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) |  |
-| linux-yocto-hailo | 5.15.32 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0-cfg.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0-cfg.tar.xz) |
+| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0.tar.xz) |
+| linux-yocto-hailo | 5.15.32 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0.tar.xz) |
 | packagegroup-hailo-bsp | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | packagegroup-hailo-hailort | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | packagegroup-hailo-integrated-nnc | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
