@@ -68,7 +68,6 @@
 | md5 | - | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [md5](http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5) |
 | minja | main | [MIT](https://spdx.org/licenses/MIT.html) | [minja](https://github.com/google/minja) |
 | modutils-initscripts | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| Montserrat | v31 | [OFL-1.1](https://spdx.org/licenses/OFL-1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
 | ncurses | 6.3+20220423 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | netbase | 6.3 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [netbase_6.3.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/netbase/6.3/netbase_6.3.tar.xz) |
 | nettle | 3.7.3 | [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) \| [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [nettle-3.7.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/nettle/3.7.3/nettle-3.7.3.tar.gz) |
@@ -91,7 +90,6 @@
 | shadow | 4.11.1 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | Permissive |
 | shadow-securetty | 4.6 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | slang | 2.3.2 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [slang-2.3.2.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/slang/2.3.2/slang-2.3.2.tar.bz2) |
-| Slint | 1.15.1 | [MIT](https://spdx.org/licenses/MIT.html) | [slint.dev](https://slint.dev) |
 | spdlog | 1.14.1 | [MIT](https://spdx.org/licenses/MIT.html) | [spdlog](https://github.com/gabime/spdlog) |
 | sqlite3 | 3.38.5 | PD (Public Domain) | Permissive |
 | stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
