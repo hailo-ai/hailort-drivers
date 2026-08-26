@@ -68,7 +68,7 @@
 | md5 | - | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [md5](http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5) |
 | minja | main | [MIT](https://spdx.org/licenses/MIT.html) | [minja](https://github.com/google/minja) |
 | modutils-initscripts | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| Montserrat | v31 | [SIL](https://spdx.org/licenses/SIL.html) [Open](https://spdx.org/licenses/Open.html) [Font](https://spdx.org/licenses/Font.html) [License](https://spdx.org/licenses/License.html) [1.1](https://spdx.org/licenses/1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
+| Montserrat | v31 | [OFL-1.1](https://spdx.org/licenses/OFL-1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
 | ncurses | 6.3+20220423 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | netbase | 6.3 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [netbase_6.3.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/netbase/6.3/netbase_6.3.tar.xz) |
 | nettle | 3.7.3 | [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) \| [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [nettle-3.7.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/nettle/3.7.3/nettle-3.7.3.tar.gz) |
@@ -97,7 +97,7 @@
 | stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
 | sysvinit | 3.01 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [sysvinit-3.01.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/sysvinit/3.01/sysvinit-3.01.tar.xz) |
 | sysvinit-inittab | 2.88dsf | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [sysvinit-inittab](https://github.com/yoctoproject/poky/tree/kirkstone-4.0.23/meta/recipes-core/sysvinit) |
-| tl-expected | v1.3.1 | [CC0](https://spdx.org/licenses/CC0.html) [1.0](https://spdx.org/licenses/1.0.html) [Universal](https://spdx.org/licenses/Universal.html) | [expected](https://github.com/TartanLlama/expected) |
+| tl-expected | v1.3.1 | [CC0-1.0](https://spdx.org/licenses/CC0-1.0.html) | [expected](https://github.com/TartanLlama/expected) |
 | tokenizers_cpp | main | [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) | [tokenizers-cpp](https://github.com/mlc-ai/tokenizers-cpp.git) |
 | u-boot | 2022.01 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [u-boot-1_2022.01-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/u-boot/2022.01/u-boot-1_2022.01-r0.tar.xz) |
 | update-rc.d | 0.8 | [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [update-rc.d-0.8-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/update-rc.d/0.8/update-rc.d-0.8-r0.tar.xz) |
