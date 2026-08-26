@@ -40,7 +40,6 @@
 | libconfig | 1.7.3 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libconfig-1.7.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libconfig/1.7.3/libconfig-1.7.3.tar.gz) |
 | libgcc | 11.5.0 | [GPL-3.0-with-GCC-exception](https://spdx.org/licenses/GPL-3.0-with-GCC-exception.html) | [gcc-11.5.0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/gcc-source-11.5.0/11.5.0/gcc-11.5.0.tar.xz) |
 | libgpiod | 1.6.3 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libgpiod-1.6.3.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libgpiod/1.6.3/libgpiod-1.6.3.tar.xz) |
-| libhailo-throttling | 1.7.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | libidn2 | 2.3.2 | ([GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) \| [LGPL-3.0-only](https://spdx.org/licenses/LGPL-3.0-only.html)) & [Unicode-DFS-2016](https://spdx.org/licenses/Unicode-DFS-2016.html) | [libidn2-2.3.2.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libidn2/2.3.2/libidn2-2.3.2.tar.gz) |
 | libiio | 0.23 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libiio-0.23-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libiio/0.23/libiio-0.23-r0.tar.xz) |
 | libmicrohttpd | 0.9.76 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libmicrohttpd-0.9.76.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libmicrohttpd/0.9.76/libmicrohttpd-0.9.76.tar.gz) |
@@ -124,6 +123,7 @@
 | hailo15-nnc-fw | 5.4.0 | Proprietary |  |
 | hailort-server | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailortcli | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| libhailo-throttling | 1.7.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | libhailopp | 1.0.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | libhailort | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0.tar.xz) |
