@@ -135,9 +135,12 @@ endif
 	$(Q)cp -r $(VDMA_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
 	$(Q)cp -r $(UTILS_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
 
-# Copy common headers
+# Copy common headers (only present in the internal monorepo layout; this
+# standalone repo ships common/*.h flat, already copied above)
+ifneq ($(wildcard $(COMMON_INCLUDE_DIRECTORY)),)
 	$(Q)mkdir -p /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/common
 	$(Q)cp -r $(COMMON_INCLUDE_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/common
+endif
 
 	$(Q)sed 's/@PCIE_DRIVER_VERSION@/$(DRIVER_VERSION)/g' dkms.conf.in > /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/dkms.conf
 	$(Q)dkms add -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION)
