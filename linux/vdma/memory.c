@@ -167,11 +167,13 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
     }
 
     if (HAILO_DMA_DMABUF_BUFFER != buffer_type) {
+        // The vma returned by find_vma() is only valid while mmap_lock is held, so keep the lock
+        // until the vma is no longer used (is_dmabuf_vma() and create_fd_from_vma() below).
         mmap_read_lock(current->mm);
         vma = find_vma(current->mm, addr_or_fd);
-        mmap_read_unlock(current->mm);
         if (IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING)) {
             if (NULL == vma) {
+                mmap_read_unlock(current->mm);
                 dev_err(dev, "no vma for virt_addr/size = 0x%08lx/0x%08zx\n", addr_or_fd, size);
                 ret = -EFAULT;
                 goto cleanup;
@@ -183,6 +185,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             buffer_type = HAILO_DMA_DMABUF_BUFFER;
             ret = create_fd_from_vma(dev, vma);
             if (ret < 0) {
+                mmap_read_unlock(current->mm);
                 dev_err(dev, "Failed creating fd from vma in given dmabuf\n");
                 goto cleanup;
             }
@@ -190,6 +193,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             dmabuf_from_pointer_addr = addr_or_fd;
             addr_or_fd = ret;
         }
+        mmap_read_unlock(current->mm);
     }
 
     // TODO: is MMIO DMA MAPPINGS STILL needed after dmabuf
