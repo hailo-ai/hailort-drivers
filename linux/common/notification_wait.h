@@ -3,8 +3,8 @@
  * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
-#ifndef _HAILO_LINUX_COMMON_H_
-#define _HAILO_LINUX_COMMON_H_
+#ifndef _HAILO_NOTIFICATION_WAIT_H_
+#define _HAILO_NOTIFICATION_WAIT_H_
 
 #include "hailo_ioctl_common.h"
 
@@ -16,4 +16,4 @@ struct hailo_notification_wait {
     bool                is_disabled;
 };
 
-#endif /* _HAILO_LINUX_COMMON_H_ */
+#endif /* _HAILO_NOTIFICATION_WAIT_H_ */

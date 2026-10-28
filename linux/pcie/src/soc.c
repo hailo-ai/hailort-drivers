@@ -116,18 +116,17 @@ int hailo_soc_get_driver_info(struct hailo_pcie_board *board)
     return 0;
 }
 
-
 long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_context *context,
     struct hailo_vdma_controller *controller, unsigned long arg)
 {
     struct hailo_pcie_soc_request request = {0};
     struct hailo_pcie_soc_response response = {0};
     struct hailo_soc_connect_params params;
-    struct hailo_vdma_channel *input_channel = NULL;
-    struct hailo_vdma_channel *output_channel = NULL;
+    struct hailo_vdma_channel_pair *input_channel = NULL;
+    struct hailo_vdma_channel_pair *output_channel = NULL;
     struct hailo_vdma_engine *vdma_engine = &controller->vdma_engines[PCI_VDMA_ENGINE_INDEX];
-    struct hailo_descriptors_list_buffer *input_descriptors_buffer = NULL;
-    struct hailo_descriptors_list_buffer *output_descriptors_buffer = NULL;
+    struct hailo_vdma_descriptors_list *input_desc_list = NULL;
+    struct hailo_vdma_descriptors_list *output_desc_list = NULL;
     int err = 0;
 
     if (copy_from_user(&params, (void *)arg, sizeof(params))) {
@@ -135,15 +134,15 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
         return -EFAULT;
     }
 
-    input_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.input_desc_handle);
-    output_descriptors_buffer = hailo_vdma_find_descriptors_buffer(&context->vdma_context, params.output_desc_handle);
-    if (NULL == input_descriptors_buffer || NULL == output_descriptors_buffer) {
+    input_desc_list = hailo_vdma_get_desc_list(&context->vdma_context, params.input_desc_handle);
+    output_desc_list = hailo_vdma_get_desc_list(&context->vdma_context, params.output_desc_handle);
+    if (NULL == input_desc_list || NULL == output_desc_list) {
         hailo_dev_err(&board->pdev->dev, "input / output descriptors buffer not found \n");
         return -EINVAL;
     }
 
-    if (!is_powerof2((size_t)input_descriptors_buffer->desc_list.desc_count) ||
-        !is_powerof2((size_t)output_descriptors_buffer->desc_list.desc_count)) {
+    if (!is_powerof2((size_t)input_desc_list->desc_count) ||
+        !is_powerof2((size_t)output_desc_list->desc_count)) {
         hailo_dev_err(&board->pdev->dev, "Invalid desc list size\n");
         return -EINVAL;
     }
@@ -163,17 +162,15 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
         return err;
     }
 
-    hailo_info(board,"soc_connect: in=%d, out=%d\n",
-        response.connect.input_channel_index, response.connect.output_channel_index);
     params.input_channel_index = response.connect.input_channel_index;
     params.output_channel_index = response.connect.output_channel_index;
 
-    if (!hailo_check_channel_index(params.input_channel_index, controller->hw->src_channels_bitmask, true)) {
+    if (vdma_channel_direction_by_idx(controller->hw->variant, params.input_channel_index) != VDMA_H2D) {
         hailo_dev_err(&board->pdev->dev, "Invalid input channel index %u\n", params.input_channel_index);
         return -EINVAL;
     }
 
-    if (!hailo_check_channel_index(params.output_channel_index, controller->hw->src_channels_bitmask, false)) {
+    if (vdma_channel_direction_by_idx(controller->hw->variant, params.output_channel_index) != VDMA_D2H) {
         hailo_dev_err(&board->pdev->dev, "Invalid output channel index %u\n", params.output_channel_index);
         return -EINVAL;
     }
@@ -181,13 +178,19 @@ long hailo_soc_connect_ioctl(struct hailo_pcie_board *board, struct hailo_file_c
     input_channel = &vdma_engine->channels[params.input_channel_index];
     output_channel = &vdma_engine->channels[params.output_channel_index];
 
-    // configure and start channels
-    hailo_vdma_start_channel(input_channel->host_regs,
-        input_descriptors_buffer->dma_address, input_descriptors_buffer->desc_list.desc_count,
-        board->vdma.hw->ddr_data_id);
-    hailo_vdma_start_channel(output_channel->host_regs,
-        output_descriptors_buffer->dma_address, output_descriptors_buffer->desc_list.desc_count,
-        board->vdma.hw->ddr_data_id);
+    err = hailo_vdma_start_channel(&input_channel->host, input_desc_list->buffer.dma_address,
+        input_desc_list->desc_count, VDMA_DESC_LIST_HOST);
+    if (err < 0) {
+        hailo_err(board, "Failed to start host soc-connect channel: %d", err);
+        return err;
+    }
+
+    err = hailo_vdma_start_channel(&output_channel->host, output_desc_list->buffer.dma_address,
+        output_desc_list->desc_count, VDMA_DESC_LIST_HOST);
+    if (err < 0) {
+        hailo_err(board, "Failed to start device soc-connect channel: %d", err);
+        return err;
+    }
 
     // Store the input channels state in bitmap (open)
     hailo_set_bit(params.input_channel_index, &context->context_channels_in_use_bitmap);
@@ -207,13 +210,13 @@ static int close_channels(struct hailo_pcie_board *board, u32 channels_bitmap)
     struct hailo_pcie_soc_request request = {0};
     struct hailo_pcie_soc_response response = {0};
     struct hailo_vdma_engine *engine = &board->vdma.vdma_engines[PCI_VDMA_ENGINE_INDEX];
-    struct hailo_vdma_channel *channel = NULL;
+    struct hailo_vdma_channel_pair *channel_pair = NULL;
     u8 channel_index = 0;
 
     hailo_info(board, "Closing channels bitmap 0x%x\n", channels_bitmap);
-    for_each_vdma_channel(engine, channel, channel_index) {
+    for_each_vdma_channel_pair(engine, channel_pair, channel_index) {
         if (hailo_test_bit(channel_index, &channels_bitmap)) {
-            hailo_vdma_stop_channel(channel->host_regs);
+            hailo_vdma_stop_channel(&channel_pair->host);
         }
     }
 

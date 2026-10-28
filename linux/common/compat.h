@@ -3,8 +3,8 @@
  * Copyright (c) 2019-2026 Hailo Technologies Ltd. All rights reserved.
  **/
 
-#ifndef _HAILO_PCI_COMPAT_H_
-#define _HAILO_PCI_COMPAT_H_
+#ifndef _HAILO_COMPAT_H_
+#define _HAILO_COMPAT_H_
 
 #include <linux/version.h>
 #include <linux/scatterlist.h>
@@ -98,4 +98,4 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 #define timer_delete_sync(t) del_timer_sync(t)
 #endif
 
-#endif /* _HAILO_PCI_COMPAT_H_ */
+#endif /* _HAILO_COMPAT_H_ */

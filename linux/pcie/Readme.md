@@ -1,7 +1,7 @@
 This project contains the source code of the Hailo PCIe driver for Linux.
 
 ## Build the driver.
-Run the command `make all`. The driver will be compiled with the current running
+Run the command `make pcie`. The driver will be compiled with the current running
 kernel, in order to cross compile, the user needs to set the KERNEL_DIR environment variable.
  
 ## Install/Uninstall the driver

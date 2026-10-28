@@ -5,7 +5,7 @@
 
 #include "logs.h"
 #include "vdma.h"
-#include "utils/compat.h"
+#include "compat.h"
 
 #include "monitor.h"
 

@@ -14,6 +14,7 @@
 #include <linux/kernel.h>
 #include <linux/printk.h>
 #include <linux/device.h>
+#include <linux/string.h>
 
 
 #define BSC_IMASK_HOST (0x0188)
@@ -51,9 +52,7 @@
 
 #define PCIE_CONFIG_VENDOR_OFFSET (0x0098)
 
-#define HAILO_PCIE_DMA_DEVICE_INTERRUPTS_BITMASK    (1 << 4)
-#define HAILO_PCIE_DMA_HOST_INTERRUPTS_BITMASK      (1 << 5)
-#define HAILO_PCIE_DMA_SRC_CHANNELS_BITMASK         (0x000000000000FFFF)
+#define HAILO_PCIE_DMA_INTERRUPTS_BITMASK (1 << 5)
 
 #define HAILO_PCIE_MAX_ATR_TABLE_INDEX (3)
 
@@ -385,7 +384,7 @@ int hailo_pcie_vdma_get_required_channels(struct hailo_pcie_fw_boot *fw_boot, st
         if (file->flags & HAILO_FILE_F_DYNAMIC_NAME) {
             hailo_resolve_dtb_filename(filename, resources->sku_id, file->filename);
         } else {
-            strncpy(filename, file->filename, FW_FILENAME_MAX_LEN - 1);
+            memcpy(filename, file->filename, FW_FILENAME_MAX_LEN);
             filename[FW_FILENAME_MAX_LEN - 1] = '\0';
         }
 
@@ -954,10 +953,8 @@ struct hailo_vdma_hw hailo_pcie_vdma_hw = {
     .channel_id_mask = PCIE_CHANNEL_ID_MASK,
     .channel_id_shift = PCIE_CHANNEL_ID_SHIFT,
     .ddr_data_id = HAILO_PCIE_HOST_DMA_DATA_ID,
-    .device_interrupts_bitmask = HAILO_PCIE_DMA_DEVICE_INTERRUPTS_BITMASK,
-    .host_interrupts_bitmask = HAILO_PCIE_DMA_HOST_INTERRUPTS_BITMASK,
-    .src_channels_bitmask = HAILO_PCIE_DMA_SRC_CHANNELS_BITMASK,
-    .channels_count = MAX_PCIE_VDMA_CHANNELS_PER_ENGINE,
+    .interrupts_bitmask = HAILO_PCIE_DMA_INTERRUPTS_BITMASK,
+    .variant = VDMA_ENGINE_PCIE,
 };
 
 void hailo_pcie_soc_write_request(struct hailo_pcie_resources *resources,
@@ -997,8 +994,6 @@ static int hailo_pcie_program_one_file_descriptors(
     struct hailo_pcie_boot_dma_channel_state *channel,
     struct device *dev)
 {
-    enum hailo_vdma_interrupts_domain interrupts_domain = raise_int_on_completion ?
-        HAILO_VDMA_INTERRUPTS_DOMAIN_HOST : HAILO_VDMA_INTERRUPTS_DOMAIN_NONE;
     const u64 masked_channel_id_for_encode_addr = HAILO_PCI_EP_HOST_DMA_DATA_ID;
 
     if (!channel || !channel->device_descriptors_list || !channel->host_descriptors_list) {
@@ -1019,14 +1014,12 @@ static int hailo_pcie_program_one_file_descriptors(
     return hailo_vdma_program_descriptors_list(
         &hailo_pcie_vdma_hw,
         channel->host_descriptors_list,
-        channel->desc_program_num,
         &channel->sg_table,
         HAILO_PCI_OVER_VDMA_PAGE_SIZE * channel->desc_program_num,
         buffer_size,
         1,
         channel_index,
-        interrupts_domain,
-        false);
+        raise_int_on_completion);
 }
 
 /**
@@ -1094,8 +1087,7 @@ static int pcie_vdma_program_one_file(struct hailo_pcie_fw_boot *fw_boot, u32 fi
 
         // Copy firmware data to DMA buffer
         if (!channel->kernel_address || !channel->device_descriptors_list || !channel->host_descriptors_list) {
-            hailo_dev_err(dev, "kernel_addresses is NULL or descriptor lists are NULL for channel %u\n",
-                boot_dma_state->curr_channel_index);
+            hailo_dev_err(dev, "Invalid state for boot-channel %u\n", boot_dma_state->curr_channel_index);
             return -EINVAL;
         }
         memcpy((uint8_t*)channel->kernel_address + channel_buffer_offset,
@@ -1154,7 +1146,7 @@ long hailo_pcie_vdma_program_firmware_batch(struct hailo_pcie_fw_boot *fw_boot, 
         if (file->flags & HAILO_FILE_F_DYNAMIC_NAME) {
             hailo_resolve_dtb_filename(filename, resources->sku_id, file->filename);
         } else {
-            strncpy(filename, file->filename, FW_FILENAME_MAX_LEN - 1);
+            memcpy(filename, file->filename, FW_FILENAME_MAX_LEN);
             filename[FW_FILENAME_MAX_LEN - 1] = '\0';
         }
 

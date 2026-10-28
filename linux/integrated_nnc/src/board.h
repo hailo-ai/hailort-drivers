@@ -48,9 +48,7 @@ enum nnc_fw_shared_mem_type {
 
 struct nnc_fw_shared_mem_info {
     enum nnc_fw_shared_mem_type type;
-    uintptr_t   dma_address;
-    void        *kernel_address;
-    size_t      size;
+    struct hailo_vdma_buffer buffer;
 };
 
 struct fw_control
@@ -136,8 +134,6 @@ struct hailo_board
     struct hailo_resource fw_logger;
     struct hailo_vdma_controller vdma;
     struct hailo_vdma_engine_resources vdma_engines_resources[MAX_VDMA_ENGINES];
-    // TODO: HRT-14781: remove this when every integrated uses BKC that has memory region
-    struct hailo_vdma_continuous_buffer nnc_fw_shared_memory_continuous_buffer;
     struct nnc_fw_shared_mem_info nnc_fw_shared_mem_info;
     struct integrated_board_data *board_data;
     struct irq_info irqs_info[MAX_VDMA_ENGINES][MAX_INTERRUPTS_PER_ENGINE];

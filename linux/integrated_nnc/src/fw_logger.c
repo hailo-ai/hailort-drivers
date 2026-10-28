@@ -5,7 +5,7 @@
 
 #include "fw_logger.h"
 #include "logs.h"
-#include "utils/integrated_nnc_utils.h"
+#include "platform_resource.h"
 
 int fw_logger_init(struct hailo_board *board)
 {
