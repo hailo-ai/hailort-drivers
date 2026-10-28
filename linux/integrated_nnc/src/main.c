@@ -4,6 +4,7 @@
  **/
 
 #include <linux/err.h>
+#include <linux/io.h>
 #include <linux/module.h>
 #include <linux/pagemap.h>
 #include <linux/of.h>
@@ -22,7 +23,7 @@
 #include "fw_logger.h"
 #include "dram_vdma.h"
 #include "logs.h"
-#include "utils/compat.h"
+#include "compat.h"
 #include "vdma/memory.h"
 
 #define DRIVER_NAME "hailo_integrated_nnc"
@@ -93,10 +94,8 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
             .channel_id_mask = H15X_CHANNEL_ID_MASK,
             .channel_id_shift = CHANNEL_ID_SHIFT,
             .ddr_data_id = DDR_AXI_DATA_ID,
-            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
-            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
-            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE_H15,
+            .interrupts_bitmask = DRAM_DMA_INTERRUPTS_BITMASK,
+            .variant = VDMA_ENGINE_DRAM_H15,
         }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO15L] = {
@@ -108,10 +107,8 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
             .channel_id_mask = H15X_CHANNEL_ID_MASK,
             .channel_id_shift = CHANNEL_ID_SHIFT,
             .ddr_data_id = DDR_AXI_DATA_ID,
-            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
-            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H10H,
-            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE_H15,
+            .interrupts_bitmask = DRAM_DMA_INTERRUPTS_BITMASK,
+            .variant = VDMA_ENGINE_DRAM_H15,
         }
     },
     [HAILO_INTEGRATED_BOARD_TYPE_HAILO12L] = {
@@ -123,10 +120,8 @@ static const struct integrated_board_data integrated_board_data_arr[] = {
             .channel_id_mask = MARS_CHANNEL_ID_MASK,
             .channel_id_shift = CHANNEL_ID_SHIFT,
             .ddr_data_id = DDR_AXI_DATA_ID,
-            .device_interrupts_bitmask = DRAM_DMA_DEVICE_INTERRUPTS_BITMASK,
-            .host_interrupts_bitmask = DRAM_DMA_HOST_INTERRUPTS_BITMASK,
-            .src_channels_bitmask = DRAM_DMA_SRC_CHANNELS_BITMASK_H12L,
-            .channels_count = MAX_VDMA_CHANNELS_PER_ENGINE,
+            .interrupts_bitmask = DRAM_DMA_INTERRUPTS_BITMASK,
+            .variant = VDMA_ENGINE_DRAM_H12,
         }
     },
 };
@@ -189,7 +184,7 @@ static const struct of_device_id driver_match[] = {
 };
 MODULE_DEVICE_TABLE(of, driver_match);
 
-static bool verify_dma_addr(struct hailo_vdma_continuous_buffer *buffer)
+static bool verify_dma_addr(struct hailo_vdma_buffer *buffer)
 {
     // verify that buffer starts and ends inside mapped range
     if (buffer->dma_address < CONTEXT_SWITCH_DEFS__START_M4_MAPPED_DDR_ADDRESS ||
@@ -206,7 +201,7 @@ static int hailo_allocate_nnc_fw_shm_from_device_tree_memory_region(struct devic
 {
     struct device_node *node = dev->of_node;
     struct resource res;
-    void __iomem *mem_map_ptr;
+    void *mem_map_ptr;
     int err = 0;
 
     // Search for memory region node by name - if region not found print info log and fallback to regular
@@ -227,16 +222,17 @@ static int hailo_allocate_nnc_fw_shm_from_device_tree_memory_region(struct devic
     // Decrement the refcount of the node
     of_node_put(memory_region_node);
 
-    mem_map_ptr = devm_ioremap(dev, res.start, resource_size(&res));
-    if (!mem_map_ptr) {
-        hailo_dev_err(dev, "Failed ioremap memory region at start %llx, size %lld (please check device tree)\n",
-            res.start, resource_size(&res));
-        return -EINVAL;
+    mem_map_ptr = devm_memremap(dev, res.start, resource_size(&res), MEMREMAP_WC);
+    if (IS_ERR(mem_map_ptr)) {
+        hailo_dev_err(dev,
+            "Failed to memremap memory region at start %llx, size %llu, err %ld (please check device tree)\n",
+            res.start, resource_size(&res), PTR_ERR(mem_map_ptr));
+        return PTR_ERR(mem_map_ptr);
     }
 
-    board->nnc_fw_shared_mem_info.dma_address = (uintptr_t)res.start;
-    board->nnc_fw_shared_mem_info.kernel_address = mem_map_ptr;
-    board->nnc_fw_shared_mem_info.size = resource_size(&res);
+    board->nnc_fw_shared_mem_info.buffer.dma_address = res.start;
+    board->nnc_fw_shared_mem_info.buffer.kernel_address = mem_map_ptr;
+    board->nnc_fw_shared_mem_info.buffer.size = resource_size(&res);
 
     return 0;
 }
@@ -245,22 +241,19 @@ static int hailo_allocate_nnc_fw_shm_continuous_buffer(struct device *dev, struc
 {
     size_t aligned_buffer_size = PAGE_ALIGN(CMA_FW_SHM_SIZE);
 
-    int err = hailo_vdma_continuous_buffer_alloc(dev, aligned_buffer_size, &board->nnc_fw_shared_memory_continuous_buffer);
+    int err = hailo_vdma_buffer_alloc(dev, aligned_buffer_size, &board->nnc_fw_shared_mem_info.buffer);
     if (err < 0) {
         return err;
     }
 
     // In case of allocation in wrong region - release allocated memory, disable nnc_fw shared memory and return
-    if (!verify_dma_addr(&board->nnc_fw_shared_memory_continuous_buffer)) {
+    if (!verify_dma_addr(&board->nnc_fw_shared_mem_info.buffer)) {
         hailo_dev_notice(dev, "Successfully allocated continous buffer - but not in allowed region - nnc_fw shared memory will be disabled\n");
-        hailo_vdma_continuous_buffer_free(dev, &board->nnc_fw_shared_memory_continuous_buffer);
+        hailo_vdma_buffer_free(dev, &board->nnc_fw_shared_mem_info.buffer);
         board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_NONE;
         return 0;
     }
 
-    board->nnc_fw_shared_mem_info.dma_address = board->nnc_fw_shared_memory_continuous_buffer.dma_address;
-    board->nnc_fw_shared_mem_info.kernel_address = board->nnc_fw_shared_memory_continuous_buffer.kernel_address;
-    board->nnc_fw_shared_mem_info.size = board->nnc_fw_shared_memory_continuous_buffer.size;
     board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_CONTINOUS_BUFFER;
 
     return 0;
@@ -286,8 +279,8 @@ static long hailo_vdma_allocate_nnc_fw_shm(struct device *dev, struct hailo_boar
         board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_NONE;
         return err;
     } else {
-        hailo_dev_notice(dev, "Allocated memory from device tree memory region starting physical address: 0x%lx, size: 0x%lx\n",
-            board->nnc_fw_shared_mem_info.dma_address, board->nnc_fw_shared_mem_info.size);
+        hailo_dev_notice(dev, "Allocated memory from device tree memory region starting physical address: %pad, size: 0x%zx\n",
+            &board->nnc_fw_shared_mem_info.buffer.dma_address, board->nnc_fw_shared_mem_info.buffer.size);
         board->nnc_fw_shared_mem_info.type = NNC_FW_SHARED_MEM_TYPE_MEMORY_REGION;
     }
 
@@ -374,7 +367,8 @@ static int driver_probe(struct platform_device *pdev)
         goto l_driver_down_notification_release;
     }
 
-    if (hailo_load_firmware(board)) {
+    err = hailo_load_firmware(board);
+    if (err) {
         /* error already logged */
         goto l_driver_down_notification_release;
     }
@@ -461,7 +455,7 @@ static void driver_remove(struct platform_device *pdev)
     }
 
     if (NNC_FW_SHARED_MEM_TYPE_CONTINOUS_BUFFER == board->nnc_fw_shared_mem_info.type) {
-        hailo_vdma_continuous_buffer_free(&pdev->dev, &board->nnc_fw_shared_memory_continuous_buffer);
+        hailo_vdma_buffer_free(&pdev->dev, &board->nnc_fw_shared_mem_info.buffer);
     }
     hailo_integrated_nnc_vdma_controller_finalize(board);
     device_destroy(board->class, board->dev);
@@ -495,6 +489,7 @@ static struct platform_driver hailort_core_driver = {
 };
 module_platform_driver(hailort_core_driver);
 
+int o_dbg = LOGLEVEL_NOTICE;
 module_param(o_dbg, int, S_IRUGO | S_IWUSR);
 
 MODULE_AUTHOR("Hailo Technologies Ltd.");

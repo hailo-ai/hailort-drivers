@@ -15,9 +15,12 @@
 #include "d2h_events.h"
 #include "fw_notification.h"
 #include "logs.h"
-#include "utils/integrated_nnc_utils.h"
-#include "utils/fw_common.h"
+#include "platform_resource.h"
+#include "notification_wait.h"
 #include "fw_operation.h"
+
+#define HAILO15_CORE_NOTIFICATION_MAILBOX_INDEX (1)
+#define HAILO15_CORE_NOTIFICATION_MAILBOX_RX_SHMEM_INDEX (2)
 
 /* SCMI Generic Notifcation IDs match definitions in SCU */
 #define SCMI_GENERIC_NOTIFICATION_ID_CRC_ERR          (0)

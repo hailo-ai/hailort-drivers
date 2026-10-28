@@ -5,11 +5,15 @@
 
 #include "fw_control.h"
 #include "logs.h"
-#include "utils/integrated_nnc_utils.h"
+#include "platform_resource.h"
 
 #include <linux/uaccess.h>
 #include <asm/io.h>
 #include <linux/of_address.h>
+
+#define HAILO15_CORE_CONTROL_MAILBOX_INDEX (0)
+#define HAILO15_CORE_CONTROL_MAILBOX_TX_SHMEM_INDEX (0)
+#define HAILO15_CORE_CONTROL_MAILBOX_RX_SHMEM_INDEX (1)
 
 long hailo_fw_control_impl(struct hailo_board *board, struct hailo_fw_control *command)
 {

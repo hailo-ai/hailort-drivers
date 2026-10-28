@@ -24,7 +24,7 @@
 #include "logs.h"
 #include "vdma/memory.h"
 #include "vdma/ioctl.h"
-#include "utils/compat.h"
+#include "compat.h"
 #include "nnc.h"
 #include "soc.h"
 
@@ -54,7 +54,7 @@ void hailo_pcie_init_file_context(struct hailo_file_context *context, struct hai
     context->board = board;
     context->filp = filp;
 
-    hailo_vdma_file_context_init(&context->vdma_context, &board->vdma);
+    hailo_vdma_context_init(&context->vdma_context, &board->vdma);
 
     list_add(&context->open_files_list, &board->open_files_list);
     context->is_valid = true;
@@ -71,7 +71,7 @@ void hailo_pcie_finalize_file_context(struct hailo_file_context *context)
         hailo_soc_file_context_finalize(context->board, context);
     }
 
-    hailo_vdma_file_context_finalize(&context->vdma_context, &context->board->vdma, context->filp);
+    hailo_vdma_context_finalize(&context->vdma_context, context->filp);
 }
 
 int hailo_pcie_fops_open(struct inode *inode, struct file *filp)
@@ -424,8 +424,7 @@ long hailo_pcie_fops_unlockedioctl(struct file* filp, unsigned int cmd, unsigned
         err = hailo_general_ioctl(board, cmd, arg);
         break;
     case HAILO_VDMA_IOCTL_MAGIC:
-        err = hailo_vdma_ioctl(&context->vdma_context, &board->vdma, cmd, arg, filp, &board->mutex,
-            &should_up_board_mutex);
+        err = hailo_vdma_ioctl(&context->vdma_context, cmd, arg, filp, &board->mutex, &should_up_board_mutex);
         break;
     case HAILO_SOC_IOCTL_MAGIC:
         if (HAILO_DEV_TYPE_DISCRETE != board->pcie_resources.device_type) {
@@ -460,7 +459,7 @@ long hailo_pcie_fops_unlockedioctl(struct file* filp, unsigned int cmd, unsigned
 int hailo_pcie_fops_mmap(struct file* filp, struct vm_area_struct *vma)
 {
     int err = 0;
-    uintptr_t vdma_handle   = vma->vm_pgoff << PAGE_SHIFT;
+    uintptr_t vdma_handle   = vma->vm_pgoff;
     struct hailo_file_context *context = (struct hailo_file_context *)filp->private_data;
     struct hailo_pcie_board* board = context->board;
 
@@ -487,7 +486,7 @@ int hailo_pcie_fops_mmap(struct file* filp, struct vm_area_struct *vma)
         return -ENXIO;
     }
 
-    err = hailo_vdma_mmap(&context->vdma_context, &board->vdma, vma, vdma_handle);
+    err = hailo_vdma_mmap(&context->vdma_context, vma, vdma_handle);
     up(&board->mutex);
     return err;
 }

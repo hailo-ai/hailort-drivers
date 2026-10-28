@@ -54,7 +54,7 @@
 | libunwind | 1.6.2 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | libusb | 1.0.29 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libusb](https://github.com/libusb/libusb) |
 | libusb1 | 1.0.26 | [LGPL-2.1-or-later](https://spdx.org/licenses/LGPL-2.1-or-later.html) | [libusb-1.0.26.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libusb1/1.0.26/libusb-1.0.26.tar.bz2) |
-| libx11 | 1.7.3.1 | [MIT](https://spdx.org/licenses/MIT.html) & [MIT](https://spdx.org/licenses/MIT.html) & [BSD-1-Clause](https://spdx.org/licenses/BSD-1-Clause.html) & [HPND](https://spdx.org/licenses/HPND.html) & [HPND-sell-variant](https://spdx.org/licenses/HPND-sell-variant.html) | Permissive |
+| libx11 | 1.7.3.1 | [MIT](https://spdx.org/licenses/MIT.html) & [BSD-1-Clause](https://spdx.org/licenses/BSD-1-Clause.html) & [HPND](https://spdx.org/licenses/HPND.html) & [HPND-sell-variant](https://spdx.org/licenses/HPND-sell-variant.html) | Permissive |
 | libxau | 1.0.9 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | libxcb | 1.14 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | libxcrypt | 4.4.33 | [LGPL-2.1-only](https://spdx.org/licenses/LGPL-2.1-only.html) | [libxcrypt-4.4.33-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/libxcrypt/4.4.33/libxcrypt-4.4.33-r0.tar.xz) |
@@ -67,6 +67,7 @@
 | md5 | - | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | [md5](http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5) |
 | minja | main | [MIT](https://spdx.org/licenses/MIT.html) | [minja](https://github.com/google/minja) |
 | modutils-initscripts | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
+| Montserrat | v31 | [OFL-1.1](https://spdx.org/licenses/OFL-1.1.html) | [Montserrat](https://github.com/JulietaUla/Montserrat) |
 | ncurses | 6.3+20220423 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | netbase | 6.3 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [netbase_6.3.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/netbase/6.3/netbase_6.3.tar.xz) |
 | nettle | 3.7.3 | [LGPL-3.0-or-later](https://spdx.org/licenses/LGPL-3.0-or-later.html) \| [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) | [nettle-3.7.3.tar.gz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/nettle/3.7.3/nettle-3.7.3.tar.gz) |
@@ -85,10 +86,10 @@
 | python3 | 3.10.15 | [PSF-2.0](https://spdx.org/licenses/PSF-2.0.html) | Permissive |
 | readerwriterqueue | 1.0.3 | [BSD-2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) | [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) |
 | run-postinsts | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
-| sensors-config-file | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | shadow | 4.11.1 | [BSD-3-Clause](https://spdx.org/licenses/BSD-3-Clause.html) | Permissive |
 | shadow-securetty | 4.6 | [MIT](https://spdx.org/licenses/MIT.html) | Permissive |
 | slang | 2.3.2 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [slang-2.3.2.tar.bz2](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/slang/2.3.2/slang-2.3.2.tar.bz2) |
+| Slint | 1.15.1 | [MIT](https://spdx.org/licenses/MIT.html) | [slint.dev](https://slint.dev) |
 | spdlog | 1.14.1 | [MIT](https://spdx.org/licenses/MIT.html) | [spdlog](https://github.com/gabime/spdlog) |
 | sqlite3 | 3.38.5 | PD (Public Domain) | Permissive |
 | stb | 0.97 | [MIT](https://spdx.org/licenses/MIT.html) | [stb](https://github.com/nothings/stb) |
@@ -114,20 +115,20 @@
 | hailo-base-config | 0.1 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo-cma-usage | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo-dma-usage | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
-| hailo-integrated-nnc | 5.4.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [hailo-integrated-nnc-5.4.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/hailo-integrated-nnc/5.4.0/hailo-integrated-nnc-5.4.0-r0.tar.xz) |
+| hailo-integrated-nnc | 5.5.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [hailo-integrated-nnc-5.5.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/hailo-integrated-nnc/5.5.0/hailo-integrated-nnc-5.5.0-r0.tar.xz) |
 | hailo-linux-init | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | hailo-noc-measurement-script | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
-| hailo-pci-ep | 5.4.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [hailo-pci-ep-5.4.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/hailo-pci-ep/5.4.0/hailo-pci-ep-5.4.0-r0.tar.xz) |
-| hailo-thermal-engine | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0.tar.xz) |
+| hailo-pci-ep | 5.5.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [hailo-pci-ep-5.5.0-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/hailo-pci-ep/5.5.0/hailo-pci-ep-5.5.0-r0.tar.xz) |
+| hailo-thermal-engine | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/5.5.0/linux-yocto-hailo-5.15.32-r0.tar.xz) |
 | hailo-thermal-service | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
-| hailo15-nnc-fw | 5.4.0 | Proprietary |  |
-| hailort-server | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
-| hailortcli | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| hailo15-nnc-fw | 5.5.0 | Proprietary |  |
+| hailort-server | 5.5.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| hailortcli | 5.5.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | libhailo-throttling | 1.7.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | libhailopp | 1.0.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
-| libhailort | 5.4.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
-| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0.tar.xz) |
-| linux-yocto-hailo | 5.15.32 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/linux-yocto-hailo-5.15.32-r0.tar.xz) |
+| libhailort | 5.5.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
+| linux-kernel-vm-tools | 1.0 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/5.5.0/linux-yocto-hailo-5.15.32-r0.tar.xz) |
+| linux-yocto-hailo | 5.15.32 | [GPL-2.0-only](https://spdx.org/licenses/GPL-2.0-only.html) | [linux-yocto-hailo-5.15.32-r0.tar.xz](https://hailo-hailort.s3.eu-west-2.amazonaws.com/licenses/linux-yocto-hailo/5.15.32/5.5.0/linux-yocto-hailo-5.15.32-r0.tar.xz) |
 | packagegroup-hailo-bsp | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | packagegroup-hailo-hailort | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
 | packagegroup-hailo-integrated-nnc | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |
@@ -135,3 +136,4 @@
 | recovery-fw | 1.0 | Proprietary |  |
 | scu-bl | 1.0 | Proprietary |  |
 | scu-fw | 1.0 | Proprietary |  |
+| sensors-config-file | 1.0 | [MIT](https://spdx.org/licenses/MIT.html) |  |

@@ -5,11 +5,13 @@
 
 #include "board.h"
 #include "dram_vdma.h"
-#include "utils/integrated_nnc_utils.h"
+#include "hailo_resource.h"
 #include "vdma/vdma.h"
 #include "logs.h"
 
+#include <linux/err.h>
 #include <linux/interrupt.h>
+#include <linux/io.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_reserved_mem.h>
@@ -18,8 +20,8 @@
 #define MARS_RX_CHANNELS_COUNT          (24)
 // All the extended are relevant for mars
 #define EXTENDED_INPUT_CHANNELS_BITMAP      (0x00FFFFFF)
-#define EXTENDED_OUTPUT_VDMA_CHANNELS_BITMAP (0x000000FFFF000000)
-#define EXTENDED_OUTPUT_CHANNELS_BITMAP (0x000000000000FFFF)
+#define EXTENDED_OUTPUT_VDMA_CHANNELS_BITMAP (0x000000FFFF000000ULL)
+#define EXTENDED_OUTPUT_CHANNELS_BITMAP (0x000000000000FFFFULL)
 
 // This adjust will only affect H12(MARS)
 // TODO: channels_bitmap should be u64 and bitmasks should change accordingly
@@ -267,6 +269,7 @@ int hailo_integrated_nnc_vdma_controller_init(struct hailo_board *board)
     for_each_child_of_node(dev_node, vdma_node) {
         err = init_engine(&board->pdev->dev, vdma_node, &engine_resources, &board->irqs_info[engine_idx][0], engine_idx);
         if (err < 0) {
+            of_node_put(vdma_node);
             return err;
         }
 

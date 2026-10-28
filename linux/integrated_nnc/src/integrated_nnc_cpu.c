@@ -13,7 +13,7 @@
 #include "integrated_nnc_fw_validation.h"
 #include "integrated_nnc_cpu.h"
 #include "board.h"
-#include "utils/integrated_nnc_utils.h"
+#include "platform_resource.h"
 #include "logs.h"
 #include "fw_control.h"
 

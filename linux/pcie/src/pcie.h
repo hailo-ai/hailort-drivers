@@ -9,7 +9,7 @@
 #include "vdma/vdma.h"
 #include "hailo_ioctl_common.h"
 #include "pcie_common.h"
-#include "utils/fw_common.h"
+#include "notification_wait.h"
 
 #include <linux/pci.h>
 #include <linux/fs.h>
@@ -57,7 +57,7 @@ struct hailo_file_context {
     struct list_head open_files_list;
     struct hailo_pcie_board *board;
     struct file *filp;
-    struct hailo_vdma_file_context vdma_context;
+    struct hailo_vdma_context vdma_context;
     bool is_valid;
     u32 context_channels_in_use_bitmap;
 };
@@ -66,12 +66,6 @@ struct hailo_file_context {
 struct hailo_pcie_fw_boot_linux {
     // Common base structure - must be first
     struct hailo_pcie_fw_boot common;
-    
-    // Linux-specific descriptor buffers - one per channel
-    struct hailo_descriptors_list_buffer host_descriptors_buffers[HAILO_PCI_OVER_VDMA_MAX_CHANNELS];
-    struct hailo_descriptors_list_buffer device_descriptors_buffers[HAILO_PCI_OVER_VDMA_MAX_CHANNELS];
-
-    // Linux-specific completion events
     struct completion fw_loaded_completion;
     struct completion vdma_boot_completion;
     bool is_in_boot;

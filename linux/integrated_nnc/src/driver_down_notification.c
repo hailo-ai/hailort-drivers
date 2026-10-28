@@ -5,13 +5,15 @@
 
 #include "driver_down_notification.h"
 #include "logs.h"
-#include "utils/integrated_nnc_utils.h"
 
 #include "driver_timeouts.h"
 
+#include <linux/err.h>
 #include <linux/uaccess.h>
 #include <asm/io.h>
 #include <linux/of_address.h>
+
+#define HAILO15_CORE_DRIVER_DOWN_MAILBOX_INDEX (2)
 
 long hailo_driver_down_notification(struct hailo_board *board)
 {

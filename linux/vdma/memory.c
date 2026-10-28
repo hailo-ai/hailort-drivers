@@ -7,7 +7,7 @@
 
 #include "memory.h"
 #include "utils.h"
-#include "utils/compat.h"
+#include "compat.h"
 
 #include <linux/slab.h>
 #include <linux/scatterlist.h>
@@ -85,7 +85,7 @@ cleanup:
     return ret;
 }
 
-static void hailo_unmap_dmabuf(struct hailo_vdma_buffer *vdma_buffer)
+static void hailo_unmap_dmabuf(struct hailo_vdma_mapped_buffer *vdma_buffer)
 {
     dma_buf_unmap_attachment(vdma_buffer->dmabuf_info.dmabuf_attachment, vdma_buffer->dmabuf_info.dmabuf_sg_table, vdma_buffer->data_direction);
     dma_buf_detach(vdma_buffer->dmabuf_info.dmabuf, vdma_buffer->dmabuf_info.dmabuf_attachment);
@@ -105,7 +105,7 @@ static int hailo_map_dmabuf(struct device *dev, int dmabuf_fd, enum dma_data_dir
     return -EINVAL;
 }
 
-static void hailo_unmap_dmabuf(struct hailo_vdma_buffer *vdma_buffer)
+static void hailo_unmap_dmabuf(struct hailo_vdma_mapped_buffer *vdma_buffer)
 {
     dev_err(vdma_buffer->device, "dmabuf not supported in kernel versions lower than 3.3.0\n");
     return -EINVAL;
@@ -152,16 +152,15 @@ static inline void align_buffer_to_page(uintptr_t *address, size_t *size)
     *address = ALIGN_DOWN(*address, PAGE_SIZE);
 }
 
-struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
-    uintptr_t addr_or_fd, size_t size, enum dma_data_direction direction,
-    enum hailo_dma_buffer_type buffer_type)
+struct hailo_vdma_mapped_buffer *hailo_vdma_map_buffer(struct device *dev, uintptr_t addr_or_fd, size_t size,
+    enum dma_data_direction direction, enum hailo_dma_buffer_type buffer_type)
 {
     int ret = -EINVAL;
-    struct hailo_vdma_buffer *mapped_buffer = NULL;
-    struct sg_table sgt = {0};
+    struct hailo_vdma_mapped_buffer *mapped_buffer = NULL;
+    struct sg_table sgt = { };
     struct vm_area_struct *vma = NULL;
     bool is_mmio = false;
-    struct hailo_dmabuf_info dmabuf_info = {0};
+    struct hailo_dmabuf_info dmabuf_info = { };
     bool created_dmabuf_fd_from_vma = false;
 
     mapped_buffer = kzalloc(sizeof(*mapped_buffer), GFP_KERNEL);
@@ -179,7 +178,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             if (NULL == vma) {
                 dev_err(dev, "no vma for virt_addr/size = 0x%08lx/0x%08zx\n", addr_or_fd, size);
                 ret = -EFAULT;
-                goto cleanup;
+                goto free_buffer_struct;
             }
         }
 
@@ -192,7 +191,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             ret = create_fd_from_vma(dev, vma);
             if (ret < 0) {
                 dev_err(dev, "Failed creating fd from vma in given dmabuf\n");
-                goto cleanup;
+                goto free_buffer_struct;
             }
             // Override user address with fd to the dmabuf - like normal dmabuf flow
             addr_or_fd = ret;
@@ -213,7 +212,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
         ret = hailo_map_dmabuf(dev, addr_or_fd, direction, &sgt, &dmabuf_info);
         if (ret < 0) {
             dev_err(dev, "Failed mapping dmabuf\n");
-            goto cleanup;
+            goto free_buffer_struct;
         }
         // If created dmabuf fd from vma need to decrement refcount and release fd
         if (created_dmabuf_fd_from_vma) {
@@ -263,11 +262,11 @@ cleanup:
 
 static void unmap_buffer(struct kref *kref)
 {
-    struct hailo_vdma_buffer *buf = container_of(kref, struct hailo_vdma_buffer, kref);
-    hailo_vdma_buffer_destroy(buf);
+    struct hailo_vdma_mapped_buffer *buf = container_of(kref, struct hailo_vdma_mapped_buffer, kref);
+    hailo_vdma_mapped_buffer_destroy(buf);
 }
 
-void hailo_vdma_buffer_destroy(struct hailo_vdma_buffer *buf)
+void hailo_vdma_mapped_buffer_destroy(struct hailo_vdma_mapped_buffer *buf)
 {
     list_del(&buf->mapped_user_buffer_list);
 
@@ -285,18 +284,18 @@ void hailo_vdma_buffer_destroy(struct hailo_vdma_buffer *buf)
     kfree(buf);
 }
 
-void hailo_vdma_buffer_get(struct hailo_vdma_buffer *buf)
+void hailo_vdma_mapped_buffer_get(struct hailo_vdma_mapped_buffer *buf)
 {
     kref_get(&buf->kref);
 }
 
-void hailo_vdma_buffer_put(struct hailo_vdma_buffer *buf)
+void hailo_vdma_mapped_buffer_put(struct hailo_vdma_mapped_buffer *buf)
 {
     kref_put(&buf->kref, unmap_buffer);
 }
 
 static void vdma_sync_entire_buffer(struct device *dev,
-    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type)
+    struct hailo_vdma_mapped_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type)
 {
     if (sync_type == HAILO_SYNC_FOR_CPU) {
         dma_sync_sg_for_cpu(dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
@@ -310,7 +309,7 @@ static void vdma_sync_entire_buffer(struct device *dev,
 typedef void (*dma_sync_single_callback)(struct device *, dma_addr_t, size_t, enum dma_data_direction);
 // Map sync_info->count bytes starting at sync_info->offset
 static void vdma_sync_buffer_interval(struct device *dev,
-    struct hailo_vdma_buffer *mapped_buffer,
+    struct hailo_vdma_mapped_buffer *mapped_buffer,
     size_t offset, size_t size, enum hailo_vdma_buffer_sync_type sync_type)
 {
     size_t sync_start_offset = offset;
@@ -334,8 +333,8 @@ static void vdma_sync_buffer_interval(struct device *dev,
     }
 }
 
-void hailo_vdma_buffer_sync(struct device *dev,
-    struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
+void hailo_vdma_mapped_buffer_sync(struct device *dev,
+    struct hailo_vdma_mapped_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type,
     size_t offset, size_t size)
 {
     if ((IS_ENABLED(HAILO_SUPPORT_MMIO_DMA_MAPPING) && mapped_buffer->is_mmio) ||
@@ -351,10 +350,10 @@ void hailo_vdma_buffer_sync(struct device *dev,
     }
 }
 
-struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_fd(struct hailo_vdma_file_context *context,
+struct hailo_vdma_mapped_buffer* hailo_vdma_find_mapped_buffer_by_fd(struct hailo_vdma_context *context,
     uintptr_t fd, size_t size, enum dma_data_direction direction)
 {
-    struct hailo_vdma_buffer *cur = NULL;
+    struct hailo_vdma_mapped_buffer *cur = NULL;
     list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
         if (cur->addr_or_fd == fd &&
             cur->size >= size &&
@@ -366,10 +365,10 @@ struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_fd(struct hailo_vdma_
     return NULL;
 }
 
-struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_address(struct hailo_vdma_file_context *context,
+struct hailo_vdma_mapped_buffer* hailo_vdma_find_mapped_buffer_by_address(struct hailo_vdma_context *context,
     uintptr_t user_address, size_t size, enum dma_data_direction direction)
 {
-    struct hailo_vdma_buffer *cur = NULL;
+    struct hailo_vdma_mapped_buffer *cur = NULL;
     list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
         if (cur->addr_or_fd <= user_address &&
             cur->addr_or_fd + cur->size >= user_address + size &&
@@ -381,12 +380,12 @@ struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_address(struct hailo_
     return NULL;
 }
 
-struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_exact_address(struct hailo_vdma_file_context *context,
+struct hailo_vdma_mapped_buffer* hailo_vdma_find_mapped_buffer_by_exact_address(struct hailo_vdma_context *context,
     uintptr_t user_address, size_t size, enum dma_data_direction direction)
 {
-    struct hailo_vdma_buffer *cur = NULL;
+    struct hailo_vdma_mapped_buffer *cur = NULL;
 
-    // Align to PAGE_SIZE like in hailo_vdma_buffer_map()
+    // Align to PAGE_SIZE like in hailo_vdma_map_buffer()
     align_buffer_to_page(&user_address, &size);
 
     list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
@@ -400,10 +399,10 @@ struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_exact_address(struct 
     return NULL;
 }
 
-struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_handle(struct hailo_vdma_file_context *context,
+struct hailo_vdma_mapped_buffer* hailo_vdma_find_mapped_buffer_by_handle(struct hailo_vdma_context *context,
     size_t buffer_handle)
 {
-    struct hailo_vdma_buffer *cur = NULL;
+    struct hailo_vdma_mapped_buffer *cur = NULL;
     list_for_each_entry(cur, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
         if (cur->handle == buffer_handle) {
             return cur;
@@ -412,138 +411,192 @@ struct hailo_vdma_buffer* hailo_vdma_find_mapped_buffer_by_handle(struct hailo_v
     return NULL;
 }
 
-void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_file_context *context,
-    struct hailo_vdma_controller *controller)
+void hailo_vdma_clear_mapped_user_buffer_list(struct hailo_vdma_context *context)
 {
-    struct hailo_vdma_buffer *cur = NULL, *next = NULL;
+    struct hailo_vdma_mapped_buffer *cur = NULL, *next = NULL;
     list_for_each_entry_safe(cur, next, &context->mapped_user_buffer_list, mapped_user_buffer_list) {
-        hailo_vdma_buffer_destroy(cur);
+        hailo_vdma_mapped_buffer_destroy(cur);
     }
 }
 
-
-int hailo_desc_list_create(struct device *dev, u32 descriptors_count, u16 desc_page_size,
-    uintptr_t desc_handle, bool is_circular, struct hailo_descriptors_list_buffer *descriptors)
+int hailo_vdma_buffer_alloc(struct device *dev, size_t size, struct hailo_vdma_buffer *buffer)
 {
-    size_t buffer_size = 0;
-    void *kernel_address = NULL;
+    buffer->kernel_address = dma_alloc_coherent(dev, size, &buffer->dma_address, GFP_KERNEL);
+    if (!buffer->kernel_address) {
+        dev_warn(dev, "Failed to allocate coherent DMA buffer of size 0x%zx\n", size);
+        return -ENOBUFS;
+    }
 
-    if (MAX_POWER_OF_2_VALUE < descriptors_count) {
-        dev_err(dev, "Invalid descriptors count: %u\n", descriptors_count);
+    buffer->size = size;
+    return 0;
+}
+
+void hailo_vdma_buffer_free(struct device *dev, struct hailo_vdma_buffer *buffer)
+{
+    dma_free_coherent(dev, buffer->size, buffer->kernel_address, buffer->dma_address);
+    memset(buffer, 0, sizeof(*buffer));
+}
+
+struct hailo_vdma_descriptors_list *hailo_desc_list_alloc(struct device *dev, u32 descs_count, u16 desc_page_size)
+{
+    struct hailo_vdma_descriptors_list *desc_list = NULL;
+    size_t buffer_size = 0;
+    int err = 0;
+
+    if (MAX_POWER_OF_2_VALUE < descs_count) {
+        dev_err(dev, "Invalid descriptors count: %u\n", descs_count);
+        return ERR_PTR(-EINVAL);
+    }
+
+    desc_list = kzalloc(sizeof(*desc_list), GFP_KERNEL);
+    if (!desc_list) {
+        return ERR_PTR(-ENOMEM);
+    }
+
+    /* According to spec, descriptor-lists must be aligned to 64KiB. */
+    buffer_size = ALIGN(descs_count * sizeof(struct hailo_vdma_descriptor), VDMA_DESCRIPTOR_LIST_ALIGN);
+    err = hailo_vdma_buffer_alloc(dev, buffer_size, &desc_list->buffer);
+    if (err < 0) {
+        kfree(desc_list);
+        return ERR_PTR(err);
+    }
+
+    desc_list->desc_count = descs_count;
+    desc_list->desc_count_mask = get_nearest_powerof_2(descs_count) - 1;
+    desc_list->desc_page_size = desc_page_size;
+    desc_list->descs_programmed = 0;
+
+    return desc_list;
+}
+
+void hailo_desc_list_free(struct device *dev, struct hailo_vdma_descriptors_list *desc_list)
+{
+    hailo_vdma_transfer_list_free(&desc_list->prepared_transfers);
+    hailo_vdma_transfer_list_free(&desc_list->ongoing_transfers);
+    hailo_vdma_buffer_free(dev, &desc_list->buffer);
+    kfree(desc_list);
+}
+
+struct hailo_vdma_descriptors_list *hailo_vdma_add_desc_list(struct hailo_vdma_context *context,
+    u32 descs_count, u16 desc_page_size, uintptr_t *desc_handle)
+{
+    struct hailo_vdma_descriptors_list *desc_list = NULL;
+    u32 index = 0;
+    int err = 0;
+
+    desc_list = hailo_desc_list_alloc(context->ctrl->dev, descs_count, desc_page_size);
+    if (IS_ERR(desc_list)) {
+        return desc_list;
+    }
+
+    err = xa_alloc(&context->desc_lists, &index, desc_list, xa_limit_32b, GFP_KERNEL);
+    if (err < 0) {
+        hailo_desc_list_free(context->ctrl->dev, desc_list);
+        return ERR_PTR(err);
+    }
+
+    atomic64_add(desc_list->buffer.size, &context->ctrl->desc_cma_in_use);
+    *desc_handle = index;
+    return desc_list;
+}
+
+struct hailo_vdma_descriptors_list *hailo_vdma_get_desc_list(struct hailo_vdma_context *context,
+    uintptr_t desc_handle)
+{
+    return xa_load(&context->desc_lists, desc_handle);
+}
+
+int hailo_vdma_remove_desc_list(struct hailo_vdma_context *context, uintptr_t desc_handle)
+{
+    struct hailo_vdma_descriptors_list *desc_list = NULL;
+
+    desc_list = xa_erase(&context->desc_lists, desc_handle);
+    if (!desc_list) {
         return -EINVAL;
     }
 
-    // First addr must be aligned on 64 KB (from the VDMA registers docs)
-    buffer_size = descriptors_count * sizeof(struct hailo_vdma_descriptor);
-    buffer_size = ALIGN(buffer_size, VDMA_DESCRIPTOR_LIST_ALIGN);
-
-    // Don't pass __GFP_ZERO since the buffer is used only in kernel, and is always initialized before dma transfer.
-    kernel_address = dma_alloc_coherent(dev, buffer_size, &descriptors->dma_address, GFP_KERNEL);
-    if (kernel_address == NULL) {
-        dev_err(dev, "Failed to allocate descriptors list of size 0x%zx: out of CMA memory.\n", buffer_size);
-        return -ENOBUFS;
-    }
-
-    descriptors->buffer_size = buffer_size;
-    descriptors->handle = desc_handle;
-    descriptors->desc_list.prepared_transfers = NULL;
-    descriptors->desc_list.descs = kernel_address;
-    descriptors->desc_list.desc_count = descriptors_count;
-    descriptors->desc_list.desc_count_mask = (get_nearest_powerof_2(descriptors_count) - 1);
-    descriptors->desc_list.desc_page_size = desc_page_size;
-    descriptors->desc_list.is_circular = is_circular;
-    descriptors->desc_list.descs_programmed = 0;
-
+    atomic64_sub(desc_list->buffer.size, &context->ctrl->desc_cma_in_use);
+    hailo_desc_list_free(context->ctrl->dev, desc_list);
     return 0;
 }
 
-void hailo_desc_list_release(struct device *dev, struct hailo_descriptors_list_buffer *descriptors)
+void hailo_vdma_clear_desc_lists(struct hailo_vdma_context *context)
 {
-    hailo_vdma_transfer_list_free(&descriptors->desc_list.prepared_transfers);
+    struct hailo_vdma_descriptors_list *desc_list = NULL;
+    unsigned long index = 0;
 
-    if (descriptors->desc_list.descs != NULL) {
-        dma_free_coherent(dev, descriptors->buffer_size, descriptors->desc_list.descs, descriptors->dma_address);
-        descriptors->desc_list.descs = NULL;
+    xa_for_each(&context->desc_lists, index, desc_list) {
+        hailo_vdma_remove_desc_list(context, index);
     }
 }
 
-struct hailo_descriptors_list_buffer* hailo_vdma_find_descriptors_buffer(struct hailo_vdma_file_context *context,
-    uintptr_t desc_handle)
+static void free_continuous_buffer(struct hailo_vdma_controller *controller, struct hailo_vdma_buffer *buffer)
 {
-    struct hailo_descriptors_list_buffer *cur = NULL;
-    list_for_each_entry(cur, &context->descriptors_buffer_list, descriptors_buffer_list) {
-        if (cur->handle == desc_handle) {
-            return cur;
-        }
-    }
-    return NULL;
+    atomic64_sub(buffer->size, &controller->cma_in_use);
+    hailo_vdma_buffer_free(controller->dev, buffer);
+    kfree(buffer);
 }
 
-void hailo_vdma_clear_descriptors_buffer_list(struct hailo_vdma_file_context *context,
-    struct hailo_vdma_controller *controller)
+struct hailo_vdma_buffer *hailo_vdma_add_continuous_buffer(struct hailo_vdma_context *context, size_t size,
+    uintptr_t *buffer_handle)
 {
-    struct hailo_descriptors_list_buffer *cur = NULL, *next = NULL;
-    list_for_each_entry_safe(cur, next, &context->descriptors_buffer_list, descriptors_buffer_list) {
-        list_del(&cur->descriptors_buffer_list);
-        atomic64_sub(cur->buffer_size, &controller->desc_cma_in_use);
-        hailo_desc_list_release(controller->dev, cur);
-        kfree(cur);
+    struct hailo_vdma_buffer *buffer = NULL;
+    u32 index = 0;
+    int err = 0;
+
+    buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+    if (!buffer) {
+        return ERR_PTR(-ENOMEM);
     }
+
+    err = hailo_vdma_buffer_alloc(context->ctrl->dev, size, buffer);
+    if (err < 0) {
+        kfree(buffer);
+        return ERR_PTR(err);
+    }
+    atomic64_add(buffer->size, &context->ctrl->cma_in_use);
+
+    err = xa_alloc(&context->continuous_buffers, &index, buffer, xa_limit_32b, GFP_KERNEL);
+    if (err < 0) {
+        free_continuous_buffer(context->ctrl, buffer);
+        return ERR_PTR(err);
+    }
+
+    *buffer_handle = index;
+    return buffer;
 }
 
-int hailo_vdma_continuous_buffer_alloc(struct device *dev, size_t size,
-    struct hailo_vdma_continuous_buffer *continuous_buffer)
+struct hailo_vdma_buffer *hailo_vdma_get_continuous_buffer(struct hailo_vdma_context *context,
+    uintptr_t buffer_handle)
 {
-    dma_addr_t dma_address = 0;
-    void *kernel_address = NULL;
+    return xa_load(&context->continuous_buffers, buffer_handle);
+}
 
-    kernel_address = dma_alloc_coherent(dev, size, &dma_address, GFP_KERNEL);
-    if (NULL == kernel_address) {
-        dev_warn(dev, "Failed to allocate continuous buffer, size 0x%zx. This failure means there is not a sufficient amount of CMA memory "
-            "(contiguous physical memory), This usually is caused by lack of general system memory. Please check you have sufficent memory.\n", size);
-        return -ENOBUFS;
+int hailo_vdma_remove_continuous_buffer(struct hailo_vdma_context *context, uintptr_t buffer_handle)
+{
+    struct hailo_vdma_buffer *buffer = NULL;
+
+    buffer = xa_erase(&context->continuous_buffers, buffer_handle);
+    if (!buffer) {
+        return -EINVAL;
     }
 
-    continuous_buffer->kernel_address = kernel_address;
-    continuous_buffer->dma_address = dma_address;
-    continuous_buffer->size = size;
+    free_continuous_buffer(context->ctrl, buffer);
     return 0;
 }
 
-void hailo_vdma_continuous_buffer_free(struct device *dev,
-    struct hailo_vdma_continuous_buffer *continuous_buffer)
+void hailo_vdma_clear_continuous_buffers(struct hailo_vdma_context *context)
 {
-    dma_free_coherent(dev, continuous_buffer->size, continuous_buffer->kernel_address,
-        continuous_buffer->dma_address);
-}
+    struct hailo_vdma_buffer *buffer = NULL;
+    unsigned long index = 0;
 
-struct hailo_vdma_continuous_buffer* hailo_vdma_find_continuous_buffer(struct hailo_vdma_file_context *context,
-    uintptr_t buf_handle)
-{
-    struct hailo_vdma_continuous_buffer *cur = NULL;
-    list_for_each_entry(cur, &context->continuous_buffer_list, continuous_buffer_list) {
-        if (cur->handle == buf_handle) {
-            return cur;
-        }
-    }
-
-    return NULL;
-}
-
-void hailo_vdma_clear_continuous_buffer_list(struct hailo_vdma_file_context *context,
-    struct hailo_vdma_controller *controller)
-{
-    struct hailo_vdma_continuous_buffer *cur = NULL, *next = NULL;
-    list_for_each_entry_safe(cur, next, &context->continuous_buffer_list, continuous_buffer_list) {
-        list_del(&cur->continuous_buffer_list);
-        atomic64_sub(cur->size, &controller->cma_in_use);
-        hailo_vdma_continuous_buffer_free(controller->dev, cur);
-        kfree(cur);
+    xa_for_each(&context->continuous_buffers, index, buffer) {
+        hailo_vdma_remove_continuous_buffer(context, index);
     }
 }
 
 // Assumes the provided user_address belongs to the vma and that MMIO_AND_NO_PAGES_VMA_MASK bits are set under
-// vma->vm_flags. This is validated in hailo_vdma_buffer_map, and won't be checked here
+// vma->vm_flags. This is validated in hailo_vdma_map_buffer, and won't be checked here
 #if defined(HAILO_SUPPORT_MMIO_DMA_MAPPING)
 static int map_mmio_address(uintptr_t user_address, u32 size, struct vm_area_struct *vma,
     struct sg_table *sgt)

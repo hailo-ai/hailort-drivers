@@ -11,7 +11,7 @@
 #include "hailo_ioctl_common.h"
 
 #include "logs.h"
-#include "utils/compat.h"
+#include "compat.h"
 
 #include "driver_timeouts.h"
 

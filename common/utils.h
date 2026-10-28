@@ -13,9 +13,9 @@
 #define BYTE_SIZE                   (1)
 #define BITS_IN_BYTE                (8)
 
-#define hailo_clear_bit(bit, pval)  { *(pval) &= ~(1 << bit); }
-#define hailo_test_bit(pos,var_addr)  ((*var_addr) & (1<<(pos)))
-#define hailo_test_bit_64(pos,var_addr) (!!((*var_addr) & (1ULL<<(pos))))
+#define hailo_clear_bit(bit, pval)  { *(pval) &= ~(1ULL << (bit)); }
+#define hailo_test_bit(pos, var_addr)  ((*var_addr) & (1ULL << (pos)))
+#define hailo_test_bit_64(pos, var_addr) (!!((*(var_addr)) & (1ULL << (pos))))
 
 #define READ_BITS_AT_OFFSET(amount_bits, offset, initial_value) \
     (((initial_value) >> (offset)) & ((1 << (amount_bits)) - 1))
