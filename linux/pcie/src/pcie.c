@@ -820,7 +820,7 @@ static int hailo_pcie_soft_reset(struct hailo_pcie_board *board)
 
     // Wait for response
     completion_result =
-        wait_for_firmware_completion(&board->soft_reset.reset_completed, msecs_to_jiffies(FIRMWARE_WAIT_TIMEOUT_MS));
+        wait_for_firmware_completion(&board->soft_reset.reset_completed, FIRMWARE_WAIT_TIMEOUT_MS);
     if (completion_result == false) {
         hailo_warn(board, "hailo reset firmware, timeout waiting for shutdown response (timeout_ms=%d)\n", FIRMWARE_WAIT_TIMEOUT_MS);
         err = -ETIMEDOUT;
