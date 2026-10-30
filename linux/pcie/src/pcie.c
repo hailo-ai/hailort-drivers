@@ -847,7 +847,7 @@ static int load_nnc_firmware(struct hailo_pcie_board *board)
             err = hailo_pcie_soft_reset(board);
             if (err < 0) {
                 hailo_dev_err(dev, "Failed hailo pcie soft reset. err %d\n", err);
-                return 0;
+                return err;
             }
             hailo_dev_notice(dev, "Soft reset done\n");
         } else {
