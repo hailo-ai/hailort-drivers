@@ -85,7 +85,9 @@ help:
 	$(Q)echo "*                                                                             "
 	$(Q)echo "*   install_dkms Installs the driver using DKMS.                              "
 	$(Q)echo "*                                                                             "
-	$(Q)echo "*   uninstall    Uninstalls the driver                                        "
+	$(Q)echo "*   uninstall / uninstall_dkms: Remove this DKMS version for kernelver        "
+	$(Q)echo "*   uninstall_all_dkms: Remove this DKMS version for all kernels              "
+	$(Q)echo "*   uninstall_standalone: Refuse removal without installer ownership records "
 	$(Q)echo "*                                                                             "
 	$(Q)echo "*   help:        Display this help                                            "
 	$(Q)echo "******************************************************************************"
@@ -112,21 +114,50 @@ install:
 	$(Q)$(MAKE) -C $(KERNEL_DIR) M=$(PWD) INSTALL_MOD_DIR=kernel/drivers/misc modules_install
 	$(Q)$(DEPMOD) -a
 
-uninstall: uninstall_all_dkms
-ifneq ($(wildcard $(MODULES)),)
-	$(Q)rm -f $(MODULES)kernel/drivers/misc/$(DRIVER_NAME_NO_EXT)*
-	$(Q)$(DEPMOD) -a
-endif
+# DKMS owns its installed files, backups, restoration and dependency updates.
+# Never follow DKMS removal with standalone cleanup: that can erase an original
+# module which DKMS has just restored.
+uninstall: uninstall_dkms
 
-install_dkms: uninstall
-ifneq ($(shell id -u),0)
-	@echo "make install_dkms should run as root"
-	exit 1
-endif
-ifeq ($(strip $(shell which dkms)),)
-	@echo "make install_dkms requires dkms to be installed"
-	exit 1
-endif
+uninstall_dkms:
+	$(Q)if [ "$$(id -u)" -ne 0 ]; then \
+		echo "make uninstall / uninstall_dkms should run as root" >&2; exit 1; \
+	fi
+	$(Q)sh dkms_uninstall.sh "$(DRIVER_VERSION)" --kernel "$(kernelver)"
+
+# Compatibility target: 'all' now means all kernels of this version, never all
+# driver versions. Retain the existing helper's one-argument --all interface.
+uninstall_all_dkms:
+	$(Q)if [ "$$(id -u)" -ne 0 ]; then \
+		echo "make uninstall_all_dkms should run as root" >&2; exit 1; \
+	fi
+	$(Q)sh dkms_uninstall.sh "$(DRIVER_VERSION)"
+
+# Legacy standalone installations have no reliable installer ownership record.
+# Version/name/vermagic matching is not proof of ownership. Until provenance is
+# tracked by installation, refuse cleanup rather than guess from a pathname.
+uninstall_standalone:
+	$(Q)if [ "$$(id -u)" -ne 0 ]; then \
+		echo "make uninstall_standalone should run as root" >&2; exit 1; \
+	fi
+	$(Q)echo "Standalone removal is unsupported without installer ownership records; no files were removed." >&2
+	$(Q)exit 1
+
+# Installing a version must not run an implicit (and potentially destructive)
+# uninstall. Refuse to overwrite a pre-existing DKMS registration or source
+# tree; the caller must explicitly decide how to handle that installation.
+install_dkms:
+	$(Q)if [ "$$(id -u)" -ne 0 ]; then \
+		echo "make install_dkms should run as root" >&2; exit 1; \
+	fi
+	$(Q)if ! command -v dkms >/dev/null 2>&1; then \
+		echo "make install_dkms requires dkms to be installed" >&2; exit 1; \
+	fi
+	$(Q)if [ -e "/usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)" ] || \
+		[ -e "/var/lib/dkms/$(DRIVER_NAME_NO_EXT)/$(DRIVER_VERSION)" ]; then \
+		echo "$(DRIVER_NAME_NO_EXT)/$(DRIVER_VERSION) already exists; refusing to overwrite" >&2; \
+		exit 1; \
+	fi
 
 # Copy driver sources
 	$(Q)mkdir -p /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
@@ -135,27 +166,16 @@ endif
 	$(Q)cp -r $(VDMA_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
 	$(Q)cp -r $(UTILS_SRC_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/hailort/drivers/linux
 
-# Copy common headers
+# Copy common headers (standalone layout fix is tracked separately in PR #56).
 	$(Q)mkdir -p /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/common
 	$(Q)cp -r $(COMMON_INCLUDE_DIRECTORY) /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/common
 
 	$(Q)sed 's/@PCIE_DRIVER_VERSION@/$(DRIVER_VERSION)/g' dkms.conf.in > /usr/src/$(DRIVER_NAME_NO_EXT)-$(DRIVER_VERSION)/dkms.conf
 	$(Q)dkms add -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION)
-	$(Q)dkms build -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION) || (cat /var/lib/dkms/$(DRIVER_NAME_NO_EXT)/$(DRIVER_VERSION)/build/make.log; exit 1)
+	$(Q)dkms build -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION) -k "$(kernelver)" || (cat /var/lib/dkms/$(DRIVER_NAME_NO_EXT)/$(DRIVER_VERSION)/build/make.log; exit 1)
 
-# Install DKMS
-	$(Q)dkms install -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION) --force
-
-uninstall_all_dkms:
-ifneq ($(shell id -u),0)
-	@echo "make uninstall_all_dkms should run as root"
-	exit 1
-endif
-# Uninstall driver from dkms, if dkms is installed
-# If the driver wasn't installed with dkms, the following commands won't do anything
-ifneq ($(strip $(shell which dkms)),)
-	-$(Q)sh dkms_uninstall.sh
-endif
+# No --force: retain DKMS's normal safety checks and module-signing behavior.
+	$(Q)dkms install -m $(DRIVER_NAME_NO_EXT) -v $(DRIVER_VERSION) -k "$(kernelver)"
 
 endif
 
@@ -164,3 +184,7 @@ endif
 .PHONY: clean
 .PHONY: install
 .PHONY: uninstall
+.PHONY: uninstall_dkms
+.PHONY: uninstall_all_dkms
+.PHONY: uninstall_standalone
+.PHONY: install_dkms
