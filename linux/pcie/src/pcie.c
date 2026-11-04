@@ -814,9 +814,10 @@ static int hailo_pcie_soft_reset(struct hailo_pcie_board *board)
     bool completion_result = false;
     int err = 0;
 
-    hailo_pcie_write_firmware_soft_reset(&board->pcie_resources);
-
+    /* Arm before sending: an immediate response must not be cleared. */
     reinit_completion(&board->soft_reset.reset_completed);
+
+    hailo_pcie_write_firmware_soft_reset(&board->pcie_resources);
 
     // Wait for response
     completion_result =
