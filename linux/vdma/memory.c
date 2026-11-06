@@ -288,10 +288,10 @@ static void vdma_sync_entire_buffer(struct hailo_vdma_controller *controller,
     struct hailo_vdma_buffer *mapped_buffer, enum hailo_vdma_buffer_sync_type sync_type)
 {
     if (sync_type == HAILO_SYNC_FOR_CPU) {
-        dma_sync_sg_for_cpu(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
+        dma_sync_sg_for_cpu(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.orig_nents,
             mapped_buffer->data_direction);
     } else {
-        dma_sync_sg_for_device(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.nents,
+        dma_sync_sg_for_device(controller->dev, mapped_buffer->sg_table.sgl, mapped_buffer->sg_table.orig_nents,
             mapped_buffer->data_direction);
     }
 }
