@@ -174,7 +174,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             if (NULL == vma) {
                 dev_err(dev, "no vma for virt_addr/size = 0x%08lx/0x%08zx\n", addr_or_fd, size);
                 ret = -EFAULT;
-                goto cleanup;
+                goto free_buffer_struct;
             }
         }
 
@@ -184,7 +184,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
             ret = create_fd_from_vma(dev, vma);
             if (ret < 0) {
                 dev_err(dev, "Failed creating fd from vma in given dmabuf\n");
-                goto cleanup;
+                goto free_buffer_struct;
             }
             // Save original dmabuf user address in dmabuf_from_pointer_addr and override addr_or_fd with fd
             dmabuf_from_pointer_addr = addr_or_fd;
@@ -214,7 +214,7 @@ struct hailo_vdma_buffer *hailo_vdma_buffer_map(struct device *dev,
         ret = hailo_map_dmabuf(dev, addr_or_fd, direction, &sgt, &dmabuf_info);
         if (ret < 0) {
             dev_err(dev, "Failed mapping dmabuf\n");
-            goto cleanup;
+            goto free_buffer_struct;
         }
         // If created dmabuf fd from vma need to close fd we created
         if (0 != dmabuf_from_pointer_addr) {
