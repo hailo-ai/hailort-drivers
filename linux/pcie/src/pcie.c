@@ -254,15 +254,18 @@ static long hailo_pcie_insert_board(struct hailo_pcie_board* pBoard)
 {
     u32 index = 0;
     struct hailo_pcie_board *pCurrent, *pNext;
+    struct class *chrdev_class;
 
     down(&g_hailo_add_board_mutex);
 
     if (!g_chrdev_class) {
-        g_chrdev_class = class_create_compat("hailo_chardev");
-        if (IS_ERR(g_chrdev_class)) {
+        chrdev_class = class_create_compat("hailo_chardev");
+        if (IS_ERR(chrdev_class)) {
             hailo_err(pBoard, "Failed to create class for chrdev");
-            return PTR_ERR(g_chrdev_class);
+            up(&g_hailo_add_board_mutex);
+            return PTR_ERR(chrdev_class);
         }
+        g_chrdev_class = chrdev_class;
     }
 
     if ( list_empty(&g_hailo_board_list)  ||
@@ -1490,10 +1493,10 @@ static int hailo_pcie_register_chrdev(unsigned int major, const char *name)
 
 static void hailo_pcie_unregister_chrdev(unsigned int major, const char *name)
 {
-    if (!g_chrdev_class) {
-        return;
+    if (g_chrdev_class) {
+        class_destroy(g_chrdev_class);
+        g_chrdev_class = NULL;
     }
-    class_destroy(g_chrdev_class);
     unregister_chrdev(major, name);
 }
 
